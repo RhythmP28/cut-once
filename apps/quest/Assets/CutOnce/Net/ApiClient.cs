@@ -26,9 +26,9 @@ namespace CutOnce.Net
         sealed class ErrorBody { public ErrorDetail error; }
         sealed class ErrorDetail { public string code, message; }
 
-        Task<HttpResult> Send(string method, string path, string body = null)
+        Task<HttpResult> Send(string method, string path, string body = null, int timeoutSeconds = 8)
         {
-            var request = new HttpRequest { Method = method, Url = _config.BaseUrl + path, Body = body };
+            var request = new HttpRequest { Method = method, Url = _config.BaseUrl + path, Body = body, TimeoutSeconds = timeoutSeconds };
             request.Headers["authorization"] = "Bearer " + _config.api_token;
             if (body != null) request.Headers["content-type"] = "application/json";
             return _http.SendAsync(request);
@@ -83,5 +83,23 @@ namespace CutOnce.Net
             if (r.Status == 409 || r.Status == 422) return new AppendOutcome { Status = AppendStatus.Refused, Reason = ErrorCode(r) };
             return new AppendOutcome { Status = AppendStatus.Unreachable, Reason = r.Reached ? ErrorCode(r) : r.Error ?? "unreachable" };
         }
+
+        /// <summary>
+        /// One build-mode scan (about half a megabyte of JSON), so it is written off the main thread (AGENTS rule 9); Unity's
+        /// context brings the await back for the request itself. Null when the server did not take it.
+        /// </summary>
+        public async Task<ScanAcceptedDto> PostBuildScan(BuildScanUploadDto scan)
+        {
+            string json = await Task.Run(() => CoreJson.Write(scan));
+            return ParseOrNull<ScanAcceptedDto>(await Send("POST", "/v1/build/scans", json, 20));
+        }
+
+        /// <summary>Starts a run of a checked design. The run itself arrives on the stream (assembly_changed).</summary>
+        public async Task<IdeaStartedDto> StartBuildIdea(string ideaId) =>
+            ParseOrNull<IdeaStartedDto>(await Send("POST", $"/v1/build/ideas/{System.Uri.EscapeDataString(ideaId)}/start", "{}", 15));
+
+        /// <summary>Speaks a sentence in the copilot's voice; play the returned audio_url with the copilot's player.</summary>
+        public async Task<SayDto> BuildSay(string text) =>
+            ParseOrNull<SayDto>(await Send("POST", "/v1/build/say", CoreJson.Write(new SayRequestDto { text = text }), 10));
     }
 }

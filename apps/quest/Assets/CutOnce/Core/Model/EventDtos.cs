@@ -64,12 +64,16 @@ namespace CutOnce.Core
     /// <summary>One message from /v1/stream. Only the fields of the message's own type are set.</summary>
     public sealed class WsMessageDto
     {
-        public string type;                         // event_appended | assembly_changed | plan_ready | director_command | …
+        public string type;                         // event_appended | assembly_changed | plan_ready | director_command | build_inventory | build_ideas | …
         public string assembly_id, plan_id;
         public BuildEventDto @event;
         public int head, revision;
         public AssemblyDto assembly;
         public DirectorCommandDto command;
+        public InventoryDto inventory;              // build_inventory
+        public List<BuildIdeaDto> ideas;            // build_ideas
+        public string session_id, audio_url, message;
+        public bool final;
     }
 
     public sealed class DirectorCommandDto { public string type, seed, plan_id, part_id, new_state, demo_state, flag; public bool value; }
