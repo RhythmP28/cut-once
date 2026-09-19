@@ -74,19 +74,20 @@ function testWav(): Buffer {
 const results: { gate: string; ok: boolean; ms: number; detail: string }[] = [];
 async function check(gate: string, fn: () => Promise<string>) {
   const t0 = Date.now();
-  try { results.push({ gate, ok: true, ms: Date.now() - t0, detail: await fn() }); }
+  // The detail is awaited before the row is built; putting `await fn()` inside the literal would
+  // evaluate `ms` first and every check would report 0 ms.
+  try { const detail = await fn(); results.push({ gate, ok: true, ms: Date.now() - t0, detail }); }
   catch (err) { results.push({ gate, ok: false, ms: Date.now() - t0, detail: (err as Error).message }); }
 }
 
 console.log(`chat model:   ${m.chat}\ntranscribe:   ${m.stt}\nvoice:        ${m.ttsModel} / ${m.voiceId}\n`);
 
-if (!cfg.openaiKey) {
-  console.error("OPENAI_API_KEY is not set. Put it in .env.local and run `pnpm g0` again.");
-  process.exit(1);
-}
+/** A missing key marks its checks skipped and keeps going: a half-configured laptop should still test the rest. */
+const skip = (gate: string, why: string) => results.push({ gate, ok: false, ms: 0, detail: `SKIPPED — ${why}` });
 
 // G0: an image in, strict JSON out. Everything in the copilot depends on this one answering yes.
-await check("G0 · image + strict JSON", async () => {
+if (!cfg.openaiKey) skip("G0 · image + strict JSON", "OPENAI_API_KEY is not set in .env.local");
+else await check("G0 · image + strict JSON", async () => {
   const frame = join(REPO_ROOT, "data", "fixtures", "frame_0001.jpg");
   const image = existsSync(frame)
     ? { data: readFileSync(frame), mime: "image/jpeg" as const }
@@ -100,15 +101,16 @@ await check("G0 · image + strict JSON", async () => {
   return `model returned ${JSON.stringify(out)}`;
 });
 
-await check("STT · transcription endpoint", async () => {
+if (!cfg.openaiKey) skip("STT · transcription endpoint", "OPENAI_API_KEY is not set in .env.local");
+else await check("STT · transcription endpoint", async () => {
   const client = new OpenAI({ apiKey: cfg.openaiKey, timeout: 30_000, maxRetries: 0 });
   const res = await client.audio.transcriptions.create({ file: await toFile(testWav(), "g0.wav", { type: "audio/wav" }), model: m.stt });
   const text = typeof res === "string" ? res : res.text;
   return `accepted a 1 s WAV, returned ${JSON.stringify(text.slice(0, 60))} (a tone, so the words mean nothing — the call working is the point)`;
 });
 
-await check("TTS · ElevenLabs PCM", async () => {
-  if (!cfg.elevenKey) throw new Error("ELEVENLABS_API_KEY is not set");
+if (!cfg.elevenKey) skip("TTS · ElevenLabs PCM", "ELEVENLABS_API_KEY is not set in .env.local");
+else await check("TTS · ElevenLabs PCM", async () => {
   const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${m.voiceId}/stream?output_format=pcm_${m.sampleRate}`, {
     method: "POST", headers: { "xi-api-key": cfg.elevenKey, "content-type": "application/json" },
     body: JSON.stringify({ text: "Run it through the cable tray to the right rear leg.", model_id: m.ttsModel }),
@@ -122,7 +124,7 @@ await check("TTS · ElevenLabs PCM", async () => {
 
 console.log(results.map((r) => `${r.ok ? "PASS" : "FAIL"}  ${r.gate.padEnd(28)} ${String(r.ms).padStart(6)} ms  ${r.detail}`).join("\n"));
 const g0 = results[0]!;
-if (!g0.ok) {
+if (!g0.ok && !g0.detail.startsWith("SKIPPED")) {
   console.error("\nG0 FAILED. Set OPENAI_COPILOT_MODEL to the vision-capable model in .env.local, re-run, and tell the team —");
   console.error("Michael's drawing extraction reads images through the same helper.");
 }

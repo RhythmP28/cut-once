@@ -291,3 +291,14 @@ describe("budgets", () => {
     expect(models(cfg, { COPILOT_CAP_MS: "5000" }).budgets.hardCap).toBe(5000);
   });
 });
+
+describe("the say route", () => {
+  it("validates the body and reports a dead TTS as 503, not a hang", async () => {
+    const bad = await t.app.inject({ method: "POST", url: "/v1/copilot/debug/say", headers: auth, payload: {} });
+    expect(bad.statusCode).toBe(400);
+    // No ELEVENLABS_API_KEY in tests, so the pipeline's failure path answers quickly and honestly.
+    const dead = await t.app.inject({ method: "POST", url: "/v1/copilot/debug/say", headers: auth, payload: { text: "hello" } });
+    expect(dead.statusCode).toBe(503);
+    expect(dead.json().error.code).toBe("tts_unavailable");
+  });
+});

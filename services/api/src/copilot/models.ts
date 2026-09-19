@@ -19,8 +19,10 @@ export function models(cfg: Config, env: Record<string, string | undefined> = pr
   return {
     chat: env.OPENAI_COPILOT_MODEL || cfg.openaiModel,
     stt: env.OPENAI_STT_MODEL || "gpt-transcribe",
-    // Rachel, one of ElevenLabs' stock voices: works on every account, so the demo never depends on a custom voice.
-    voiceId: env.ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM",
+    // Sarah, one of ElevenLabs' premade voices. Premade is the category free accounts can use over the
+    // API — Rachel is a "library" voice now and 402s on the free tier, which is exactly the kind of
+    // surprise that must not happen mid-demo.
+    voiceId: env.ELEVENLABS_VOICE_ID || "EXAVITQu4vr4xnSDxMaL",
     ttsModel: env.ELEVENLABS_MODEL || "eleven_flash_v2_5",
     sampleRate: num(env.COPILOT_PCM_RATE, 22050),
     budgets: {
