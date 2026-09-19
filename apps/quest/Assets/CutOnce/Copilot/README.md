@@ -47,6 +47,7 @@ Check both in the first hour — G2 depends on them and there is no workaround o
 `CutOnce.Copilot` and `CutOnce.AR` compile and their EditMode tests pass in Unity:
 `bash tools/quest-check/run-editmode.sh` runs them headless in a throwaway project, no fork needed.
 Anything that touches Meta's packages (`OVRInput`, `PassthroughCameraAccess`) lives in `../Device/`, which has
-no asmdef, so Unity's default assembly compiles it the way QuestCameraKit compiles its own scripts. It has been
-compiled against stand-ins with MRUK 205's exact signatures; the fork is its first compile against the real
-packages. On the headset, check G2 on `/debug`: the frame is upright and the boxes sit on the parts.
+no asmdef, so Unity's default assembly compiles it the way QuestCameraKit compiles its own scripts. It compiles
+with 0 errors and 0 warnings inside a clean QuestCameraKit clone against the real Meta XR Core and MRUK 205.0.0
+(checked with Unity 6000.6.2f1; the team's editor is 6000.3.12f1). What only the headset can show is G2 on
+`/debug`: the frame is upright and the boxes sit on the parts.

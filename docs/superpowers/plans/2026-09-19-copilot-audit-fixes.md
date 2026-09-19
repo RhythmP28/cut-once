@@ -188,6 +188,6 @@ data/fixtures/** -filter -diff -merge binary
 - [ ] `pnpm -r typecheck && pnpm -r test` — zero failures.
 - [ ] Re-run the audit probes (`scratchpad/rhythm-wt/services/api/tests/zz-audit-*.test.ts`, copied in temporarily, never committed). Expected: P1 leg stays `missing`; P2 200/200; P3 200; P4 `missing` then "nothing to undo"; P5 400 and no file; P6 0 held after retention; P7 `action: null`; W1 gap ≈ 2 s; W2 verification on the override model; W3 `PASS G0`.
 - [ ] `bash tools/quest-check/run-editmode.sh` → 0 compile errors, all pass.
-- [ ] `Device/` compiles against Meta's packages when A1's QuestCameraKit fork lands (Unity console: no `error CS`); until then it is checked by reading against MRUK 205's source.
+- [x] `Device/` compiles against Meta's real packages: a clean QuestCameraKit clone with `Assets/CutOnce` copied in, Unity 6000.6.2f1 batchmode, Meta XR Core + MRUK 205.0.0 → 0 errors, 0 warnings in our code; `Assembly-CSharp` contains `CutOnce.Device.PcaFrameSource` and `QuestPushToTalk`, referencing `Oculus.VR` and `meta.xr.mrutilitykit`.
 - [ ] Docs: `docs/copilot.md` (commands change the build, unheard questions, g0), Copilot `README.md` (status, Device/ wiring).
 - [ ] Merge `fix/copilot-audit` into `main`, re-run the suite on the merge, push.
