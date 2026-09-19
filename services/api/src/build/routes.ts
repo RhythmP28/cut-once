@@ -19,7 +19,7 @@ export const buildRoutes: Plugin = (app: FastifyInstance, ctx: Ctx) => {
     models: { label: process.env.OPENAI_LABEL_MODEL || ctx.cfg.openaiModel, ideas: process.env.OPENAI_IDEAS_MODEL || ctx.cfg.openaiModel },
   });
   ctx.hooks.build = {
-    rethink: (request) => sessions.rethink(request), startByName: (transcript) => sessions.startByName(transcript),
+    canRethink: () => sessions.canRethink(), rethink: (request) => sessions.rethink(request), startByName: (transcript) => sessions.startByName(transcript),
     ideaTitles: () => sessions.ideaTitles(), idle: () => sessions.idle(),
   };
 

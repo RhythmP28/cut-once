@@ -88,7 +88,7 @@ export function applyLabels(marked: Twin[], result: LabelResult, vocab: Vocab, s
  * A measured shape as the other type, same height. A cylinder is rarely seen whole: its visible half fits a rectangle
  * as wide as the cylinder and about half as deep, so the diameter is the LONGER side.
  */
-function reshape(shape: Twin["shape"], type: "box" | "cylinder"): Twin["shape"] {
+export function reshape(shape: Twin["shape"], type: "box" | "cylinder"): Twin["shape"] {
   if (shape.type === type) return shape;
   if (shape.type === "box") return { type: "cylinder", axis: "y", diameter: Math.max(shape.size[0], shape.size[2]), length: shape.size[1] };
   return { type: "box", size: [shape.diameter, heightOf(shape), shape.diameter] };

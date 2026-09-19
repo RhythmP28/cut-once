@@ -55,8 +55,8 @@ beforeAll(async () => {
   process.env.OPENAI_BASE_URL = oaiUrl;
 });
 afterAll(() => { for (const s of stuckSockets) s.destroy(); stuck.close(); oai.close(); delete process.env.OPENAI_BASE_URL; });
-beforeEach(() => { seen.length = 0; stand.toolRound = false; stand.flow = "question"; delete process.env.OPENAI_ROUTER_MODEL; process.env.COPILOT_CAP_MS = "30000"; delete process.env.OPENAI_COPILOT_MODEL; });
-afterEach(() => { delete process.env.COPILOT_CAP_MS; delete process.env.OPENAI_COPILOT_MODEL; });
+beforeEach(() => { seen.length = 0; stand.toolRound = false; stand.flow = "question"; delete process.env.OPENAI_ROUTER_MODEL; process.env.COPILOT_ROUTE_MS = "5000"; process.env.COPILOT_CAP_MS = "30000"; delete process.env.OPENAI_COPILOT_MODEL; });
+afterEach(() => { delete process.env.COPILOT_ROUTE_MS; delete process.env.COPILOT_CAP_MS; delete process.env.OPENAI_COPILOT_MODEL; });
 
 const FIXTURES = join(REPO_ROOT, "data", "fixtures");
 const frame = () => readFileSync(join(FIXTURES, "frame_0001.jpg"));

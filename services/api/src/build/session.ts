@@ -80,9 +80,11 @@ export class BuildSessions {
     return { session_id: session.session_id };
   }
 
+  canRethink = (): boolean => Boolean(this.session && this.session.twins.length > 0 && !this.session.started);
+
   rethink(request: string): Promise<boolean> {
     const s = this.session;
-    if (!s || s.twins.length === 0 || s.started) return Promise.resolve(false);
+    if (!s || !this.canRethink()) return Promise.resolve(false);
     const photo = s.photo && existsSync(s.photo) ? readFileSync(s.photo) : null;
     this.enqueue(() => this.ideas(s, photo, request));
     return Promise.resolve(true);

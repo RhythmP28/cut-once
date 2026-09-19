@@ -45,5 +45,10 @@ describe("the synthetic kit recording", () => {
     const score = scoreRecording(twins, Truth.parse(JSON.parse(file("truth.json").toString())));
     expect([score.found, score.truth, score.labelsRight, score.labelled]).toEqual([4, 4, 4, 4]);
     expect(Math.max(...score.sizeErrCm)).toBeLessThanOrEqual(2);
+    // After snapping those errors are zero by construction. What the twin builder itself measured is the number that
+    // would move if it got worse: at 0.5% depth noise from 2 m, no side of the kit is more than 1.5 cm out (measured: 0.9 cm).
+    const raw = scoreRecording(JSON.parse(file("labels.json").toString()), Truth.parse(JSON.parse(file("truth.json").toString())));
+    expect(raw.found).toBe(4);
+    expect(Math.max(...raw.sizeErrCm)).toBeLessThanOrEqual(1.5);
   });
 });

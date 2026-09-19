@@ -9,7 +9,7 @@ import { gather, searchQuery } from "./context.js";
 import { isQuestion, matchFastPath } from "./fastpath.js";
 import { markUp, type LegendRow } from "./marks.js";
 import type { CopilotModels } from "./models.js";
-import { ROUTE_MIN, routeTurn } from "./router.js";
+import { routeOutcome, routeTurn } from "./router.js";
 import { transcribe } from "./stt.js";
 import type { Speech } from "./tts.js";
 import type { TurnMemory } from "./turns.js";
@@ -143,12 +143,10 @@ export async function answerQuery(deps: Deps, input: QueryInput, log: Log): Prom
   const routeStart = Date.now();
   const routed = await routeTurn(ctx.cfg, m, { transcript, mode: input.context.mode, ideaTitles: ctx.hooks.build?.ideaTitles() ?? [] });
   timings.route = since(routeStart);
-  if (routed && routed.flow !== "question") {
-    if (routed.confidence < ROUTE_MIN) return quick(deps, turnId, transcript, "Do you want ideas for what to build, or an answer about this step?", null, timings, t0, recordTurn, true);
-    if (routed.flow === "build_ideas") return quick(deps, turnId, transcript, "Let me see what you've got.", { type: "start_scan" }, timings, t0, recordTurn);
-    // modify_design with nothing to rethink (no pile yet, or a build already under way) is answered like any question.
-    if (ctx.hooks.build && (await ctx.hooks.build.rethink(transcript))) return quick(deps, turnId, transcript, "Let me rethink that.", null, timings, t0, recordTurn);
-  }
+  const outcome = routeOutcome(routed, { mode: input.context.mode, canRethink: ctx.hooks.build?.canRethink() ?? false });
+  if (outcome === "clarify") return quick(deps, turnId, transcript, "Do you want ideas for what to build, or an answer about this step?", null, timings, t0, recordTurn, true);
+  if (outcome === "scan") return quick(deps, turnId, transcript, "Let me see what you've got.", { type: "start_scan" }, timings, t0, recordTurn);
+  if (outcome === "rethink" && (await ctx.hooks.build!.rethink(transcript))) return quick(deps, turnId, transcript, "Let me rethink that.", null, timings, t0, recordTurn);
   const [chunks, annotated] = await Promise.all([retrieving, annotating]);
 
   const llmStart = Date.now();

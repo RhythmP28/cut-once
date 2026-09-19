@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { REPO_ROOT } from "../src/config.js";
-import { Truth, scoreRecording } from "../src/build/score.js";
+import { Truth, carryNames, scoreRecording } from "../src/build/score.js";
 import { matchFastPath } from "../src/copilot/fastpath.js";
 import { Routed } from "../src/copilot/router.js";
 import { twin } from "./build-synth.js";
@@ -27,6 +27,24 @@ describe("scoreRecording", () => {
   it("refuses a truth file that is not three sizes per object: it is corrected by hand, so it is checked", () => {
     expect(Truth.safeParse({ objects: [{ name: "tall_can", size_cm: [15.7, 6.6] }] }).success).toBe(false);
     expect(Truth.safeParse({ objects: [{ name: "tall_can", size_cm: [15.7, 6.6, 6.6] }] }).success).toBe(true);
+  });
+});
+
+describe("carryNames: a recording's saved names on this build's measurements", () => {
+  const savedCan = twin({ twin_id: "o1", name: "tall_can", label: "tall can", confidence: 0.9, position: [0.1, 0.82, 0.4], shape: { type: "cylinder", axis: "y", diameter: 0.066, length: 0.157 } });
+  const savedBottle = twin({ twin_id: "o2", name: "water_bottle", label: "water bottle", confidence: 0.6, position: [0.4, 0.84, 0.6], points: 0 });
+
+  it("names each fresh twin after the saved twin standing where it stands, keeping the fresh measurement", () => {
+    // The same can, measured by today's twin builder as a slightly wide box (what noise does to a can).
+    const fresh = twin({ twin_id: "o7", position: [0.11, 0.82, 0.41], shape: { type: "box", size: [0.08, 0.15, 0.05] } });
+    const [can] = carryNames([fresh], [savedCan]);
+    expect([can!.twin_id, can!.name, can!.label, can!.confidence]).toEqual(["o7", "tall_can", "tall can", 0.9]);
+    expect(can!.shape).toEqual({ type: "cylinder", axis: "y", diameter: 0.08, length: 0.15 });   // fresh size, in the shape the labeller gave it
+  });
+  it("keeps a saved twin the scan cannot show (a clear bottle the labeller added), and leaves strangers unnamed", () => {
+    const stranger = twin({ twin_id: "o9", position: [-0.4, 0.8, 0.9] });
+    const out = carryNames([stranger], [savedCan, savedBottle]);
+    expect(out.map((t) => t.name).sort()).toEqual(["tall_can", "unknown", "water_bottle"]);
   });
 });
 

@@ -23,6 +23,8 @@ export interface Hooks {
   say?: (text: string) => { turn_id: string; audio_url: string };
   /** Build mode, for the copilot (set by build/routes.ts). */
   build?: {
+    /** Is there a design on show that could be changed? (Objects are known and no build is under way.) */
+    canRethink: () => boolean;
     rethink: (request: string) => Promise<boolean>;
     startByName: (transcript: string) => Promise<string | null>;
     ideaTitles: () => string[];

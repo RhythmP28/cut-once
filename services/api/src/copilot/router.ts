@@ -31,3 +31,17 @@ export async function routeTurn(cfg: Config, m: CopilotModels, input: RouteInput
   const timeout = new Promise<null>((resolve) => { const t = setTimeout(() => resolve(null), m.budgets.route); t.unref?.(); });
   try { return await Promise.race([work, timeout]); } catch { return null; }
 }
+
+export type RouteOutcome = "question" | "clarify" | "scan" | "rethink";
+
+/**
+ * What a routed turn does. One rule for the pipeline and for `pnpm build:eval --router`, so the eval scores what the
+ * headset would hear. Outside build mode an unsure router changes nothing: E7 and the desk are answered as they always
+ * were. "Change the design" with no design on show to change is a question, however sure the router is.
+ */
+export function routeOutcome(routed: Routed | null, at: { mode: string; canRethink: boolean }): RouteOutcome {
+  if (!routed || routed.flow === "question") return "question";
+  if (routed.flow === "modify_design" && !at.canRethink) return "question";
+  if (routed.confidence < ROUTE_MIN) return at.mode === "build" ? "clarify" : "question";
+  return routed.flow === "build_ideas" ? "scan" : "rethink";
+}

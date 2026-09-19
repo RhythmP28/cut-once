@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { loadConfig } from "../src/config.js";
 import { models } from "../src/copilot/models.js";
-import { routeTurn } from "../src/copilot/router.js";
+import { routeOutcome, routeTurn } from "../src/copilot/router.js";
 
 const cfg = loadConfig({}, { openaiKey: "k" });
 const base = models(cfg, {});
@@ -27,5 +27,29 @@ describe("routeTurn", () => {
     const call = vi.fn();
     expect(await routeTurn(loadConfig({}, { openaiKey: "" }), m, input, call)).toBeNull();
     expect(call).not.toHaveBeenCalled();
+  });
+});
+
+describe("routeOutcome: what a routed turn does", () => {
+  const overlay = { mode: "overlay", canRethink: false }, picking = { mode: "build", canRethink: true }, building = { mode: "build", canRethink: false };
+
+  it("treats no answer, and 'question', as a question", () => {
+    expect(routeOutcome(null, picking)).toBe("question");
+    expect(routeOutcome({ flow: "question", confidence: 0.2 }, picking)).toBe("question");
+  });
+  it("scans for build ideas and rethinks a design when it is sure", () => {
+    expect(routeOutcome({ flow: "build_ideas", confidence: 0.9 }, overlay)).toBe("scan");
+    expect(routeOutcome({ flow: "modify_design", confidence: 0.9 }, picking)).toBe("rethink");
+  });
+  it("outside build mode an unsure router changes nothing: E7 and the desk are answered as they always were", () => {
+    // "can we move this bracket up" misread as a design change at 0.6 must not get "Do you want ideas for what to build…?"
+    expect(routeOutcome({ flow: "modify_design", confidence: 0.6 }, overlay)).toBe("question");
+    expect(routeOutcome({ flow: "build_ideas", confidence: 0.6 }, overlay)).toBe("question");
+  });
+  it("in build mode an unsure router asks back instead of guessing", () =>
+    expect(routeOutcome({ flow: "build_ideas", confidence: 0.6 }, picking)).toBe("clarify"));
+  it("with no design on show to change, 'change the design' is a question however sure the router is", () => {
+    expect(routeOutcome({ flow: "modify_design", confidence: 0.95 }, building)).toBe("question");
+    expect(routeOutcome({ flow: "modify_design", confidence: 0.4 }, building)).toBe("question");
   });
 });
