@@ -2,7 +2,7 @@
   "plan_id": "plan_e7_massing",
   "project_id": "proj_cutonce_demo",
   "name": "Engineering 7 massing model",
-  "revision": 1,
+  "revision": 2,
   "status": "approved",
   "frame": {
     "handedness": "right",
@@ -53,7 +53,18 @@
       "attaches_to": [],
       "verify_hint": "flat floor plate of level 1, 3451 m2, 0.3 m thick",
       "install_minutes": 10080,
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_01_plan",
+          "page": 1
+        }
+      ],
+      "external_ids": {
+        "source": "drawings",
+        "tolerance_m": "4.3",
+        "basis": "outline traced from the Level 1 plan; the model's outline vs OpenStreetMap: IoU 0.887, mean edge distance 2.81 m, 90% within 4.34 m; thickness assumed 0.3 m",
+        "reviewed": "auto"
+      }
     },
     {
       "part_id": "part_e7_l01_envelope",
@@ -95,7 +106,22 @@
       "attaches_to": [],
       "verify_hint": "storey-high block of level 1, 4.53 m tall, standing on its slab",
       "install_minutes": 20160,
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_01_plan",
+          "page": 1
+        },
+        {
+          "document_id": "doc_e7_section",
+          "page": 1
+        }
+      ],
+      "external_ids": {
+        "source": "drawings",
+        "tolerance_m": "4.3",
+        "basis": "outline traced from the Level 1 plan; the model's outline vs OpenStreetMap: IoU 0.887, mean edge distance 2.81 m, 90% within 4.34 m; storey height read from the section render; the main roof is 30.11 m in the model and 30.62 m in lidar",
+        "reviewed": "auto"
+      }
     },
     {
       "part_id": "part_e7_l02_slab",
@@ -136,7 +162,18 @@
       "attaches_to": [],
       "verify_hint": "flat floor plate of level 2, 3549 m2, 0.3 m thick",
       "install_minutes": 10080,
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_02_plan",
+          "page": 1
+        }
+      ],
+      "external_ids": {
+        "source": "drawings",
+        "tolerance_m": "4.3",
+        "basis": "outline traced from the Level 2 plan; the model's outline vs OpenStreetMap: IoU 0.887, mean edge distance 2.81 m, 90% within 4.34 m; thickness assumed 0.3 m",
+        "reviewed": "auto"
+      }
     },
     {
       "part_id": "part_e7_l02_envelope",
@@ -178,7 +215,22 @@
       "attaches_to": [],
       "verify_hint": "storey-high block of level 2, 3.91 m tall, standing on its slab",
       "install_minutes": 20160,
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_02_plan",
+          "page": 1
+        },
+        {
+          "document_id": "doc_e7_section",
+          "page": 1
+        }
+      ],
+      "external_ids": {
+        "source": "drawings",
+        "tolerance_m": "4.3",
+        "basis": "outline traced from the Level 2 plan; the model's outline vs OpenStreetMap: IoU 0.887, mean edge distance 2.81 m, 90% within 4.34 m; storey height read from the section render; the main roof is 30.11 m in the model and 30.62 m in lidar",
+        "reviewed": "auto"
+      }
     },
     {
       "part_id": "part_e7_l03_slab",
@@ -219,7 +271,18 @@
       "attaches_to": [],
       "verify_hint": "flat floor plate of level 3, 3548 m2, 0.3 m thick",
       "install_minutes": 10080,
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_03_plan",
+          "page": 1
+        }
+      ],
+      "external_ids": {
+        "source": "drawings",
+        "tolerance_m": "4.3",
+        "basis": "outline traced from the Level 3 plan; the model's outline vs OpenStreetMap: IoU 0.887, mean edge distance 2.81 m, 90% within 4.34 m; thickness assumed 0.3 m",
+        "reviewed": "auto"
+      }
     },
     {
       "part_id": "part_e7_l03_envelope",
@@ -261,7 +324,22 @@
       "attaches_to": [],
       "verify_hint": "storey-high block of level 3, 3.92 m tall, standing on its slab",
       "install_minutes": 20160,
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_03_plan",
+          "page": 1
+        },
+        {
+          "document_id": "doc_e7_section",
+          "page": 1
+        }
+      ],
+      "external_ids": {
+        "source": "drawings",
+        "tolerance_m": "4.3",
+        "basis": "outline traced from the Level 3 plan; the model's outline vs OpenStreetMap: IoU 0.887, mean edge distance 2.81 m, 90% within 4.34 m; storey height read from the section render; the main roof is 30.11 m in the model and 30.62 m in lidar",
+        "reviewed": "auto"
+      }
     },
     {
       "part_id": "part_e7_l04_slab",
@@ -302,7 +380,18 @@
       "attaches_to": [],
       "verify_hint": "flat floor plate of level 4, 3554 m2, 0.3 m thick",
       "install_minutes": 10080,
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_04_plan",
+          "page": 1
+        }
+      ],
+      "external_ids": {
+        "source": "drawings",
+        "tolerance_m": "4.3",
+        "basis": "outline traced from the Level 4 plan; the model's outline vs OpenStreetMap: IoU 0.887, mean edge distance 2.81 m, 90% within 4.34 m; thickness assumed 0.3 m",
+        "reviewed": "auto"
+      }
     },
     {
       "part_id": "part_e7_l04_envelope",
@@ -344,7 +433,22 @@
       "attaches_to": [],
       "verify_hint": "storey-high block of level 4, 3.91 m tall, standing on its slab",
       "install_minutes": 20160,
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_04_plan",
+          "page": 1
+        },
+        {
+          "document_id": "doc_e7_section",
+          "page": 1
+        }
+      ],
+      "external_ids": {
+        "source": "drawings",
+        "tolerance_m": "4.3",
+        "basis": "outline traced from the Level 4 plan; the model's outline vs OpenStreetMap: IoU 0.887, mean edge distance 2.81 m, 90% within 4.34 m; storey height read from the section render; the main roof is 30.11 m in the model and 30.62 m in lidar",
+        "reviewed": "auto"
+      }
     },
     {
       "part_id": "part_e7_l05_slab",
@@ -385,7 +489,18 @@
       "attaches_to": [],
       "verify_hint": "flat floor plate of level 5, 3546 m2, 0.3 m thick",
       "install_minutes": 10080,
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_05_plan",
+          "page": 1
+        }
+      ],
+      "external_ids": {
+        "source": "drawings",
+        "tolerance_m": "4.3",
+        "basis": "outline traced from the Level 5 plan; the model's outline vs OpenStreetMap: IoU 0.887, mean edge distance 2.81 m, 90% within 4.34 m; thickness assumed 0.3 m",
+        "reviewed": "auto"
+      }
     },
     {
       "part_id": "part_e7_l05_envelope",
@@ -427,7 +542,22 @@
       "attaches_to": [],
       "verify_hint": "storey-high block of level 5, 4.07 m tall, standing on its slab",
       "install_minutes": 20160,
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_05_plan",
+          "page": 1
+        },
+        {
+          "document_id": "doc_e7_section",
+          "page": 1
+        }
+      ],
+      "external_ids": {
+        "source": "drawings",
+        "tolerance_m": "4.3",
+        "basis": "outline traced from the Level 5 plan; the model's outline vs OpenStreetMap: IoU 0.887, mean edge distance 2.81 m, 90% within 4.34 m; storey height read from the section render; the main roof is 30.11 m in the model and 30.62 m in lidar",
+        "reviewed": "auto"
+      }
     },
     {
       "part_id": "part_e7_l06_slab",
@@ -468,7 +598,18 @@
       "attaches_to": [],
       "verify_hint": "flat floor plate of level 6, 3579 m2, 0.3 m thick",
       "install_minutes": 10080,
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_06_plan",
+          "page": 1
+        }
+      ],
+      "external_ids": {
+        "source": "drawings",
+        "tolerance_m": "4.3",
+        "basis": "outline traced from the Level 6 plan; the model's outline vs OpenStreetMap: IoU 0.887, mean edge distance 2.81 m, 90% within 4.34 m; thickness assumed 0.3 m",
+        "reviewed": "auto"
+      }
     },
     {
       "part_id": "part_e7_l06_envelope",
@@ -510,7 +651,22 @@
       "attaches_to": [],
       "verify_hint": "storey-high block of level 6, 3.76 m tall, standing on its slab",
       "install_minutes": 20160,
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_06_plan",
+          "page": 1
+        },
+        {
+          "document_id": "doc_e7_section",
+          "page": 1
+        }
+      ],
+      "external_ids": {
+        "source": "drawings",
+        "tolerance_m": "4.3",
+        "basis": "outline traced from the Level 6 plan; the model's outline vs OpenStreetMap: IoU 0.887, mean edge distance 2.81 m, 90% within 4.34 m; storey height read from the section render; the main roof is 30.11 m in the model and 30.62 m in lidar",
+        "reviewed": "auto"
+      }
     },
     {
       "part_id": "part_e7_l07_slab",
@@ -551,7 +707,18 @@
       "attaches_to": [],
       "verify_hint": "flat floor plate of level 7, 3579 m2, 0.3 m thick",
       "install_minutes": 10080,
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_07_plan",
+          "page": 1
+        }
+      ],
+      "external_ids": {
+        "source": "drawings",
+        "tolerance_m": "4.3",
+        "basis": "outline traced from the Level 7 plan; the model's outline vs OpenStreetMap: IoU 0.887, mean edge distance 2.81 m, 90% within 4.34 m; thickness assumed 0.3 m",
+        "reviewed": "auto"
+      }
     },
     {
       "part_id": "part_e7_l07_envelope",
@@ -593,7 +760,22 @@
       "attaches_to": [],
       "verify_hint": "storey-high block of level 7, 3.92 m tall, standing on its slab",
       "install_minutes": 20160,
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_07_plan",
+          "page": 1
+        },
+        {
+          "document_id": "doc_e7_section",
+          "page": 1
+        }
+      ],
+      "external_ids": {
+        "source": "drawings",
+        "tolerance_m": "4.3",
+        "basis": "outline traced from the Level 7 plan; the model's outline vs OpenStreetMap: IoU 0.887, mean edge distance 2.81 m, 90% within 4.34 m; storey height read from the section render; the main roof is 30.11 m in the model and 30.62 m in lidar",
+        "reviewed": "auto"
+      }
     },
     {
       "part_id": "part_e7_l08_slab",
@@ -634,7 +816,18 @@
       "attaches_to": [],
       "verify_hint": "flat floor plate of level 8, 2500 m2, 0.3 m thick",
       "install_minutes": 10080,
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_08_plan",
+          "page": 1
+        }
+      ],
+      "external_ids": {
+        "source": "drawings",
+        "tolerance_m": "4.3",
+        "basis": "outline traced from the Level 8 plan; the model's outline vs OpenStreetMap: IoU 0.887, mean edge distance 2.81 m, 90% within 4.34 m; thickness assumed 0.3 m",
+        "reviewed": "auto"
+      }
     },
     {
       "part_id": "part_e7_l08_envelope",
@@ -676,7 +869,22 @@
       "attaches_to": [],
       "verify_hint": "storey-high block of level 8, 3.52 m tall, standing on its slab",
       "install_minutes": 20160,
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_08_plan",
+          "page": 1
+        },
+        {
+          "document_id": "doc_e7_section",
+          "page": 1
+        }
+      ],
+      "external_ids": {
+        "source": "drawings",
+        "tolerance_m": "4.3",
+        "basis": "outline traced from the Level 8 plan; the model's outline vs OpenStreetMap: IoU 0.887, mean edge distance 2.81 m, 90% within 4.34 m; storey height read from the section render; the penthouse is 34.18 m in the model and 36.47 m in lidar",
+        "reviewed": "auto"
+      }
     },
     {
       "part_id": "part_e7_roof",
@@ -717,7 +925,22 @@
       "attaches_to": [],
       "verify_hint": "thin cap on top of the level 8 block",
       "install_minutes": 30240,
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_08_plan",
+          "page": 1
+        },
+        {
+          "document_id": "doc_e7_section",
+          "page": 1
+        }
+      ],
+      "external_ids": {
+        "source": "drawings",
+        "tolerance_m": "2.3",
+        "basis": "flat cap on the level 8 outline; top 34.18 m in the model vs 36.47 m in lidar (the penthouse height is not visible in the section); the real atrium roof is a sawtooth",
+        "reviewed": "auto"
+      }
     }
   ],
   "materials": [
@@ -787,7 +1010,12 @@
           "qty": 1
         }
       ],
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_01_plan",
+          "page": 1
+        }
+      ]
     },
     {
       "step_id": "step_02",
@@ -808,7 +1036,16 @@
           "qty": 1
         }
       ],
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_01_plan",
+          "page": 1
+        },
+        {
+          "document_id": "doc_e7_section",
+          "page": 1
+        }
+      ]
     },
     {
       "step_id": "step_03",
@@ -829,7 +1066,12 @@
           "qty": 1
         }
       ],
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_02_plan",
+          "page": 1
+        }
+      ]
     },
     {
       "step_id": "step_04",
@@ -850,7 +1092,16 @@
           "qty": 1
         }
       ],
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_02_plan",
+          "page": 1
+        },
+        {
+          "document_id": "doc_e7_section",
+          "page": 1
+        }
+      ]
     },
     {
       "step_id": "step_05",
@@ -871,7 +1122,12 @@
           "qty": 1
         }
       ],
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_03_plan",
+          "page": 1
+        }
+      ]
     },
     {
       "step_id": "step_06",
@@ -892,7 +1148,16 @@
           "qty": 1
         }
       ],
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_03_plan",
+          "page": 1
+        },
+        {
+          "document_id": "doc_e7_section",
+          "page": 1
+        }
+      ]
     },
     {
       "step_id": "step_07",
@@ -913,7 +1178,12 @@
           "qty": 1
         }
       ],
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_04_plan",
+          "page": 1
+        }
+      ]
     },
     {
       "step_id": "step_08",
@@ -934,7 +1204,16 @@
           "qty": 1
         }
       ],
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_04_plan",
+          "page": 1
+        },
+        {
+          "document_id": "doc_e7_section",
+          "page": 1
+        }
+      ]
     },
     {
       "step_id": "step_09",
@@ -955,7 +1234,12 @@
           "qty": 1
         }
       ],
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_05_plan",
+          "page": 1
+        }
+      ]
     },
     {
       "step_id": "step_10",
@@ -976,7 +1260,16 @@
           "qty": 1
         }
       ],
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_05_plan",
+          "page": 1
+        },
+        {
+          "document_id": "doc_e7_section",
+          "page": 1
+        }
+      ]
     },
     {
       "step_id": "step_11",
@@ -997,7 +1290,12 @@
           "qty": 1
         }
       ],
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_06_plan",
+          "page": 1
+        }
+      ]
     },
     {
       "step_id": "step_12",
@@ -1018,7 +1316,16 @@
           "qty": 1
         }
       ],
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_06_plan",
+          "page": 1
+        },
+        {
+          "document_id": "doc_e7_section",
+          "page": 1
+        }
+      ]
     },
     {
       "step_id": "step_13",
@@ -1039,7 +1346,12 @@
           "qty": 1
         }
       ],
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_07_plan",
+          "page": 1
+        }
+      ]
     },
     {
       "step_id": "step_14",
@@ -1060,7 +1372,16 @@
           "qty": 1
         }
       ],
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_07_plan",
+          "page": 1
+        },
+        {
+          "document_id": "doc_e7_section",
+          "page": 1
+        }
+      ]
     },
     {
       "step_id": "step_15",
@@ -1081,7 +1402,12 @@
           "qty": 1
         }
       ],
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_08_plan",
+          "page": 1
+        }
+      ]
     },
     {
       "step_id": "step_16",
@@ -1102,7 +1428,16 @@
           "qty": 1
         }
       ],
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_08_plan",
+          "page": 1
+        },
+        {
+          "document_id": "doc_e7_section",
+          "page": 1
+        }
+      ]
     },
     {
       "step_id": "step_17",
@@ -1123,13 +1458,32 @@
           "qty": 1
         }
       ],
-      "doc_refs": []
+      "doc_refs": [
+        {
+          "document_id": "doc_e7_level_08_plan",
+          "page": 1
+        },
+        {
+          "document_id": "doc_e7_section",
+          "page": 1
+        }
+      ]
     }
   ],
   "markers": [],
   "touch_points": [],
   "provenance": {
-    "source_document_ids": [],
+    "source_document_ids": [
+      "doc_e7_level_01_plan",
+      "doc_e7_level_02_plan",
+      "doc_e7_level_03_plan",
+      "doc_e7_level_04_plan",
+      "doc_e7_level_05_plan",
+      "doc_e7_level_06_plan",
+      "doc_e7_level_07_plan",
+      "doc_e7_level_08_plan",
+      "doc_e7_section"
+    ],
     "extracted_by": "tools/e7 massing pipeline (footprints estimated by eye by an AI assistant, not yet hand-clicked)",
     "approved_by": "pipeline default (no human review yet)",
     "assumptions": [
@@ -1140,7 +1494,8 @@
       "The section is a perspective render; its scale was taken between two column lines on the same wall the floor lines were read on, matched to the Level 3 plan.",
       "The mechanical penthouse's height is not visible in the section; level 8 is assumed to top out at the atrium's sawtooth ridge line, and the sawtooth roof is simplified to a flat cap.",
       "Slab thickness is assumed to be 0.3 m on every level.",
-      "install_minutes are placeholders that only space the build animation; they are not a construction programme."
+      "install_minutes are placeholders that only space the build animation; they are not a construction programme.",
+      "Benchmark (tools/e7/benchmark.py, independent sources): outline vs OpenStreetMap IoU 0.887, mean edge distance 2.81 m; roof heights vs Ontario lidar median |error| 2.25 m (bias -2.21 m); 8 levels vs 8 in OpenStreetMap."
     ],
     "validation": []
   }
