@@ -83,15 +83,15 @@ it softens the thin edge lines. Turn it on only if the headset misses 72 fps wit
   and press Play: same project, same scene.
 - **APK** (needs the NDK module): `pnpm quest:build`, then `pnpm quest:install` with the Quest plugged in by USB-C and
   USB debugging allowed. The install does not pre-grant permissions, so the headset asks for the camera and the
-  microphone as it will at the demo. Development builds log `[Budget]` lines with GPU and CPU time every 10 s:
-  `adb logcat -s Unity`.
+  microphone as it will at the demo. Development builds log `[Budget]` lines with the frame rate and dropped frames
+  every 10 s: `adb logcat -s Unity`.
 
 Check on the headset before the demo:
 
 - **Passthrough:** the room shows, not black. The hologram sits on the desk at the right size.
 - **Alignment:** the hologram sits on the real desk, with the far corner off by at most 5 mm.
 - **Copilot:** it asks for the camera and microphone once, and its answers point at the right part.
-- **Frame rate:** the `[Budget]` lines stay under 13.9 ms with the full desk plan, then with E7 loaded.
+- **Frame rate:** the `[Budget]` lines show 72 fps and no dropped frames with the full desk plan, then with E7 loaded.
 - **Legibility:** the palette states can be told apart over the real room at arm's length.
 
 ## AI agents (Claude Code, Codex)

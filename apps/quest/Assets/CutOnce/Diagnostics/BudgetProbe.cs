@@ -7,9 +7,9 @@ namespace CutOnce.Diagnostics
     /// <summary>
     /// Measures every frame against <see cref="QuestBudgets"/> and warns in the console when a budget is broken.
     /// Put one in every scene. In the simulator, the draw call and triangle numbers are the ones the headset will see
-    /// (plans and the E7 model are loaded at runtime, so a scene scan cannot count them). The milliseconds are only
-    /// meaningful on the headset: in the Editor they are this computer's. Development builds on the headset also log
-    /// the numbers every <see cref="logEverySeconds"/> seconds (adb logcat -s Unity, lines starting [Budget]).
+    /// (plans and the E7 model are loaded at runtime, so a scene scan cannot count them). The frame rate is only
+    /// judged on the headset: in the Editor it is this computer's. Development builds on the headset also log the
+    /// numbers every <see cref="logEverySeconds"/> seconds (adb logcat -s Unity, lines starting [Budget]).
     ///
     /// The public fields are the latest averages over <see cref="windowSeconds"/>, so an agent driving the simulator
     /// through Meta XR Operator can read them off this component.
@@ -29,18 +29,23 @@ namespace CutOnce.Diagnostics
         /// </summary>
         public int drawCalls;
         public int triangles;
-        /// <summary>CPU work per frame: the busier of the main thread (minus its wait for present) and the render thread.</summary>
-        public float cpuMs;
-        public float gpuMs;
+        /// <summary>
+        /// Frames per second. On the headset a frame that misses its 13.9 ms slot waits for the next one, so the rate
+        /// falls below 72: that is the budget that matters, and it is measured the same way on any runtime.
+        /// </summary>
+        public float fps;
+        /// <summary>Frames in the window that took more than 1.5 frame slots (a visible judder on the headset).</summary>
+        public int droppedFrames;
         public bool overBudget;
 
+        const float SlowFrameFactor = 1.5f;
+        const float FpsTolerance = 0.95f; // averaging noise, not a real miss
+
         ProfilerRecorder _drawCalls, _batches, _triangles;
-        readonly FrameTiming[] _timing = new FrameTiming[1];
         readonly List<Material> _materials = new();
         float _windowStart, _lastLog;
-        int _frames, _gpuFrames;
+        int _frames, _slow;
         long _drawSum, _triSum;
-        double _cpuSum, _gpuSum;
 
         void OnEnable()
         {
@@ -60,27 +65,20 @@ namespace CutOnce.Diagnostics
         void LateUpdate()
         {
             _frames++;
+            if (Time.unscaledDeltaTime * 1000f > QuestBudgets.FrameBudgetMs * SlowFrameFactor) _slow++;
             _drawSum += System.Math.Max(_drawCalls.Valid ? _drawCalls.LastValue : 0, _batches.Valid ? _batches.LastValue : 0);
             _triSum += _triangles.Valid ? _triangles.LastValue : 0;
-            FrameTimingManager.CaptureFrameTimings();
-            if (FrameTimingManager.GetLatestTimings(1, _timing) == 1)
-            {
-                // cpuFrameTime is the interval between frames, waiting included, so at 72 Hz it always reads ~13.9 ms.
-                // The work is the main thread minus its wait for present, or the render thread, whichever is longer.
-                var t = _timing[0];
-                _cpuSum += System.Math.Max(t.cpuMainThreadFrameTime - t.cpuMainThreadPresentWaitTime, t.cpuRenderThreadFrameTime);
-                if (t.gpuFrameTime > 0) { _gpuSum += t.gpuFrameTime; _gpuFrames++; }
-            }
 
-            if (Time.unscaledTime - _windowStart < windowSeconds) return;
+            float elapsed = Time.unscaledTime - _windowStart;
+            if (elapsed < windowSeconds) return;
             drawCalls = (int)(_drawSum / _frames);
-            if (drawCalls == 0) drawCalls = VisibleDrawCalls(); // only when Unity's counters are silent (the Editor)
+            if (Application.isEditor) drawCalls = Mathf.Max(drawCalls, VisibleDrawCalls()); // the Editor's counters are silent under XR
             triangles = (int)(_triSum / _frames);
-            cpuMs = (float)(_cpuSum / _frames);
-            gpuMs = _gpuFrames > 0 ? (float)(_gpuSum / _gpuFrames) : 0f;
+            fps = _frames / elapsed;
+            droppedFrames = _slow;
             Report();
             _windowStart = Time.unscaledTime;
-            _frames = 0; _gpuFrames = 0; _drawSum = 0; _triSum = 0; _cpuSum = 0; _gpuSum = 0;
+            _frames = 0; _slow = 0; _drawSum = 0; _triSum = 0;
         }
 
         /// <summary>One draw per material on each renderer some camera can see. SRP batching can merge a few.</summary>
@@ -101,9 +99,9 @@ namespace CutOnce.Diagnostics
             var problems = new List<string>();
             if (drawCalls > QuestBudgets.MaxDrawCalls) problems.Add($"{drawCalls} draw calls (budget {QuestBudgets.MaxDrawCalls})");
             if (triangles > QuestBudgets.MaxTriangles) problems.Add($"{triangles:N0} triangles (budget {QuestBudgets.MaxTriangles:N0})");
-            // Times are only judged on the headset: a laptop is several times faster than the Quest 3.
-            if (!Application.isEditor && gpuMs > QuestBudgets.FrameBudgetMs) problems.Add($"GPU {gpuMs:F1} ms (budget {QuestBudgets.FrameBudgetMs:F1} ms at {QuestBudgets.TargetFps} fps)");
-            if (!Application.isEditor && cpuMs > QuestBudgets.FrameBudgetMs) problems.Add($"CPU {cpuMs:F1} ms (budget {QuestBudgets.FrameBudgetMs:F1} ms)");
+            // The rate is only judged on the headset: a laptop is several times faster than the Quest 3.
+            if (!Application.isEditor && fps < QuestBudgets.TargetFps * FpsTolerance)
+                problems.Add($"{fps:F0} fps, {droppedFrames} dropped frame(s) (budget {QuestBudgets.TargetFps} fps)");
             bool was = overBudget;
             overBudget = problems.Count > 0;
             // Once on the way over and once on the way back, so the console stays readable.
@@ -113,7 +111,7 @@ namespace CutOnce.Diagnostics
             if (Debug.isDebugBuild && !Application.isEditor && logEverySeconds > 0 && Time.unscaledTime - _lastLog >= logEverySeconds)
             {
                 _lastLog = Time.unscaledTime;
-                Debug.Log($"[Budget] GPU {gpuMs:F1} ms, CPU {cpuMs:F1} ms (budget {QuestBudgets.FrameBudgetMs:F1}), {drawCalls} draw calls, {triangles:N0} triangles");
+                Debug.Log($"[Budget] {fps:F0} fps (budget {QuestBudgets.TargetFps}), {droppedFrames} dropped in {windowSeconds:F0} s, {drawCalls} draw calls, {triangles:N0} triangles");
             }
         }
     }

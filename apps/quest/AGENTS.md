@@ -58,7 +58,7 @@ These come from Meta's Quest 3 guidance. The numbers live in `Assets/CutOnce/Dia
 
 | | Budget | Measured where |
 |---|---|---|
-| Frame rate | 72 fps (13.9 ms per frame, CPU and GPU) | **Headset only.** A laptop is several times faster |
+| Frame rate | 72 fps (13.9 ms per frame), no dropped frames | **Headset only** (`BudgetProbe` logs it). A laptop is several times faster |
 | Draw calls | ≤ 300 | Same in the simulator as on the headset: `BudgetProbe` |
 | Triangles | ≤ 1,000,000 | Same in the simulator as on the headset: `BudgetProbe` |
 | See-through surfaces | ≤ 150 in view | Scene check |

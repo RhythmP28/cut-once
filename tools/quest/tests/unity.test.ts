@@ -1,7 +1,8 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { PROJECT, adbPath, editorVersion, explain, readTestResults, simulatorDir, simulatorEnv, unityPath } from "../unity.js";
+import { PROJECT, adbPath, editorVersion, explain, readFindings, readTestResults, simulatorDir, simulatorEnv, unityPath } from "../unity.js";
 
 describe("finding Unity and adb", () => {
   it("reads the pinned editor version from the project", () => {
@@ -56,6 +57,16 @@ describe("reading Unity's output", () => {
     expect(explain("Android NDK not found. Set the NDK path in Preferences.")[0]).toMatch(/Android SDK & NDK Tools/);
     expect(explain("Unable to find JDK: JDK not found")[0]).toMatch(/OpenJDK/);
     expect(explain("[CutOnce] check done: 0 error(s), 1 warning(s)")).toEqual([]);
+  });
+
+  it("reads the check's findings, and none from a missing or half-written file", () => {
+    const dir = mkdtempSync(join(tmpdir(), "quest-cli-"));
+    const good = join(dir, "good.json"), cut = join(dir, "cut.json");
+    writeFileSync(good, JSON.stringify({ findings: [{ level: "Error", area: "xr", message: "OpenXR must be the XR loader" }] }));
+    writeFileSync(cut, '{ "findings": [ { "level": "Err');
+    expect(readFindings(good)).toHaveLength(1);
+    expect(readFindings(cut)).toEqual([]);
+    expect(readFindings(join(dir, "missing.json"))).toEqual([]);
   });
 
   it("summarises an NUnit result file, with the failing test's message", () => {

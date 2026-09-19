@@ -68,8 +68,6 @@ namespace CutOnce.QuestTools
             PlayerSettings.insecureHttpOption = InsecureHttpOption.AlwaysAllowed;
             // Otherwise Play mode pauses whenever the simulator window has focus.
             PlayerSettings.runInBackground = true;
-            // BudgetProbe reads the GPU time on the headset.
-            PlayerSettings.enableFrameTimingStats = true;
             EditorUserBuildSettings.androidBuildSubtarget = MobileTextureSubtarget.ASTC;
         }
 

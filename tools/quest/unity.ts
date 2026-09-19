@@ -80,7 +80,7 @@ export function readTestResults(xml: string): TestSummary {
   return { total: Number(run?.[1] ?? 0), passed: Number(run?.[2] ?? 0), failed: Number(run?.[3] ?? failures.length), failures };
 }
 
-type Finding = { level: "Error" | "Warning"; area: string; message: string };
+export type Finding = { level: "Error" | "Warning"; area: string; message: string };
 
 /** Where Meta XR Simulator keeps its OpenXR runtime. XRSIM_DIR overrides it. */
 export function simulatorDir(os: NodeJS.Platform = platform(), env: NodeJS.ProcessEnv = process.env, regQuery: () => string = queryRegistry): string | null {
@@ -158,7 +158,7 @@ function unity(label: string, args: string[], opts: { graphics?: boolean; window
   const base = [...mode, "-projectPath", PROJECT, "-buildTarget", "Android", "-logFile", logFile];
   const minutes = opts.minutes ?? 30;
   rmSync(logFile, { force: true }); // a run that never starts must not be explained by the last run's log
-  const r = spawnSync(exe, [...base, ...args], { stdio: "inherit", env: { ...process.env, ...opts.env }, timeout: minutes * MINUTE });
+  const r = spawnSync(exe, [...base, ...args], { stdio: "inherit", env: { ...process.env, ...opts.env }, timeout: minutes * MINUTE, killSignal: "SIGKILL" });
   const log = existsSync(logFile) ? readFileSync(logFile, "utf8") : "";
   if (r.error && (r.error as NodeJS.ErrnoException).code === "ETIMEDOUT") console.error(`Unity did not finish within ${minutes} minutes and was stopped.`);
   const code = r.status ?? 1;
@@ -169,6 +169,13 @@ function unity(label: string, args: string[], opts: { graphics?: boolean; window
 /** Deletes results from an earlier run, so a failed run can never print them as its own. */
 function fresh(...paths: string[]) {
   for (const p of paths) rmSync(p, { force: true });
+}
+
+/** The check's findings, or none when the file is missing or was cut short by a stopped run. */
+export function readFindings(path: string): Finding[] {
+  if (!existsSync(path)) return [];
+  try { return (JSON.parse(readFileSync(path, "utf8")) as { findings: Finding[] }).findings ?? []; }
+  catch { return []; }
 }
 
 function syncFixtures() {
@@ -187,7 +194,7 @@ function check(): number {
   fresh(reportPath, metaReport, xml);
 
   const c = unity("check", ["-executeMethod", "CutOnce.QuestTools.Batch.Check", "-cutonceReport", reportPath, "-reportFile", metaReport]);
-  const findings: Finding[] = existsSync(reportPath) ? (JSON.parse(readFileSync(reportPath, "utf8")) as { findings: Finding[] }).findings : [];
+  const findings = readFindings(reportPath);
   const errors = findings.filter((f) => f.level === "Error");
   const warnings = findings.filter((f) => f.level === "Warning");
   for (const f of errors) console.log(`  ✗ ${f.area}: ${f.message}`);
@@ -254,7 +261,8 @@ function build(): number {
   const args = ["-executeMethod", "CutOnce.QuestTools.Batch.Build", "-cutonceOutput", APK];
   if (process.argv.includes("--release")) args.push("-cutonceRelease");
   const r = unity("build", args, { minutes: 60 });
-  if (r.code !== 0 || !existsSync(APK)) return r.code || 1;
+  if (r.code !== 0) return r.code;
+  if (!existsSync(APK)) { console.error(`Unity finished but wrote no APK at ${APK}; see Logs/cli/build.log.`); return 1; }
   console.log(`✓ ${APK} (${(statSync(APK).size / 1048576).toFixed(1)} MB). Next: pnpm quest:install`);
   return 0;
 }

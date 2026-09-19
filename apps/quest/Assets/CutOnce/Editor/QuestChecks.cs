@@ -81,10 +81,7 @@ namespace CutOnce.QuestTools
             Expect(f, "simulator", PlayerSettings.runInBackground,
                 "Run In Background must be on, or Play mode pauses whenever the simulator window has focus.");
             Expect(f, "android", PlayerSettings.GetApplicationIdentifier(android) == QuestSetup.ApplicationId,
-                $"The package name must be {QuestSetup.ApplicationId}: pnpm quest:install and the demo notes launch it by that name.");
-            Expect(f, "budget", PlayerSettings.enableFrameTimingStats,
-                "Frame timing stats must be on, or BudgetProbe reads 0 ms on the headset and never warns.");
-        }
+                $"The package name must be {QuestSetup.ApplicationId}: pnpm quest:install and the demo notes launch it by that name.");        }
 
         static void CheckXR(List<Finding> f)
         {
