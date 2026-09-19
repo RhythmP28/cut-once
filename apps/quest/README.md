@@ -32,6 +32,9 @@ on the Quest.
 `QuestBaseline` shows one box per hologram state (built, replay, current step, missing, future, wrong) in the
 shared palette, at true scale: 15 cm boxes on a table-height row, 80 cm in front of you.
 
+**One command:** `pnpm quest:play` (Editor closed) opens the simulator, a room and Unity in Play mode on `Main.unity`,
+and leaves them running for you (`--scene QuestBaseline`, `--room office|furnished|living|game|bedroom`).
+
 **Unattended:** `pnpm quest:sim` (Editor closed) opens the simulator and a room (`--room office`, the default, or
 `furnished`, `living`, `game`, `bedroom`), runs the baseline scene in the Editor window, and prints what the simulator
 gave. The simulator only starts a session from the Editor window with its own window running, never from Unity's

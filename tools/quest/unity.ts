@@ -4,13 +4,14 @@
  *   pnpm quest:setup     apply the Quest 3 settings (ours, then Meta's Project Setup Tool fixes)
  *   pnpm quest:check     compile for the Quest, check settings and budgets, run the EditMode tests
  *   pnpm quest:sim       run the baseline scene in Meta XR Simulator and report what it provides
+ *   pnpm quest:play      open the app in Meta XR Simulator (Play mode) and leave it running for you
  *   pnpm quest:build     build the APK the headset installs (apps/quest/Builds/CutOnce.apk)
  *   pnpm quest:install   install that APK on a Quest plugged in by USB-C and start it
  *
  * The Editor must be closed: Unity allows one instance per project. With it open, the Cut Once menu runs the
  * same code. Logs land in apps/quest/Logs/cli/.
  */
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { dirname, join, posix, resolve, win32 } from "node:path";
@@ -254,6 +255,29 @@ function sim(): number {
   return ok ? 0 : 1;
 }
 
+/**
+ * Opens the simulator and a room, then the Editor on a scene in Play mode, and leaves them running for you to use:
+ * pnpm quest:play [--scene Main|QuestBaseline] [--room office]. The headset view is the simulator's window.
+ */
+function play(): number {
+  const dir = simulatorDir();
+  const env = dir ? simulatorEnv(dir) : null;
+  if (!dir || !env || !existsSync(env.XR_RUNTIME_JSON)) { console.error("Meta XR Simulator is not installed; see apps/quest/README.md."); return 1; }
+  const roomArg = process.argv.indexOf("--room");
+  if (!startSimulator(dir, roomArg > 0 ? process.argv[roomArg + 1] : "office")) return 1;
+  const sceneArg = process.argv.indexOf("--scene");
+  const scene = `Assets/CutOnce/Scenes/${sceneArg > 0 ? process.argv[sceneArg + 1] : "Main"}.unity`;
+  if (!existsSync(join(PROJECT, scene))) { console.error(`No scene at apps/quest/${scene}.`); return 1; }
+  const exe = unityPath(editorVersion(readFileSync(join(PROJECT, "ProjectSettings", "ProjectVersion.txt"), "utf8")));
+  mkdirSync(LOGS, { recursive: true });
+  const child = spawn(exe, ["-projectPath", PROJECT, "-buildTarget", "Android", "-logFile", join(LOGS, "play.log"),
+    "-executeMethod", "CutOnce.QuestTools.Batch.Play", "-cutonceScene", scene], { detached: true, stdio: "ignore", env: { ...process.env, ...env } });
+  child.unref();
+  console.log(`✓ Unity is opening ${scene} in Play mode with Meta XR Simulator. The headset view is the simulator's window;`);
+  console.log("  its keyboard and mouse controls are listed there. Stop Play or quit Unity when you are done.");
+  return 0;
+}
+
 /** Optional: the simulator does not need it. The APK build needs the NDK (Unity Hub: Android SDK & NDK Tools). */
 function build(): number {
   syncFixtures();
@@ -284,7 +308,7 @@ function install(): number {
   return 0;
 }
 
-const commands: Record<string, () => number> = { setup, check, sim, build, install };
+const commands: Record<string, () => number> = { setup, check, sim, play, build, install };
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const name = process.argv[2] ?? "";
   const cmd = commands[name];

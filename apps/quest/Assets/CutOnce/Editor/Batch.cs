@@ -95,6 +95,18 @@ namespace CutOnce.QuestTools
             });
         }
 
+        /// <summary>
+        /// Opens a scene (-cutonceScene, default: the first build scene) and presses Play, in the Editor window. Used by
+        /// pnpm quest:play with Meta XR Simulator active; the Editor stays open for you to use.
+        /// </summary>
+        public static void Play()
+        {
+            var scene = Arg("-cutonceScene") ?? EditorBuildSettings.scenes.FirstOrDefault(s => s.enabled)?.path;
+            if (scene == null) { Debug.LogError("[CutOnce] no scene to play: pass -cutonceScene or add one to the build"); return; }
+            UnityEditor.SceneManagement.EditorSceneManager.OpenScene(scene);
+            EditorApplication.delayCall += EditorApplication.EnterPlaymode;
+        }
+
         [MenuItem("Cut Once/Build Quest APK", priority = 3)]
         static void BuildFromMenu()
         {

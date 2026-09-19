@@ -6,6 +6,7 @@ import type { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { HOLOGRAM_PALETTE, styleFor, type PartVisual } from "@cutonce/project-model";
 import type { Plan } from "@cutonce/schemas";
 import type { View } from "../../preview/previewParams";
+import { useTheme } from "../../ThemeSwitch";
 import { buildPartObject, disposeObject } from "../buildPart";
 import { placeCamera, planBounds } from "./cameras";
 import {
@@ -59,7 +60,10 @@ interface Stage {
   ready: { waiting: boolean; frames: number; fired: boolean };
 }
 
-const BACKGROUND = "#0b1017";
+/** The stage behind the parts follows the page's theme, like every other surface; the part colours never do. */
+function stageColour(host: HTMLElement): string {
+  return getComputedStyle(host).getPropertyValue("--bg-sunken").trim() || "#eceef0";
+}
 const HIDDEN = new THREE.MeshBasicMaterial({ visible: false });
 const DEFAULT_VISUAL: PartVisual = { base: "MISSING", modifiers: [] };
 
@@ -70,6 +74,7 @@ export function HologramView(props: HologramViewProps) {
   const latest = useRef(props);
   latest.current = props;
   const [notice, setNotice] = useState<string | null>(null);
+  const theme = useTheme();
 
   // ── renderer, camera and the render loop: once per mount ───────────────────
   useEffect(() => {
@@ -88,7 +93,7 @@ export function HologramView(props: HologramViewProps) {
     host.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(BACKGROUND);
+    scene.background = new THREE.Color(stageColour(host));
     const camera = new THREE.PerspectiveCamera(latest.current.fov, 1, 0.01, 1000);
     const controls = new OrbitControls(camera, renderer.domElement);
     const partsGroup = new THREE.Group();
@@ -230,19 +235,7 @@ export function HologramView(props: HologramViewProps) {
       }
     }
 
-    // A faint floor grid under the model: 10 cm cells for furniture, 5 m for buildings.
     const bounds = planBounds(plan);
-    const span = Math.max(bounds.max[0] - bounds.min[0], bounds.max[2] - bounds.min[2], 0.5);
-    const cell = span < 5 ? 0.1 : 5;
-    const divisions = Math.min(200, Math.ceil((span * 2) / cell));
-    const floor = new THREE.GridHelper(divisions * cell, divisions, 0x2a3a4d, 0x1a2430);
-    (floor.material as THREE.Material).transparent = true;
-    (floor.material as THREE.Material).opacity = 0.5;
-    floor.position.set((bounds.min[0] + bounds.max[0]) / 2, bounds.min[1] - 0.001, (bounds.min[2] + bounds.max[2]) / 2);
-    floor.raycast = () => {};
-    stage.partsGroup.add(floor);
-    added.push(floor);
-
     for (const [id, runtime] of stage.parts) applyVisual(runtime, latest.current.visuals[id] ?? DEFAULT_VISUAL);
     const target = placeCamera(stage.camera, bounds, latest.current.view);
     stage.controls.target.copy(target);
@@ -257,6 +250,27 @@ export function HologramView(props: HologramViewProps) {
       stage.pickables = [];
     };
   }, [plan, compare]);
+
+  // ── a faint floor grid under the model, in the theme's line colours: 10 cm cells for furniture, 5 m for buildings ──
+  useEffect(() => {
+    const stage = stageRef.current;
+    const host = hostRef.current;
+    if (!stage || !host) return;
+    const css = getComputedStyle(host);
+    const bounds = planBounds(plan);
+    const span = Math.max(bounds.max[0] - bounds.min[0], bounds.max[2] - bounds.min[2], 0.5);
+    const cell = span < 5 ? 0.1 : 5;
+    const divisions = Math.min(200, Math.ceil((span * 2) / cell));
+    const floor = new THREE.GridHelper(
+      divisions * cell, divisions,
+      new THREE.Color(css.getPropertyValue("--border-strong").trim() || "#c2c6cc"),
+      new THREE.Color(css.getPropertyValue("--border").trim() || "#dcdee2"),
+    );
+    floor.position.set((bounds.min[0] + bounds.max[0]) / 2, bounds.min[1] - 0.001, (bounds.min[2] + bounds.max[2]) / 2);
+    floor.raycast = () => {};
+    stage.partsGroup.add(floor);
+    return () => { floor.removeFromParent(); disposeObject(floor); };
+  }, [plan, theme]);
 
   // ── the look: re-applied whenever the build state, selection or highlights change ──
   useEffect(() => {
@@ -281,7 +295,7 @@ export function HologramView(props: HologramViewProps) {
     const stage = stageRef.current;
     if (!stage) return;
     let stop = () => {};
-    stage.scene.background = new THREE.Color(BACKGROUND);
+    stage.scene.background = new THREE.Color(hostRef.current ? stageColour(hostRef.current) : "#eceef0");
     setNotice(null);
     if (background.kind === "image") {
       new THREE.TextureLoader().load(background.src, (tex) => {
@@ -305,6 +319,13 @@ export function HologramView(props: HologramViewProps) {
     return () => stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bgKey]);
+
+  // A theme change recolours a plain stage; a webcam or image background is left alone.
+  useEffect(() => {
+    const stage = stageRef.current;
+    const host = hostRef.current;
+    if (stage && host && stage.scene.background instanceof THREE.Color) stage.scene.background.set(stageColour(host));
+  }, [theme]);
 
   return (
     <div className="hologram-host" ref={hostRef}>
