@@ -1,0 +1,14 @@
+{
+  "name": "@cutonce/quest-cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run --dir tests",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "vitest": "^2.1.9"
+  }
+}

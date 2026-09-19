@@ -22,7 +22,12 @@
     "backup": "sh -c 'mkdir -p backups && rsync -a ./data/runtime/ \"./backups/$(date +%Y%m%d-%H%M%S)/\"'",
     "llm:smoke": "pnpm -F @cutonce/api exec tsx --env-file-if-exists=../../.env.local src/cli/llm-smoke.ts",
     "tts:smoke": "pnpm -F @cutonce/api exec tsx --env-file-if-exists=../../.env.local src/cli/tts-smoke.ts",
-    "sim": "tsx tools/sim/run.ts"
+    "sim": "tsx tools/sim/run.ts",
+    "quest:setup": "tsx tools/quest/unity.ts setup",
+    "quest:check": "tsx tools/quest/unity.ts check",
+    "quest:sim": "tsx tools/quest/unity.ts sim",
+    "quest:build": "tsx tools/quest/unity.ts build",
+    "quest:install": "tsx tools/quest/unity.ts install"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

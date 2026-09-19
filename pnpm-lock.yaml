@@ -141,6 +141,15 @@ importers:
         specifier: ^8.18.0
         version: 8.21.3
 
+  tools/quest:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.10.1
+        version: 22.20.4
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@22.20.4)
+
   tools/sim:
     dependencies:
       '@cutonce/project-model':
