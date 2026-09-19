@@ -26,7 +26,12 @@ export function toOpenAiSchema(schema: ZodTypeAny): Record<string, unknown> {
 export interface JsonCall<S extends ZodTypeAny> {
   name: string; system: string; text: string; schema: S; strictSchema?: ZodTypeAny;
   images?: { data: Buffer; mime: "image/png" | "image/jpeg" }[]; timeoutMs?: number;
+  /** A ready JSON Schema (for example one built per request with enums); sent as-is instead of converting the Zod schema. */
+  jsonSchema?: Record<string, unknown>;
 }
+
+/** The schema actually sent to the model. */
+export const schemaFor = (call: JsonCall<ZodTypeAny>) => call.jsonSchema ?? toOpenAiSchema(call.strictSchema ?? call.schema);
 
 /** One model call that must return JSON matching `schema`. Throws if the key is missing, the call fails, or the JSON is wrong. */
 export async function jsonCall<S extends ZodTypeAny>(cfg: Config, call: JsonCall<S>): Promise<z.infer<S>> {
@@ -41,7 +46,7 @@ export async function jsonCall<S extends ZodTypeAny>(cfg: Config, call: JsonCall
         ...(call.images ?? []).map((img) => ({ type: "image_url" as const, image_url: { url: `data:${img.mime};base64,${img.data.toString("base64")}` } })),
       ] },
     ],
-    response_format: { type: "json_schema", json_schema: { name: call.name, strict: true, schema: toOpenAiSchema(call.strictSchema ?? call.schema) } },
+    response_format: { type: "json_schema", json_schema: { name: call.name, strict: true, schema: schemaFor(call) } },
   });
   const content = res.choices[0]?.message?.content;
   if (!content) throw new Error(`the model returned no content (${res.choices[0]?.finish_reason ?? "unknown reason"})`);
