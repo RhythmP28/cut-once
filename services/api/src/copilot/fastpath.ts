@@ -3,10 +3,15 @@ import type { BuildEvent, BuildState, CopilotAction, Part, PartState, Plan } fro
 export interface FastPathInput {
   plan: Plan; state: BuildState; selectedPartId: string | null; recentEvents: BuildEvent[];
 }
-export interface FastPath { action: CopilotAction; answer_text: string; highlight_parts: string[] }
+/** `action: null` is a spoken reply with nothing to apply; `note` is written on the event (blueprint §550 for undo). */
+export interface FastPath { action: CopilotAction | null; answer_text: string; highlight_parts: string[]; note?: string }
 
 /** Lower case, no punctuation, single spaces. "Mark the left rear leg, built." → "mark the left rear leg built". */
 export const normalise = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+
+/** A question never changes the build, whatever the model proposes. "Is the leg in?" asks; "the leg is in" tells. */
+export const isQuestion = (s: string) =>
+  /\?\s*$/.test(s.trim()) || /^(is|are|was|were|am|do|does|did|can|could|should|would|will|have|has|what|where|which|how|why|when|who)\b/i.test(s.trim());
 
 const STOP = new Set(["the", "a", "an", "this", "that", "it", "my", "is", "as", "please", "now"]);
 const words = (s: string) => normalise(s).split(" ").filter((w) => w && !STOP.has(w));
@@ -54,13 +59,17 @@ export function matchFastPath(transcript: string, input: FastPathInput): FastPat
   if (/^(next|next step|go next|carry on)$/.test(text)) return { action: { type: "step_nav", direction: "next" }, answer_text: "Next step.", highlight_parts: [] };
   if (/^(back|go back|previous|previous step|last step)$/.test(text)) return { action: { type: "step_nav", direction: "back" }, answer_text: "Going back a step.", highlight_parts: [] };
 
-  // "undo": reverse the most recent part_state change. Expressed as a normal mark_state so the
-  // log stays append-only — an undo is a new event, never a deletion.
+  // "undo": reverse the newest change a person made (voice or manual) that is not itself an undo and has not
+  // been undone yet, so saying it twice steps back twice instead of redoing. Seeded demo state is never
+  // undone. Expressed as a normal mark_state noted "undo of evt_…" (blueprint §550): the log stays append-only.
   if (/^(undo|undo that|undo it|take that back)$/.test(text)) {
-    const last = [...recentEvents].reverse().find((e) => e.kind === "part_state" && e.part_id && e.previous_state && e.new_state);
-    if (!last?.part_id || !last.previous_state) return null;
+    const undone = new Set(recentEvents.map((e) => /^undo of (evt_\w+)/.exec(e.note ?? "")?.[1]));
+    const last = [...recentEvents].reverse().find((e) => e.kind === "part_state" && e.part_id && e.previous_state && e.new_state
+      && (e.source === "voice" || e.source === "manual") && !e.note?.startsWith("undo of ") && !undone.has(e.event_id));
+    if (!last?.part_id || !last.previous_state) return { action: null, answer_text: "There's nothing to undo.", highlight_parts: [] };
     return {
       action: markState(last.part_id, last.previous_state),
+      note: `undo of ${last.event_id}`,
       answer_text: `Undone. The ${nameOf(last.part_id)} is back to ${last.previous_state}.`,
       highlight_parts: [last.part_id],
     };
@@ -69,6 +78,10 @@ export function matchFastPath(transcript: string, input: FastPathInput): FastPat
   // "done" / "mark it built": the part you are pointing at.
   if (/^(done|its done|thats done|mark (it|this) (built|done)|built)$/.test(text)) {
     if (!selectedPartId) return null; // nothing selected: let the model ask which part
+    // The headset can point at a part from a plan revision the server no longer runs: say so, do not fail the turn.
+    if (!plan.parts.some((p) => p.part_id === selectedPartId)) {
+      return { action: null, answer_text: "That part isn't in this plan. Reload the plan on the headset and try again.", highlight_parts: [] };
+    }
     if (state.parts[selectedPartId]?.state === "built") return null; // no_op; the full pipeline explains why
     return { action: markState(selectedPartId, "built"), answer_text: `Marked the ${nameOf(selectedPartId)} built.`, highlight_parts: [selectedPartId] };
   }

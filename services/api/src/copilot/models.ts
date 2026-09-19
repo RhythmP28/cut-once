@@ -10,7 +10,7 @@ import type { Config } from "../config.js";
 export interface CopilotModels {
   chat: string; stt: string; voiceId: string; ttsModel: string;
   sampleRate: number;
-  budgets: { stt: number; retrieve: number; llm: number; tool: number; tts: number; hardCap: number; verify: number };
+  budgets: { stt: number; retrieve: number; llm: number; tool: number; tts: number; hardCap: number; verify: number; retainAudio: number };
 }
 
 const num = (v: string | undefined, fallback: number) => (Number.isFinite(Number(v)) && v ? Number(v) : fallback);
@@ -34,6 +34,8 @@ export function models(cfg: Config, env: Record<string, string | undefined> = pr
       // Section 10's hard cap: past this the headset gets a cached answer instead of a spinner.
       hardCap: num(env.COPILOT_CAP_MS, 9000),
       verify: num(env.COPILOT_VERIFY_MS, 8000),
+      // How long finished answer audio stays in memory for live streaming; after that it is read from disk.
+      retainAudio: num(env.COPILOT_AUDIO_RETAIN_MS, 60_000),
     },
   };
 }

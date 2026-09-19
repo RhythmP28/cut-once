@@ -6,19 +6,22 @@ import { annotateFrame } from "./annotate.js";
 import { ask, ground } from "./answer.js";
 import type { DemoCache } from "./cache.js";
 import { gather, searchQuery } from "./context.js";
-import { matchFastPath } from "./fastpath.js";
+import { isQuestion, matchFastPath } from "./fastpath.js";
 import { markUp, type LegendRow } from "./marks.js";
 import type { CopilotModels } from "./models.js";
 import { transcribe } from "./stt.js";
 import type { Speech } from "./tts.js";
 import type { TurnMemory } from "./turns.js";
 
-export interface QueryInput { assemblyId: string; context: CopilotContext; audio: Buffer; frame: Buffer; uploadMs: number }
+export interface QueryInput { assemblyId: string; context: CopilotContext; audio: Buffer; frame: Buffer | null; uploadMs: number }
 export interface Deps { ctx: Ctx; models: CopilotModels; speech: Speech; turns: TurnMemory; cache: DemoCache }
 
 type Log = { info: (o: object, m: string) => void; warn: (o: object, m: string) => void };
 
 const since = (t: number) => Date.now() - t;
+
+/** The bar a model-proposed state change must clear; the same one verify.ts uses before recording a verdict. */
+const MODEL_ACTION_MIN = 0.8;
 
 /** Runs `work`, or gives up and resolves to null at the deadline. The work keeps running; only the wait ends. */
 function withCap<T>(work: Promise<T>, ms: number): Promise<T | null> {
@@ -30,7 +33,7 @@ function withCap<T>(work: Promise<T>, ms: number): Promise<T | null> {
  * learns about it over the stream — the headset must NOT append its own event for the same command.
  * One rule for both sources: the fast path and a model-proposed mark_state go through here alike.
  */
-async function applyAction(deps: Deps, assemblyId: string, action: CopilotAction, actor: string) {
+async function applyAction(deps: Deps, assemblyId: string, action: CopilotAction, actor: string, how: { confidence: number; note: string }) {
   if (action.type !== "mark_state") return;
   const state = deps.ctx.store.getState(assemblyId);
   const now = new Date().toISOString();
@@ -40,7 +43,7 @@ async function applyAction(deps: Deps, assemblyId: string, action: CopilotAction
     await deps.ctx.store.appendEvent(assemblyId, {
       event_id: `evt_${ulid()}`, assembly_id: assemblyId, version: null, timestamp: now, client_timestamp: now,
       kind: "part_state", part_id: partId, previous_state: previous, new_state: action.new_state,
-      source: "voice", confidence: 1, actor, note: "spoken command",
+      source: "voice", confidence: how.confidence, actor, note: how.note,
     });
   }
 }
@@ -76,15 +79,21 @@ export async function answerQuery(deps: Deps, input: QueryInput, log: Log): Prom
     }
   }
 
+  // A missing key is a set-up problem to find at rehearsal, so it stays a 503. Anything else that stops us
+  // hearing the question gets a spoken "ask again": in front of judges a reply beats an error.
+  if (!ctx.cfg.openaiKey) throw new Error("OPENAI_API_KEY is not set");
   const sttStart = Date.now();
-  const transcript = await transcribe(ctx.cfg, m, input.audio);
+  let transcript = "";
+  let sttFailed = false;
+  try { transcript = await transcribe(ctx.cfg, m, input.audio); }
+  catch (err) { sttFailed = true; log.warn({ turn: turnId, err: (err as Error).message }, "transcription failed"); }
   timings.stt = since(sttStart);
-  if (!transcript) throw new Error("nothing was said, or the audio was silent");
+  if (!transcript) return unheard(deps, turnId, sttFailed, timings, t0, recordTurn);
 
   // Fast path: a spoken command is decided from the plan and the log, so it skips the model entirely.
   const fast = matchFastPath(transcript, { plan: g.plan, state: g.state, selectedPartId: input.context.selected_part_id, recentEvents: g.recentEvents });
   if (fast) {
-    await applyAction(deps, input.assemblyId, fast.action, "operator");
+    if (fast.action) await applyAction(deps, input.assemblyId, fast.action, "operator", { confidence: 1, note: fast.note ?? "spoken command" });
     speech.start(turnId, fast.answer_text);
     const response: CopilotResponse = {
       ...shell(turnId, transcript), answer_text: fast.answer_text, highlight_parts: fast.highlight_parts,
@@ -92,7 +101,7 @@ export async function answerQuery(deps: Deps, input: QueryInput, log: Log): Prom
       timings_ms: { ...timings, fast_path: 1, total_to_response: since(t0) },
     };
     recordTurn(response, []);
-    log.info({ turn: turnId, transcript, action: fast.action.type, ms: since(t0) }, "copilot fast path");
+    log.info({ turn: turnId, transcript, action: fast.action?.type ?? "none", ms: since(t0) }, "copilot fast path");
     return response;
   }
 
@@ -103,6 +112,7 @@ export async function answerQuery(deps: Deps, input: QueryInput, log: Log): Prom
     retrieve(ctx.cfg, { query: searchQuery(transcript, g.selected), projectId: g.plan.project_id, partId: input.context.selected_part_id, k: 5 }, log)
       .then((c) => { timings.retrieve = since(retrieveStart); return c; }),
     (async () => {
+      if (!input.frame) return null; // no camera frame: the model answers from the tables and documents
       const start = Date.now();
       try {
         const out = await annotateFrame(input.frame, marks);
@@ -135,10 +145,14 @@ export async function answerQuery(deps: Deps, input: QueryInput, log: Log): Prom
   }
 
   const grounded = ground(result.draft, g, chunks);
-  if (grounded.action) await applyAction(deps, input.assemblyId, grounded.action, "operator");
+  // Blueprint §587: state changes come from commands. A model-proposed one is applied only for a sure,
+  // unambiguous statement, never a question, and the log records it as the model's call with its confidence.
+  const commanded = grounded.action && !isQuestion(transcript) && !grounded.needs_clarification && grounded.confidence >= MODEL_ACTION_MIN
+    ? grounded.action : null;
+  if (commanded) await applyAction(deps, input.assemblyId, commanded, "operator", { confidence: grounded.confidence, note: `model, from: "${transcript}"` });
   speech.start(turnId, grounded.answer_text);
   const response: CopilotResponse = {
-    ...shell(turnId, transcript), ...grounded,
+    ...shell(turnId, transcript), ...grounded, action: commanded,
     audio_url: `/v1/audio/${turnId}`,
     timings_ms: { ...timings, ...(result.toolCalls.length ? { tool_calls: result.toolCalls.length } : {}), total_to_response: since(t0) },
   };
@@ -156,5 +170,20 @@ function capped(
     ? { ...hit, transcript, timings_ms: { ...timings, total_to_response: since(t0) } }
     : { ...shell(turnId, transcript), answer_text: "I took too long on that one. Ask me again, or check the drawing on the laptop.", needs_clarification: true, timings_ms: { ...timings, capped: 1, total_to_response: since(t0) } };
   recordTurn(response, chunks.map((c) => c.chunk_id));
+  return response;
+}
+
+/** Nothing usable was heard: say so out loud, so the operator knows to ask again. */
+function unheard(
+  deps: Deps, turnId: string, failed: boolean, timings: Record<string, number>, t0: number,
+  recordTurn: (r: CopilotResponse, chunkIds: string[]) => void,
+): CopilotResponse {
+  const answer_text = failed ? "I couldn't hear that. Hold A and ask again." : "I didn't catch that. Hold A and ask again.";
+  deps.speech.start(turnId, answer_text);
+  const response: CopilotResponse = {
+    ...shell(turnId, ""), answer_text, needs_clarification: true, audio_url: `/v1/audio/${turnId}`,
+    timings_ms: { ...timings, unheard: 1, total_to_response: since(t0) },
+  };
+  recordTurn(response, []);
   return response;
 }

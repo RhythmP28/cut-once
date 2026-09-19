@@ -60,7 +60,7 @@ export async function verifyPart(
   let result;
   try {
     result = await jsonCall(ctx.cfg, {
-      name: "verification", schema: Verdict, system: SYSTEM, timeoutMs: m.budgets.verify, images,
+      model: m.chat, name: "verification", schema: Verdict, system: SYSTEM, timeoutMs: m.budgets.verify, images,
       text: [
         `Target part: ${part.name}. ${part.verify_hint}`,
         `It is claimed to be: ${req.claimed_state}.`,

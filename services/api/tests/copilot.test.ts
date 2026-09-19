@@ -88,6 +88,33 @@ describe("fast path", () => {
     expect(fast?.action).toEqual({ type: "mark_state", part_ids: ["part_cable_tray"], new_state: "missing", source: "voice" });
   });
 
+  it("'undo' notes which event it reverses (blueprint §550)", () => {
+    const event = { ...builtEvent(currentId(), "part_cable_tray"), version: 1 };
+    expect(matchFastPath("undo", input({ recentEvents: [event as never] }))?.note).toBe(`undo of ${event.event_id}`);
+  });
+
+  it("'undo' twice steps back twice instead of redoing", () => {
+    const aid = currentId();
+    const markA = { ...builtEvent(aid, "part_cable_tray"), version: 1 };
+    const markB = { ...builtEvent(aid, "part_tabletop"), version: 2 };
+    const undoB = { ...builtEvent(aid, "part_tabletop", "built", "missing", { note: `undo of ${markB.event_id}` }), version: 3 };
+    expect(matchFastPath("undo", input({ recentEvents: [markA, markB, undoB] as never }))?.action)
+      .toEqual({ type: "mark_state", part_ids: ["part_cable_tray"], new_state: "missing", source: "voice" });
+  });
+
+  it("'undo' with nothing left says so, and never reverses the seeded demo state", () => {
+    const aid = currentId();
+    const seed = { ...builtEvent(aid, "part_tabletop", "missing", "built", { source: "seed", actor: "seed" }), version: 1 };
+    const mark = { ...builtEvent(aid, "part_cable_tray"), version: 2 };
+    const undo = { ...builtEvent(aid, "part_cable_tray", "built", "missing", { note: `undo of ${mark.event_id}` }), version: 3 };
+    expect(matchFastPath("undo", input({ recentEvents: [seed, mark, undo] as never }))).toEqual({ action: null, answer_text: "There's nothing to undo.", highlight_parts: [] });
+  });
+
+  it("'done' on a part that is not in this plan says so instead of failing", () => {
+    expect(matchFastPath("done", input({ selectedPartId: "part_from_another_revision" })))
+      .toMatchObject({ action: null, answer_text: expect.stringContaining("isn't in this plan") });
+  });
+
   it("a question is not a command", () => {
     for (const q of ["where does this cable go", "is this the right screw", "what goes here"]) expect(matchFastPath(q, input())).toBeNull();
   });

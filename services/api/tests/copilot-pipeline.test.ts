@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Strict, type CopilotContext, type WsMessage } from "@cutonce/schemas";
@@ -148,8 +148,22 @@ describe("a question", () => {
     expect((await query()).json().highlight_parts).toEqual(["part_cable_tray"]);
   });
 
-  it("503s with a readable reason when transcription itself fails", async () => {
-    transcribe.mockRejectedValue(new Error("OPENAI_API_KEY is not set"));
+  it("answers out loud when transcription fails, instead of an error", async () => {
+    transcribe.mockRejectedValue(new Error("Request timed out."));
+    const r = await query();
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toMatchObject({ needs_clarification: true, answer_text: "I couldn't hear that. Hold A and ask again." });
+    expect(r.json().audio_url).toMatch(/^\/v1\/audio\/turn_/);
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  it("answers out loud when nothing was said", async () => {
+    transcribe.mockResolvedValue("");
+    expect((await query()).json()).toMatchObject({ needs_clarification: true, answer_text: "I didn't catch that. Hold A and ask again." });
+  });
+
+  it("still 503s with a readable reason when the OpenAI key is missing: a set-up problem to find at rehearsal", async () => {
+    t.app.ctx.cfg.openaiKey = "";
     const r = await query();
     expect(r.statusCode).toBe(503);
     expect(r.json().error.message).toContain("OPENAI_API_KEY");
@@ -204,5 +218,109 @@ describe("the safety net", () => {
     await promote("q_cable");
     const r = await t.app.inject({ method: "GET", url: "/v1/copilot/cache", headers: auth });
     expect(r.json().entries).toMatchObject([{ scripted_query_id: "q_cable", transcript: "where does the power cable run" }]);
+  });
+});
+
+describe("a question with no camera frame", () => {
+  const noFrame = (over: Partial<CopilotContext> = {}, frameBytes: Buffer | null = null) => t.app.inject({
+    method: "POST", url: `/v1/assemblies/${aid()}/copilot/query`,
+    ...multipart([
+      { name: "context", value: JSON.stringify({ ...baseContext(), assembly_id: aid(), visible_parts: [], camera: null, ...over }) },
+      { name: "audio", value: Buffer.from("RIFFfake"), filename: "a.wav", type: "audio/wav" },
+      ...(frameBytes ? [{ name: "frame", value: frameBytes, filename: "f.jpg", type: "image/jpeg" }] : []),
+    ]),
+  });
+
+  it("is answered without images when the headset sends no frame at all", async () => {
+    transcribe.mockResolvedValue("where does the power cable run"); ask.mockResolvedValue(draft());
+    const r = await noFrame();
+    expect(r.statusCode).toBe(200);
+    expect(ask.mock.calls[0]![2].frames).toEqual({ annotated: null, raw: null });
+  });
+
+  it("treats a zero-byte frame the same way", async () => {
+    transcribe.mockResolvedValue("where does the power cable run"); ask.mockResolvedValue(draft());
+    expect((await noFrame({}, Buffer.alloc(0))).statusCode).toBe(200);
+    expect(ask.mock.calls[0]![2].frames).toEqual({ annotated: null, raw: null });
+  });
+
+  it("still replays a rehearsed answer from the HUD", async () => {
+    transcribe.mockResolvedValue("where does the power cable run"); ask.mockResolvedValue(draft());
+    const turnId = (await query()).json().turn_id;
+    await t.app.inject({ method: "POST", url: "/v1/director/command", headers: auth, payload: { type: "promote_cache", turn_id: turnId, scripted_query_id: "q_cable" } });
+    const body = (await noFrame({ scripted_query_id: "q_cable" })).json();
+    expect(body.cached).toBe(true);
+    expect(body.answer_text).toContain("cable tray");
+  });
+});
+
+describe("what may change the build", () => {
+  const legBuilt = { type: "mark_state", part_ids: ["part_left_rear_leg"], new_state: "built" };
+  const leg = () => t.app.ctx.store.getState(aid()).parts.part_left_rear_leg!.state;
+
+  it("a question never does, whatever the model proposes", async () => {
+    transcribe.mockResolvedValue("is the left rear leg in yet?");
+    ask.mockResolvedValue(draft({ action: legBuilt, confidence: 0.95 }));
+    expect((await query()).json().action).toBeNull();
+    expect(leg()).toBe("missing");
+  });
+
+  it("an unsure statement does not either", async () => {
+    transcribe.mockResolvedValue("I think the left rear leg is on");
+    ask.mockResolvedValue(draft({ action: legBuilt, confidence: 0.2, needs_clarification: true }));
+    expect((await query()).json().action).toBeNull();
+    expect(leg()).toBe("missing");
+  });
+
+  it("a sure statement does, and the log records it as the model's call with its confidence", async () => {
+    transcribe.mockResolvedValue("the left rear leg is on");
+    ask.mockResolvedValue(draft({ action: legBuilt, confidence: 0.9 }));
+    expect((await query()).json().action).toMatchObject({ type: "mark_state", part_ids: ["part_left_rear_leg"], new_state: "built" });
+    expect(leg()).toBe("built");
+    expect(t.app.ctx.store.getEvents(aid()).events.at(-1)).toMatchObject({ source: "voice", confidence: 0.9, note: 'model, from: "the left rear leg is on"' });
+  });
+
+  it("a replayed cached answer carries no action, because nothing re-applies it", async () => {
+    transcribe.mockResolvedValue("mark the left rear leg built");
+    const turnId = (await query()).json().turn_id;
+    await t.app.inject({ method: "POST", url: "/v1/director/command", headers: auth, payload: { type: "promote_cache", turn_id: turnId, scripted_query_id: "q_mark" } });
+    const body = (await query({ scripted_query_id: "q_mark" })).json();
+    expect(body.cached).toBe(true);
+    expect(body.action).toBeNull();
+  });
+});
+
+describe("spoken commands", () => {
+  const leg = () => t.app.ctx.store.getState(aid()).parts.part_left_rear_leg!.state;
+
+  it("'undo' twice after one change leaves it undone and says there is nothing more", async () => {
+    transcribe.mockResolvedValue("mark the left rear leg built"); await query();
+    transcribe.mockResolvedValue("undo");
+    await query();
+    expect(leg()).toBe("missing");
+    expect(t.app.ctx.store.getEvents(aid()).events.at(-1)!.note).toMatch(/^undo of evt_/);
+    const second = (await query()).json();
+    expect(second.answer_text).toBe("There's nothing to undo.");
+    expect(second.action).toBeNull();
+    expect(leg()).toBe("missing");
+  });
+
+  it("'done' on a part from another plan revision answers instead of failing the turn", async () => {
+    transcribe.mockResolvedValue("done");
+    const r = await query({ selected_part_id: "part_from_another_revision" });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toMatchObject({ action: null, answer_text: expect.stringContaining("isn't in this plan") });
+  });
+});
+
+describe("the demo cache", () => {
+  it("refuses a scripted id that is not a plain name, so promote cannot write outside the cache folder", async () => {
+    transcribe.mockResolvedValue("where does the power cable run"); ask.mockResolvedValue(draft());
+    const turnId = (await query()).json().turn_id;
+    const escaped = join(t.dataDir, "..", "cutonce_escape.json");
+    rmSync(escaped, { force: true }); // a leftover from a run before the fix must not decide this test
+    const r = await t.app.inject({ method: "POST", url: "/v1/director/command", headers: auth, payload: { type: "promote_cache", turn_id: turnId, scripted_query_id: "../../cutonce_escape" } });
+    expect(r.statusCode).toBe(400);
+    expect(existsSync(escaped)).toBe(false);
   });
 });

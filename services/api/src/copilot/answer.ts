@@ -13,7 +13,10 @@ const chatTools = knowledgeToolSpecs.map((t) => ({ type: "function" as const, fu
 
 const imagePart = (data: Buffer, mime: string) => ({ type: "image_url" as const, image_url: { url: `data:${mime};base64,${data.toString("base64")}` } });
 
-export interface AskInput extends PromptInput { frames: { annotated: Buffer | null; raw: Buffer } }
+/** The system prompt promises two images; this tells the model when a turn has none. */
+const NO_FRAME = "\n\nNO CAMERA FRAME this turn: there are no images. Answer from the tables and documents, and do not describe what you see.";
+
+export interface AskInput extends PromptInput { frames: { annotated: Buffer | null; raw: Buffer | null } }
 
 /**
  * One model call with both frames, plus at most one tool round if the model asks for more.
@@ -25,9 +28,9 @@ export async function ask(ctx: Ctx, m: CopilotModels, input: AskInput): Promise<
   if (!ctx.cfg.openaiKey) throw new Error("OPENAI_API_KEY is not set");
   const client = new OpenAI({ apiKey: ctx.cfg.openaiKey, timeout: m.budgets.llm, maxRetries: 0 });
   const content = [
-    { type: "text" as const, text: userText(input) },
+    { type: "text" as const, text: userText(input) + (input.frames.raw ? "" : NO_FRAME) },
     ...(input.frames.annotated ? [imagePart(input.frames.annotated, "image/jpeg")] : []),
-    imagePart(input.frames.raw, "image/jpeg"),
+    ...(input.frames.raw ? [imagePart(input.frames.raw, "image/jpeg")] : []),
   ];
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [{ role: "system", content: SYSTEM }, { role: "user", content }];
   const schema = copilotAnswerSchema(input.gathered.plan.parts.map((p) => p.part_id), input.chunks.map((c) => c.chunk_id));
@@ -35,17 +38,21 @@ export async function ask(ctx: Ctx, m: CopilotModels, input: AskInput): Promise<
 
   let res = await client.chat.completions.create({ model: m.chat, messages, tools: chatTools, response_format });
   const toolCalls: string[] = [];
-  const calls = res.choices[0]?.message?.tool_calls ?? [];
+  const calls = (res.choices[0]?.message?.tool_calls ?? []).flatMap((c) => (c.type === "function" ? [c] : []));
   if (calls.length > 0) {
     messages.push(res.choices[0]!.message);
-    for (const call of calls) {
-      if (call.type !== "function") continue;
-      toolCalls.push(call.function.name);
+    // All at once: each call may wait up to the tool budget for Agent Builder, and one after another three of
+    // them would spend 6 s of the 9 s cap before the second model call even starts.
+    const results = await Promise.all(calls.map((call) => {
       let args: Record<string, unknown> = {};
       try { args = JSON.parse(call.function.arguments || "{}") as Record<string, unknown>; } catch { /* a malformed argument string still gets an answer, just an empty one */ }
-      const result = await callKnowledgeTool(ctx, call.function.name as ToolName, args, { timeoutMs: m.budgets.tool });
+      return callKnowledgeTool(ctx, call.function.name as ToolName, args, { timeoutMs: m.budgets.tool });
+    }));
+    calls.forEach((call, i) => {
+      const result = results[i]!;
+      toolCalls.push(call.function.name);
       messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(result.ok ? result.data : { error: result.error }) });
-    }
+    });
     // Second pass without tools: the model has what it asked for, now it must answer.
     res = await client.chat.completions.create({ model: m.chat, messages, response_format });
   }
