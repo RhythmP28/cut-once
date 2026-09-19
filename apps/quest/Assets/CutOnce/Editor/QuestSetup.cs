@@ -196,6 +196,7 @@ namespace CutOnce.QuestTools
             config.insightPassthroughSupport = OVRProjectConfig.FeatureSupport.Required; // the whole app is mixed reality
             config.isPassthroughCameraAccessEnabled = true; // the copilot's photo: horizonos.permission.HEADSET_CAMERA
             config.anchorSupport = OVRProjectConfig.AnchorSupport.Enabled; // the aligned desk is kept with a spatial anchor
+            config.sceneSupport = OVRProjectConfig.FeatureSupport.Required; // room mapping and scene mesh queries
             config.handTrackingSupport = OVRProjectConfig.HandTrackingSupport.ControllersAndHands;
             OVRProjectConfig.CommitProjectConfig(config);
         }
