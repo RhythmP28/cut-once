@@ -1,0 +1,26 @@
+{
+  "name": "cut-once",
+  "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "dev": "pnpm -F @cutonce/api dev",
+    "serve:local": "pnpm -F @cutonce/web build && HOST=0.0.0.0 DATA_DIR=./data/runtime-local pnpm -F @cutonce/api start",
+    "pm": "pnpm -F @cutonce/project-model exec tsx src/cli.ts",
+    "reindex": "pnpm -F @cutonce/api exec tsx src/cli/reindex.ts",
+    "elastic:indices": "pnpm -F @cutonce/api exec tsx src/cli/elastic-indices.ts",
+    "elastic:setup": "pnpm -F @cutonce/api exec tsx src/cli/elastic-setup.ts",
+    "search:eval": "pnpm -F @cutonce/api exec tsx src/cli/search-eval.ts",
+    "extract:eval": "pnpm -F @cutonce/api exec tsx src/cli/extract-eval.ts",
+    "sync:fixtures": "node scripts/sync-fixtures.mjs",
+    "gen:fixtures": "pnpm -F @cutonce/project-model exec tsx scripts/gen-fixtures.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

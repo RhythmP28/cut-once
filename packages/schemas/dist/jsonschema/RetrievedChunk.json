@@ -1,0 +1,56 @@
+{
+  "$ref": "#/definitions/RetrievedChunk",
+  "definitions": {
+    "RetrievedChunk": {
+      "type": "object",
+      "properties": {
+        "chunk_id": {
+          "type": "string",
+          "pattern": "^chunk_[a-z0-9_]+$"
+        },
+        "document_id": {
+          "type": "string",
+          "pattern": "^doc_[a-z0-9_]+$"
+        },
+        "sheet_id": {
+          "type": "string",
+          "pattern": "^sheet_[a-z0-9_]+$"
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "part_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^part_[a-z0-9_]+$"
+          }
+        },
+        "score": {
+          "type": "number"
+        },
+        "page_image_uri": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "chunk_id",
+        "document_id",
+        "page",
+        "title",
+        "text",
+        "part_ids",
+        "score"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

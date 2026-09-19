@@ -1,0 +1,176 @@
+{
+  "plan_id": "plan_asymmetric",
+  "project_id": "proj_cutonce_demo",
+  "name": "Mirror test (L shape)",
+  "revision": 1,
+  "status": "approved",
+  "frame": {
+    "handedness": "right",
+    "up": "+Y",
+    "units": "m",
+    "pose": "upright",
+    "origin": "centre of the origin cube"
+  },
+  "layers": [
+    "structure"
+  ],
+  "parts": [
+    {
+      "part_id": "part_origin",
+      "name": "Origin cube",
+      "aliases": [],
+      "kind": "cube",
+      "layer": "structure",
+      "shape": {
+        "type": "box",
+        "size": [
+          0.1,
+          0.1,
+          0.1
+        ]
+      },
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "material_id": "mat_test_cube",
+      "step_id": "step_01",
+      "rests_on": [],
+      "attaches_to": [],
+      "verify_hint": "test cube",
+      "install_minutes": 1,
+      "doc_refs": []
+    },
+    {
+      "part_id": "part_plus_x",
+      "name": "Plus X cube",
+      "aliases": [],
+      "kind": "cube",
+      "layer": "structure",
+      "shape": {
+        "type": "box",
+        "size": [
+          0.1,
+          0.1,
+          0.1
+        ]
+      },
+      "position": [
+        0.1,
+        0,
+        0
+      ],
+      "material_id": "mat_test_cube",
+      "step_id": "step_02",
+      "rests_on": [
+        "part_origin"
+      ],
+      "attaches_to": [],
+      "verify_hint": "test cube",
+      "install_minutes": 1,
+      "doc_refs": []
+    },
+    {
+      "part_id": "part_plus_z",
+      "name": "Plus Z cube",
+      "aliases": [],
+      "kind": "cube",
+      "layer": "structure",
+      "shape": {
+        "type": "box",
+        "size": [
+          0.1,
+          0.1,
+          0.1
+        ]
+      },
+      "position": [
+        0,
+        0,
+        0.1
+      ],
+      "material_id": "mat_test_cube",
+      "step_id": "step_03",
+      "rests_on": [
+        "part_origin"
+      ],
+      "attaches_to": [],
+      "verify_hint": "test cube",
+      "install_minutes": 1,
+      "doc_refs": []
+    }
+  ],
+  "materials": [
+    {
+      "material_id": "mat_test_cube",
+      "name": "Test cube",
+      "spec": "100 mm cube",
+      "unit": "each",
+      "quantity": 3,
+      "used_by": [
+        "part_origin",
+        "part_plus_x",
+        "part_plus_z"
+      ],
+      "doc_refs": []
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "step_01",
+      "index": 1,
+      "title": "Place the origin cube",
+      "instruction": "Place it.",
+      "part_ids": [
+        "part_origin"
+      ],
+      "requires": [],
+      "layer": "structure",
+      "est_minutes": 1,
+      "materials": [],
+      "doc_refs": []
+    },
+    {
+      "step_id": "step_02",
+      "index": 2,
+      "title": "Add the +X cube",
+      "instruction": "Place it on the +X side.",
+      "part_ids": [
+        "part_plus_x"
+      ],
+      "requires": [
+        "step_01"
+      ],
+      "layer": "structure",
+      "est_minutes": 1,
+      "materials": [],
+      "doc_refs": []
+    },
+    {
+      "step_id": "step_03",
+      "index": 3,
+      "title": "Add the +Z cube",
+      "instruction": "Place it on the +Z side.",
+      "part_ids": [
+        "part_plus_z"
+      ],
+      "requires": [
+        "step_01"
+      ],
+      "layer": "structure",
+      "est_minutes": 1,
+      "materials": [],
+      "doc_refs": []
+    }
+  ],
+  "markers": [],
+  "touch_points": [],
+  "provenance": {
+    "source_document_ids": [],
+    "extracted_by": "hand",
+    "approved_by": "fixture",
+    "assumptions": [],
+    "validation": []
+  }
+}

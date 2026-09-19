@@ -1,0 +1,32 @@
+{
+  "$ref": "#/definitions/Seed",
+  "definitions": {
+    "Seed": {
+      "type": "object",
+      "properties": {
+        "seed": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$"
+        },
+        "plan_id": {
+          "type": "string",
+          "pattern": "^plan_[a-z0-9_]+$"
+        },
+        "built": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^part_[a-z0-9_]+$"
+          }
+        }
+      },
+      "required": [
+        "seed",
+        "plan_id",
+        "built"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

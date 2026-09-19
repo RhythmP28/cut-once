@@ -1,0 +1,8 @@
+# Sources and credits
+
+| What | Source | Licence / note |
+|---|---|---|
+| Rework statistic ($177.5B a year; $31B from miscommunication and bad data) | FMI and PlanGrid, "Construction Disconnected" (2018) | Cited, not redistributed |
+| Unity base project, camera access and QR samples | QuestCameraKit, github.com/xrdevrob/QuestCameraKit | MIT |
+| Engineering 7 plans and section | Perkins&Will, published on ArchDaily ("University of Waterloo Engineering 5 and 7") | Copyright Perkins&Will. Downloaded at build time into `data/e7/raw/` (git-ignored). Never committed. Credited in the video |
+| Desk assembly manual | The desk manufacturer's public PDF | Used for search only |

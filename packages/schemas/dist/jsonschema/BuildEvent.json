@@ -1,0 +1,121 @@
+{
+  "$ref": "#/definitions/BuildEvent",
+  "definitions": {
+    "BuildEvent": {
+      "type": "object",
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "pattern": "^evt_[0-9A-HJKMNP-TV-Z]{26}$"
+        },
+        "assembly_id": {
+          "type": "string",
+          "pattern": "^asm_[a-z0-9_]+$"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "client_timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "part_state",
+            "verification",
+            "annotation",
+            "alignment"
+          ]
+        },
+        "part_id": {
+          "type": "string",
+          "pattern": "^part_[a-z0-9_]+$"
+        },
+        "previous_state": {
+          "type": "string",
+          "enum": [
+            "missing",
+            "built",
+            "wrong"
+          ]
+        },
+        "new_state": {
+          "type": "string",
+          "enum": [
+            "missing",
+            "built",
+            "wrong"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "voice",
+            "camera_verification",
+            "system",
+            "seed"
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "actor": {
+          "type": "string"
+        },
+        "step_id": {
+          "type": "string",
+          "pattern": "^step_[a-z0-9_]+$"
+        },
+        "verification_id": {
+          "type": "string",
+          "pattern": "^ver_[a-z0-9_]+$"
+        },
+        "turn_id": {
+          "type": "string",
+          "pattern": "^turn_[a-z0-9_]+$"
+        },
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "present",
+            "absent",
+            "wrong_orientation",
+            "unsure"
+          ]
+        },
+        "note": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "assembly_id",
+        "version",
+        "timestamp",
+        "client_timestamp",
+        "kind",
+        "source",
+        "confidence",
+        "actor"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

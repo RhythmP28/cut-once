@@ -1,0 +1,25 @@
+node_modules/
+dist/
+!packages/schemas/dist/
+!packages/schemas/dist/jsonschema/
+.env
+.env.*
+!.env.example
+data/runtime*/
+data/e7/raw/
+data/e7/stages/**/*.overlay.png
+backups/
+.DS_Store
+.claude/
+__pycache__/
+.venv/
+*.pyc
+# Unity
+apps/quest/Library/
+apps/quest/Temp/
+apps/quest/Obj/
+apps/quest/Build/
+apps/quest/Builds/
+apps/quest/Logs/
+apps/quest/UserSettings/
+apps/quest/MemoryCaptures/

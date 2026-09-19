@@ -1,0 +1,455 @@
+{
+  "$ref": "#/definitions/WsMessage",
+  "definitions": {
+    "WsMessage": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "event_appended"
+            },
+            "assembly_id": {
+              "type": "string",
+              "pattern": "^asm_[a-z0-9_]+$"
+            },
+            "event": {
+              "type": "object",
+              "properties": {
+                "event_id": {
+                  "type": "string",
+                  "pattern": "^evt_[0-9A-HJKMNP-TV-Z]{26}$"
+                },
+                "assembly_id": {
+                  "type": "string",
+                  "pattern": "^asm_[a-z0-9_]+$"
+                },
+                "version": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "timestamp": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "client_timestamp": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "part_state",
+                    "verification",
+                    "annotation",
+                    "alignment"
+                  ]
+                },
+                "part_id": {
+                  "type": "string",
+                  "pattern": "^part_[a-z0-9_]+$"
+                },
+                "previous_state": {
+                  "type": "string",
+                  "enum": [
+                    "missing",
+                    "built",
+                    "wrong"
+                  ]
+                },
+                "new_state": {
+                  "type": "string",
+                  "enum": [
+                    "missing",
+                    "built",
+                    "wrong"
+                  ]
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "manual",
+                    "voice",
+                    "camera_verification",
+                    "system",
+                    "seed"
+                  ]
+                },
+                "confidence": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "actor": {
+                  "type": "string"
+                },
+                "step_id": {
+                  "type": "string",
+                  "pattern": "^step_[a-z0-9_]+$"
+                },
+                "verification_id": {
+                  "type": "string",
+                  "pattern": "^ver_[a-z0-9_]+$"
+                },
+                "turn_id": {
+                  "type": "string",
+                  "pattern": "^turn_[a-z0-9_]+$"
+                },
+                "verdict": {
+                  "type": "string",
+                  "enum": [
+                    "present",
+                    "absent",
+                    "wrong_orientation",
+                    "unsure"
+                  ]
+                },
+                "note": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "event_id",
+                "assembly_id",
+                "version",
+                "timestamp",
+                "client_timestamp",
+                "kind",
+                "source",
+                "confidence",
+                "actor"
+              ],
+              "additionalProperties": false
+            },
+            "head": {
+              "type": "integer",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "type",
+            "assembly_id",
+            "event",
+            "head"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "assembly_changed"
+            },
+            "assembly": {
+              "type": "object",
+              "properties": {
+                "assembly_id": {
+                  "type": "string",
+                  "pattern": "^asm_[a-z0-9_]+$"
+                },
+                "plan_id": {
+                  "type": "string",
+                  "pattern": "^plan_[a-z0-9_]+$"
+                },
+                "plan_revision": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "name": {
+                  "type": "string"
+                },
+                "seed": {
+                  "type": "string"
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "archived"
+                  ]
+                }
+              },
+              "required": [
+                "assembly_id",
+                "plan_id",
+                "plan_revision",
+                "name",
+                "seed",
+                "created_at",
+                "status"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "type",
+            "assembly"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "plan_ready"
+            },
+            "plan_id": {
+              "type": "string",
+              "pattern": "^plan_[a-z0-9_]+$"
+            },
+            "revision": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "required": [
+            "type",
+            "plan_id",
+            "revision"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "director_command"
+            },
+            "command": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "new_run"
+                    },
+                    "seed": {
+                      "type": "string"
+                    },
+                    "plan_id": {
+                      "type": "string",
+                      "pattern": "^plan_[a-z0-9_]+$"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "seed"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "force_state"
+                    },
+                    "part_id": {
+                      "type": "string",
+                      "pattern": "^part_[a-z0-9_]+$"
+                    },
+                    "new_state": {
+                      "type": "string",
+                      "enum": [
+                        "missing",
+                        "built",
+                        "wrong"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "part_id",
+                    "new_state"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "goto"
+                    },
+                    "demo_state": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "demo_state"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "set_flag"
+                    },
+                    "flag": {
+                      "type": "string",
+                      "enum": [
+                        "verification",
+                        "offline",
+                        "reconstruction"
+                      ]
+                    },
+                    "value": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "flag",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "promote_cache"
+                    },
+                    "turn_id": {
+                      "type": "string",
+                      "pattern": "^turn_[a-z0-9_]+$"
+                    },
+                    "scripted_query_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "turn_id",
+                    "scripted_query_id"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "command"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "copilot_turn"
+            },
+            "turn": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          },
+          "required": [
+            "type",
+            "turn"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "issue_logged"
+            },
+            "issue_id": {
+              "type": "string",
+              "pattern": "^issue_[a-z0-9_]+$"
+            },
+            "part_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^part_[a-z0-9_]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "issue_id",
+            "part_id",
+            "note"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "presence"
+            },
+            "clients": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "quest",
+                      "web"
+                    ]
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "connected_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "id",
+                  "connected_at"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "type",
+            "clients"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

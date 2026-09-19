@@ -1,0 +1,132 @@
+{
+  "$ref": "#/definitions/Job",
+  "definitions": {
+    "Job": {
+      "type": "object",
+      "properties": {
+        "job_id": {
+          "type": "string",
+          "pattern": "^job_[a-z0-9_]+$"
+        },
+        "document_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^doc_[a-z0-9_]+$"
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "queued",
+            "running",
+            "needs_review",
+            "approved",
+            "failed"
+          ]
+        },
+        "stages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "running",
+                  "done",
+                  "failed",
+                  "skipped"
+                ]
+              },
+              "ms": {
+                "type": "number",
+                "minimum": 0
+              },
+              "artifact_uri": {
+                "type": "string"
+              },
+              "detail": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "plan_id": {
+          "type": "string",
+          "pattern": "^plan_[a-z0-9_]+$"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "V1",
+                  "V2",
+                  "V3",
+                  "V4",
+                  "V5",
+                  "V6",
+                  "V7",
+                  "V8"
+                ]
+              },
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "error",
+                  "warning"
+                ]
+              },
+              "part_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "severity",
+              "part_ids",
+              "message"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "job_id",
+        "document_ids",
+        "status",
+        "stages",
+        "created_at"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

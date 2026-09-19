@@ -1,0 +1,186 @@
+{
+  "$ref": "#/definitions/CopilotContext",
+  "definitions": {
+    "CopilotContext": {
+      "type": "object",
+      "properties": {
+        "context_id": {
+          "type": "string",
+          "pattern": "^ctx_[a-z0-9_]+$"
+        },
+        "assembly_id": {
+          "type": "string",
+          "pattern": "^asm_[a-z0-9_]+$"
+        },
+        "plan_revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "state_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "upload",
+            "overlay"
+          ]
+        },
+        "selected_part_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^part_[a-z0-9_]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "selection_source": {
+          "type": "string",
+          "enum": [
+            "controller_ray",
+            "gaze",
+            "none"
+          ]
+        },
+        "current_step_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^step_[a-z0-9_]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "visible_parts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "part_id": {
+                "type": "string",
+                "pattern": "^part_[a-z0-9_]+$"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "missing",
+                  "built",
+                  "wrong"
+                ]
+              },
+              "bbox_px": {
+                "type": "array",
+                "minItems": 4,
+                "maxItems": 4,
+                "items": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "in_frame": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "distance_m": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "part_id",
+              "state",
+              "bbox_px",
+              "in_frame",
+              "distance_m"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "camera": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "width": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0
+                },
+                "height": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0
+                },
+                "fx": {
+                  "type": "number"
+                },
+                "fy": {
+                  "type": "number"
+                },
+                "cx": {
+                  "type": "number"
+                },
+                "cy": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "width",
+                "height",
+                "fx",
+                "fy",
+                "cx",
+                "cy"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scripted_query_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "client_sent_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "context_id",
+        "assembly_id",
+        "plan_revision",
+        "state_version",
+        "mode",
+        "selected_part_id",
+        "selection_source",
+        "current_step_id",
+        "visible_parts",
+        "camera",
+        "scripted_query_id",
+        "client_sent_at"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

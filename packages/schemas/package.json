@@ -1,0 +1,14 @@
+{
+  "name": "@cutonce/schemas",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json",
+    "export": "tsx scripts/export-jsonschema.ts"
+  },
+  "dependencies": { "zod": "^3.24.1" },
+  "devDependencies": { "zod-to-json-schema": "^3.24.1" }
+}

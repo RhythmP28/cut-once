@@ -1,0 +1,840 @@
+{
+  "$ref": "#/definitions/Plan",
+  "definitions": {
+    "Plan": {
+      "type": "object",
+      "properties": {
+        "plan_id": {
+          "type": "string",
+          "pattern": "^plan_[a-z0-9_]+$"
+        },
+        "project_id": {
+          "type": "string",
+          "pattern": "^proj_[a-z0-9_]+$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "draft",
+            "approved"
+          ]
+        },
+        "frame": {
+          "type": "object",
+          "properties": {
+            "handedness": {
+              "type": "string",
+              "const": "right"
+            },
+            "up": {
+              "type": "string",
+              "const": "+Y"
+            },
+            "units": {
+              "type": "string",
+              "const": "m"
+            },
+            "pose": {
+              "type": "string"
+            },
+            "origin": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "handedness",
+            "up",
+            "units",
+            "pose",
+            "origin"
+          ],
+          "additionalProperties": false
+        },
+        "overall_size": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": [
+            {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          ]
+        },
+        "layers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "parts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "part_id": {
+                "type": "string",
+                "pattern": "^part_[a-z0-9_]+$"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "aliases": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "kind": {
+                "type": "string"
+              },
+              "layer": {
+                "type": "string"
+              },
+              "parent_id": {
+                "type": "string",
+                "pattern": "^part_[a-z0-9_]+$"
+              },
+              "shape": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "box"
+                      },
+                      "size": {
+                        "type": "array",
+                        "minItems": 3,
+                        "maxItems": 3,
+                        "items": [
+                          {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          },
+                          {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          },
+                          {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "size"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "cylinder"
+                      },
+                      "axis": {
+                        "type": "string",
+                        "enum": [
+                          "x",
+                          "y",
+                          "z"
+                        ]
+                      },
+                      "diameter": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "length": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "axis",
+                      "diameter",
+                      "length"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "polyline"
+                      },
+                      "points": {
+                        "type": "array",
+                        "items": {
+                          "type": "array",
+                          "minItems": 3,
+                          "maxItems": 3,
+                          "items": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "minItems": 2
+                      },
+                      "diameter": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "points",
+                      "diameter"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "mesh"
+                      },
+                      "uri": {
+                        "type": "string"
+                      },
+                      "node": {
+                        "type": "string"
+                      },
+                      "bounds": {
+                        "type": "object",
+                        "properties": {
+                          "min": {
+                            "type": "array",
+                            "minItems": 3,
+                            "maxItems": 3,
+                            "items": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          },
+                          "max": {
+                            "type": "array",
+                            "minItems": 3,
+                            "maxItems": 3,
+                            "items": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "min",
+                          "max"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "uri",
+                      "node"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "position": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 3,
+                "items": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "rotation_quat": {
+                "type": "array",
+                "minItems": 4,
+                "maxItems": 4,
+                "items": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "material_id": {
+                "type": "string",
+                "pattern": "^mat_[a-z0-9_]+$"
+              },
+              "step_id": {
+                "type": "string",
+                "pattern": "^step_[a-z0-9_]+$"
+              },
+              "rests_on": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^part_[a-z0-9_]+$"
+                }
+              },
+              "attaches_to": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "part_id": {
+                      "type": "string",
+                      "pattern": "^part_[a-z0-9_]+$"
+                    },
+                    "relation": {
+                      "type": "string",
+                      "enum": [
+                        "on",
+                        "inside",
+                        "along"
+                      ]
+                    },
+                    "via_material_id": {
+                      "type": "string",
+                      "pattern": "^mat_[a-z0-9_]+$"
+                    }
+                  },
+                  "required": [
+                    "part_id",
+                    "relation"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "verify_hint": {
+                "type": "string"
+              },
+              "install_minutes": {
+                "type": "number",
+                "minimum": 0
+              },
+              "doc_refs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "document_id": {
+                      "type": "string",
+                      "pattern": "^doc_[a-z0-9_]+$"
+                    },
+                    "sheet_id": {
+                      "type": "string",
+                      "pattern": "^sheet_[a-z0-9_]+$"
+                    },
+                    "page": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "chunk_id": {
+                      "type": "string",
+                      "pattern": "^chunk_[a-z0-9_]+$"
+                    },
+                    "bbox_norm": {
+                      "type": "array",
+                      "minItems": 4,
+                      "maxItems": 4,
+                      "items": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "document_id",
+                    "page"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "external_ids": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "part_id",
+              "name",
+              "aliases",
+              "kind",
+              "layer",
+              "shape",
+              "position",
+              "material_id",
+              "step_id",
+              "rests_on",
+              "attaches_to",
+              "verify_hint",
+              "install_minutes",
+              "doc_refs"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "materials": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "material_id": {
+                "type": "string",
+                "pattern": "^mat_[a-z0-9_]+$"
+              },
+              "name": {
+                "type": "string"
+              },
+              "spec": {
+                "type": "string"
+              },
+              "unit": {
+                "type": "string"
+              },
+              "quantity": {
+                "type": "number",
+                "minimum": 0
+              },
+              "used_by": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^part_[a-z0-9_]+$"
+                }
+              },
+              "doc_refs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "document_id": {
+                      "type": "string",
+                      "pattern": "^doc_[a-z0-9_]+$"
+                    },
+                    "sheet_id": {
+                      "type": "string",
+                      "pattern": "^sheet_[a-z0-9_]+$"
+                    },
+                    "page": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "chunk_id": {
+                      "type": "string",
+                      "pattern": "^chunk_[a-z0-9_]+$"
+                    },
+                    "bbox_norm": {
+                      "type": "array",
+                      "minItems": 4,
+                      "maxItems": 4,
+                      "items": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "document_id",
+                    "page"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "material_id",
+              "name",
+              "spec",
+              "unit",
+              "quantity",
+              "used_by",
+              "doc_refs"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "step_id": {
+                "type": "string",
+                "pattern": "^step_[a-z0-9_]+$"
+              },
+              "index": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "instruction": {
+                "type": "string"
+              },
+              "part_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^part_[a-z0-9_]+$"
+                }
+              },
+              "requires": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^step_[a-z0-9_]+$"
+                }
+              },
+              "layer": {
+                "type": "string"
+              },
+              "est_minutes": {
+                "type": "number",
+                "minimum": 0
+              },
+              "materials": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "material_id": {
+                      "type": "string",
+                      "pattern": "^mat_[a-z0-9_]+$"
+                    },
+                    "qty": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    }
+                  },
+                  "required": [
+                    "material_id",
+                    "qty"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "doc_refs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "document_id": {
+                      "type": "string",
+                      "pattern": "^doc_[a-z0-9_]+$"
+                    },
+                    "sheet_id": {
+                      "type": "string",
+                      "pattern": "^sheet_[a-z0-9_]+$"
+                    },
+                    "page": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "chunk_id": {
+                      "type": "string",
+                      "pattern": "^chunk_[a-z0-9_]+$"
+                    },
+                    "bbox_norm": {
+                      "type": "array",
+                      "minItems": 4,
+                      "maxItems": 4,
+                      "items": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "document_id",
+                    "page"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "step_id",
+              "index",
+              "title",
+              "instruction",
+              "part_ids",
+              "requires",
+              "layer",
+              "est_minutes",
+              "materials",
+              "doc_refs"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "markers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "marker_id": {
+                "type": "string",
+                "pattern": "^m[0-9]+$"
+              },
+              "payload": {
+                "type": "string",
+                "minLength": 1
+              },
+              "size_m": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "position": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 3,
+                "items": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "normal": {
+                "type": "string",
+                "const": "+Y"
+              }
+            },
+            "required": [
+              "marker_id",
+              "payload",
+              "size_m",
+              "position",
+              "normal"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "touch_points": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "point_id": {
+                "type": "string",
+                "pattern": "^tp_[a-z0-9_]+$"
+              },
+              "name": {
+                "type": "string"
+              },
+              "position": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 3,
+                "items": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "point_id",
+              "name",
+              "position"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "properties": {
+            "source_document_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^doc_[a-z0-9_]+$"
+              }
+            },
+            "extracted_by": {
+              "type": "string"
+            },
+            "approved_by": {
+              "type": "string"
+            },
+            "assumptions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "validation": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": [
+                      "V1",
+                      "V2",
+                      "V3",
+                      "V4",
+                      "V5",
+                      "V6",
+                      "V7",
+                      "V8"
+                    ]
+                  },
+                  "severity": {
+                    "type": "string",
+                    "enum": [
+                      "error",
+                      "warning"
+                    ]
+                  },
+                  "part_ids": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "code",
+                  "severity",
+                  "part_ids",
+                  "message"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "source_document_ids",
+            "extracted_by",
+            "assumptions",
+            "validation"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "plan_id",
+        "project_id",
+        "name",
+        "revision",
+        "status",
+        "frame",
+        "layers",
+        "parts",
+        "materials",
+        "steps",
+        "markers",
+        "touch_points",
+        "provenance"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

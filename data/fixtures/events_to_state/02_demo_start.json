@@ -1,0 +1,148 @@
+{
+  "note": "Seed: tabletop and both front legs",
+  "plan": "plan_desk_archetype.json",
+  "assembly_id": "asm_fixture_run",
+  "events": [
+    {
+      "event_id": "evt_01J8ZK00000000000000000001",
+      "assembly_id": "asm_fixture_run",
+      "version": 1,
+      "timestamp": "2026-09-20T13:01:00.000Z",
+      "client_timestamp": "2026-09-20T13:01:00.000Z",
+      "kind": "part_state",
+      "part_id": "part_tabletop",
+      "previous_state": "missing",
+      "new_state": "built",
+      "source": "seed",
+      "confidence": 1,
+      "actor": "seed",
+      "step_id": "step_01"
+    },
+    {
+      "event_id": "evt_01J8ZK00000000000000000002",
+      "assembly_id": "asm_fixture_run",
+      "version": 2,
+      "timestamp": "2026-09-20T13:02:00.000Z",
+      "client_timestamp": "2026-09-20T13:02:00.000Z",
+      "kind": "part_state",
+      "part_id": "part_left_front_leg",
+      "previous_state": "missing",
+      "new_state": "built",
+      "source": "seed",
+      "confidence": 1,
+      "actor": "seed",
+      "step_id": "step_02"
+    },
+    {
+      "event_id": "evt_01J8ZK00000000000000000003",
+      "assembly_id": "asm_fixture_run",
+      "version": 3,
+      "timestamp": "2026-09-20T13:03:00.000Z",
+      "client_timestamp": "2026-09-20T13:03:00.000Z",
+      "kind": "part_state",
+      "part_id": "part_right_front_leg",
+      "previous_state": "missing",
+      "new_state": "built",
+      "source": "seed",
+      "confidence": 1,
+      "actor": "seed",
+      "step_id": "step_03"
+    }
+  ],
+  "up_to": null,
+  "expected": {
+    "assembly_id": "asm_fixture_run",
+    "plan_id": "plan_desk_archetype",
+    "plan_revision": 1,
+    "version": 3,
+    "as_of": "2026-09-20T13:03:00.000Z",
+    "parts": {
+      "part_tabletop": {
+        "state": "built",
+        "since_version": 1,
+        "last_event_id": "evt_01J8ZK00000000000000000001",
+        "verified": null
+      },
+      "part_left_front_leg": {
+        "state": "built",
+        "since_version": 2,
+        "last_event_id": "evt_01J8ZK00000000000000000002",
+        "verified": null
+      },
+      "part_right_front_leg": {
+        "state": "built",
+        "since_version": 3,
+        "last_event_id": "evt_01J8ZK00000000000000000003",
+        "verified": null
+      },
+      "part_left_rear_leg": {
+        "state": "missing",
+        "since_version": 0,
+        "last_event_id": null,
+        "verified": null
+      },
+      "part_right_rear_leg": {
+        "state": "missing",
+        "since_version": 0,
+        "last_event_id": null,
+        "verified": null
+      },
+      "part_rear_crossbar": {
+        "state": "missing",
+        "since_version": 0,
+        "last_event_id": null,
+        "verified": null
+      },
+      "part_cable_tray": {
+        "state": "missing",
+        "since_version": 0,
+        "last_event_id": null,
+        "verified": null
+      },
+      "part_power_strip": {
+        "state": "missing",
+        "since_version": 0,
+        "last_event_id": null,
+        "verified": null
+      },
+      "part_power_cable": {
+        "state": "missing",
+        "since_version": 0,
+        "last_event_id": null,
+        "verified": null
+      }
+    },
+    "progress": {
+      "built": 3,
+      "total": 9,
+      "pct": 33,
+      "by_layer": {
+        "structure": [
+          3,
+          6
+        ],
+        "hardware": [
+          0,
+          1
+        ],
+        "electrical": [
+          0,
+          2
+        ]
+      },
+      "minutes_left": 10
+    },
+    "current_step_id": "step_04",
+    "available_part_ids": [
+      "part_left_rear_leg",
+      "part_right_rear_leg",
+      "part_cable_tray"
+    ],
+    "blocked_part_ids": [
+      "part_rear_crossbar",
+      "part_power_strip",
+      "part_power_cable"
+    ],
+    "out_of_sequence": []
+  }
+}

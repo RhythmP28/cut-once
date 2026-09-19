@@ -1,0 +1,88 @@
+{
+  "$ref": "#/definitions/SpatialAnchor",
+  "definitions": {
+    "SpatialAnchor": {
+      "type": "object",
+      "properties": {
+        "anchor_id": {
+          "type": "string",
+          "pattern": "^anchor_[a-z0-9_]+$"
+        },
+        "assembly_id": {
+          "type": "string",
+          "pattern": "^asm_[a-z0-9_]+$"
+        },
+        "device_id": {
+          "type": "string"
+        },
+        "method": {
+          "type": "string",
+          "enum": [
+            "qr_2pt",
+            "qr_3pt",
+            "touch_2pt",
+            "touch_3pt",
+            "manual",
+            "restored"
+          ]
+        },
+        "meta_anchor_uuid": {
+          "type": "string"
+        },
+        "nudge": {
+          "type": "object",
+          "properties": {
+            "dx": {
+              "type": "number"
+            },
+            "dy": {
+              "type": "number"
+            },
+            "dz": {
+              "type": "number"
+            },
+            "dyaw_deg": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "dx",
+            "dy",
+            "dz",
+            "dyaw_deg"
+          ],
+          "additionalProperties": false
+        },
+        "residual_mm": {
+          "type": "number",
+          "minimum": 0
+        },
+        "level_error_mm": {
+          "type": "number",
+          "minimum": 0
+        },
+        "m3_residual_mm": {
+          "type": "number",
+          "minimum": 0
+        },
+        "locked_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "anchor_id",
+        "assembly_id",
+        "device_id",
+        "method",
+        "meta_anchor_uuid",
+        "nudge",
+        "residual_mm",
+        "level_error_mm",
+        "locked_at"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

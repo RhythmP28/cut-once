@@ -1,0 +1,99 @@
+{
+  "$ref": "#/definitions/VerificationRequest",
+  "definitions": {
+    "VerificationRequest": {
+      "type": "object",
+      "properties": {
+        "verification_id": {
+          "type": "string",
+          "pattern": "^ver_[a-z0-9_]+$"
+        },
+        "part_id": {
+          "type": "string",
+          "pattern": "^part_[a-z0-9_]+$"
+        },
+        "claimed_state": {
+          "type": "string",
+          "enum": [
+            "missing",
+            "built",
+            "wrong"
+          ]
+        },
+        "state_version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "bbox_px": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "items": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "in_frame": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "camera": {
+          "type": "object",
+          "properties": {
+            "width": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "height": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "fx": {
+              "type": "number"
+            },
+            "fy": {
+              "type": "number"
+            },
+            "cx": {
+              "type": "number"
+            },
+            "cy": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "width",
+            "height",
+            "fx",
+            "fy",
+            "cx",
+            "cy"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "verification_id",
+        "part_id",
+        "claimed_state",
+        "state_version",
+        "bbox_px",
+        "in_frame",
+        "camera"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

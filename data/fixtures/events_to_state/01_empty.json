@@ -1,0 +1,105 @@
+{
+  "note": "Nothing built",
+  "plan": "plan_desk_archetype.json",
+  "assembly_id": "asm_fixture_run",
+  "events": [],
+  "up_to": null,
+  "expected": {
+    "assembly_id": "asm_fixture_run",
+    "plan_id": "plan_desk_archetype",
+    "plan_revision": 1,
+    "version": 0,
+    "as_of": null,
+    "parts": {
+      "part_tabletop": {
+        "state": "missing",
+        "since_version": 0,
+        "last_event_id": null,
+        "verified": null
+      },
+      "part_left_front_leg": {
+        "state": "missing",
+        "since_version": 0,
+        "last_event_id": null,
+        "verified": null
+      },
+      "part_right_front_leg": {
+        "state": "missing",
+        "since_version": 0,
+        "last_event_id": null,
+        "verified": null
+      },
+      "part_left_rear_leg": {
+        "state": "missing",
+        "since_version": 0,
+        "last_event_id": null,
+        "verified": null
+      },
+      "part_right_rear_leg": {
+        "state": "missing",
+        "since_version": 0,
+        "last_event_id": null,
+        "verified": null
+      },
+      "part_rear_crossbar": {
+        "state": "missing",
+        "since_version": 0,
+        "last_event_id": null,
+        "verified": null
+      },
+      "part_cable_tray": {
+        "state": "missing",
+        "since_version": 0,
+        "last_event_id": null,
+        "verified": null
+      },
+      "part_power_strip": {
+        "state": "missing",
+        "since_version": 0,
+        "last_event_id": null,
+        "verified": null
+      },
+      "part_power_cable": {
+        "state": "missing",
+        "since_version": 0,
+        "last_event_id": null,
+        "verified": null
+      }
+    },
+    "progress": {
+      "built": 0,
+      "total": 9,
+      "pct": 0,
+      "by_layer": {
+        "structure": [
+          0,
+          6
+        ],
+        "hardware": [
+          0,
+          1
+        ],
+        "electrical": [
+          0,
+          2
+        ]
+      },
+      "minutes_left": 13
+    },
+    "current_step_id": "step_01",
+    "available_part_ids": [
+      "part_tabletop"
+    ],
+    "blocked_part_ids": [
+      "part_left_front_leg",
+      "part_right_front_leg",
+      "part_left_rear_leg",
+      "part_right_rear_leg",
+      "part_rear_crossbar",
+      "part_cable_tray",
+      "part_power_strip",
+      "part_power_cable"
+    ],
+    "out_of_sequence": []
+  }
+}
