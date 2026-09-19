@@ -30,6 +30,7 @@
     "quest:setup": "tsx tools/quest/unity.ts setup",
     "quest:check": "tsx tools/quest/unity.ts check",
     "quest:sim": "tsx tools/quest/unity.ts sim",
+    "quest:play": "tsx tools/quest/unity.ts play",
     "quest:build": "tsx tools/quest/unity.ts build",
     "quest:install": "tsx tools/quest/unity.ts install",
     "e7:install": "pnpm -F @cutonce/api exec tsx src/cli/e7-install.ts",

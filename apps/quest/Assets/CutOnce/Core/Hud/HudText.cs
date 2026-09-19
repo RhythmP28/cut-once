@@ -12,6 +12,15 @@ namespace CutOnce.Core
     {
         static string N(double v) => v.ToString("0.#", CultureInfo.InvariantCulture);
 
+        /// <summary>The copilot's answer card: the answer, then the drawing it came from (the "source card").</summary>
+        public static string AnswerCard(string answer, string sourceTitle, string sheetId, int page)
+        {
+            if (string.IsNullOrEmpty(sourceTitle) && string.IsNullOrEmpty(sheetId)) return answer ?? "";
+            string sheet = string.IsNullOrEmpty(sheetId) ? "" : $"sheet {(sheetId.StartsWith("sheet_") ? sheetId.Substring(6) : sheetId).ToUpperInvariant()} · ";
+            string title = string.IsNullOrEmpty(sourceTitle) ? "" : sourceTitle + " · ";
+            return $"{answer}\nSource: {title}{sheet}page {page}";
+        }
+
         public static string Progress(BuildStateDto s) => $"{s.progress.built} / {s.progress.total} · {s.progress.pct}%";
 
         public static string TimeLeft(BuildStateDto s) => s.progress.built == s.progress.total ? "Build complete" : $"About {N(s.progress.minutes_left)} min left";

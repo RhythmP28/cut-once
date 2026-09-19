@@ -58,5 +58,18 @@ namespace CutOnce.Core.Tests
             Assert.That(HudText.EventLine(Plan, e, store.Current), Does.EndWith("nothing under it yet"));
             Assert.That(HudText.History(Plan, store.Events, store.Current).Single(), Does.StartWith("saving…"));
         }
+
+        [Test] public void TheAnswerCardNamesTheDrawingItCameFrom() =>
+            Assert.That(HudText.AnswerCard("Run it through the tray.", "E-1 Wiring", "sheet_e1", 2),
+                Is.EqualTo("Run it through the tray.\nSource: E-1 Wiring · sheet E1 · page 2"));
+
+        [Test] public void AnAnswerWithNoSourceIsJustTheAnswer()
+        {
+            Assert.That(HudText.AnswerCard("Not in the drawings.", null, null, 0), Is.EqualTo("Not in the drawings."));
+            Assert.That(HudText.AnswerCard(null, null, null, 0), Is.EqualTo(""));
+        }
+
+        [Test] public void ASourceWithNoSheetNamesThePage() =>
+            Assert.That(HudText.AnswerCard("See the manual.", "Assembly manual", "", 4), Is.EqualTo("See the manual.\nSource: Assembly manual · page 4"));
     }
 }

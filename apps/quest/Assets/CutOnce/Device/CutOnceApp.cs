@@ -1,10 +1,12 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using CutOnce.AR;
 using CutOnce.Copilot;
+using CutOnce.Copilot.Capture;
 using CutOnce.Copilot.Voice;
 using CutOnce.Core;
 using CutOnce.Net;
@@ -39,6 +41,7 @@ namespace CutOnce.Device
         int _seenConnects; string _lastEventId, _toastRun;
         Action<WsMessageDto> _handleMessage;                          // cached: a method group in Update would allocate a delegate every frame
         bool _waitForMarkRelease;
+        readonly ConcurrentQueue<(string permission, bool granted)> _permissionAnswers = new ConcurrentQueue<(string, bool)>();   // filled from Android's thread
 
         // ── start-up ─────────────────────────────────────────────────────────────────────────────────────────────
         void Awake()
@@ -53,7 +56,7 @@ namespace CutOnce.Device
             // With no server and no journal the app still opens on something: E7, the default run (the desk is one "New run" away).
             _sync = new SyncEngine(_api, _store, new Journal(Path.Combine(Application.persistentDataPath, "cutonce")), () => Resource("CutOnce/e7.plan"));
             _sync.RunLoaded += OnRunLoaded;
-            _sync.PlanReady += (planId, revision) => _hud.Toast($"New plan ready: {planId} revision {revision}", 4f);
+            _sync.PlanReady += OnPlanReady;
             _sync.DirectorCommand += OnDirectorCommand;
             _stream = new StreamClient(() => new NetSocket(), _config);
             _handleMessage = _sync.Handle;
@@ -77,9 +80,21 @@ namespace CutOnce.Device
             Run(_sync.Start());
             _stream.Run();
             if (createCopilot) TryCreateCopilot();
+            // AGENTS rule 3: any copilot, built here or placed in the scene (Rhythm's [Copilot] prefab), needs the camera
+            // and microphone. Ask on the headset before first use (the Editor grants at once). The camera waits for its
+            // grant by itself; a refusal only costs the copilot its eyes or ears, so the HUD says what still works.
+            if (FindAnyObjectByType<CopilotController>() != null)
+                QuestPermissions.Request(new[] { QuestPermissions.Camera, QuestPermissions.Microphone }, (p, ok) => _permissionAnswers.Enqueue((p, ok)));
         }
 
-        void OnDestroy() => _stream?.Dispose();
+        void OnDestroy()
+        {
+            _stream?.Dispose();
+            // Sync work still in flight (SyncEngine.Start, a catch-up) must not call back into a destroyed app: that
+            // throws MissingReferenceException on a scene reload, and in tests it fails whichever test runs next.
+            if (_sync != null) { _sync.RunLoaded -= OnRunLoaded; _sync.PlanReady -= OnPlanReady; _sync.DirectorCommand -= OnDirectorCommand; }
+            if (_store != null) _store.Changed -= OnStateChanged;
+        }
 
         static string Resource(string path)
         {
@@ -146,6 +161,8 @@ namespace CutOnce.Device
             else _hudInFront = false;                                                                  // placing again: bring the panel back to the operator
         }
 
+        void OnPlanReady(string planId, int revision) => _hud.Toast($"New plan ready: {planId} revision {revision}", 4f);
+
         void OnDirectorCommand(DirectorCommandDto command)
         {
             // new_run and force_state reach the headset as assembly_changed / event_appended; nothing to do for them here.
@@ -188,6 +205,10 @@ namespace CutOnce.Device
             }
             if (_highlighted.Count > 0 && Time.time >= _highlightUntil) { _highlighted.Clear(); _dirty = true; }
             if (_alignment.State == AlignmentState.Locked) ReadMarkButton();
+            while (_permissionAnswers.TryDequeue(out var answer))
+                if (!answer.granted) _hud.Toast(answer.permission == QuestPermissions.Camera
+                    ? "Camera not allowed: the copilot answers without seeing the desk. Allow it in Settings > Privacy."
+                    : "Microphone not allowed: use the question buttons, or allow it in Settings > Privacy.", 6f);
             if (_dirty) Refresh();
         }
 
@@ -234,7 +255,12 @@ namespace CutOnce.Device
             _dirty = true;
         }
 
-        public void ShowAnswer(CopilotResponseDto response) => _hud.ShowAnswer(response?.answer_text);
+        /// <summary>The answer, then the drawing it came from (the "source card": sheet and page).</summary>
+        public void ShowAnswer(CopilotResponseDto response)
+        {
+            var source = response?.drawing_refs != null && response.drawing_refs.Length > 0 ? response.drawing_refs[0] : null;
+            _hud.ShowAnswer(HudText.AnswerCard(response?.answer_text, source?.title, source?.sheet_id, source?.page ?? 0));
+        }
 
         public void OnActionApplied(CopilotActionDto action)
         {
@@ -259,16 +285,27 @@ namespace CutOnce.Device
                 var go = new GameObject("[Copilot]");
                 go.SetActive(false);                                   // fields must be set before CopilotController.Awake reads them
                 go.AddComponent<AudioSource>();
-                var frames = go.AddComponent<PcaFrameSource>();
-                frames.cameraAccess = go.AddComponent<Meta.XR.PassthroughCameraAccess>();
                 var controller = go.AddComponent<CopilotController>();
                 controller.baseUrl = _config.BaseUrl; controller.apiToken = _config.api_token;
-                controller.frameSourceBehaviour = frames; controller.hostBehaviour = this;
+                controller.frameSourceBehaviour = AddCameraSource(go); controller.hostBehaviour = this;
                 controller.pushToTalkBehaviour = go.AddComponent<QuestPushToTalk>();
                 controller.mic = go.AddComponent<MicRecorder>(); controller.speaker = go.AddComponent<PcmStreamPlayer>();
                 go.SetActive(true);
             }
             catch (Exception e) { Debug.LogWarning("[CutOnce] The copilot could not be created; the build guide still works: " + e.Message); }
+        }
+
+        /// <summary>
+        /// The copilot's camera (AGENTS rule 1). On the headset, Meta's PassthroughCameraAccess. In the Editor, the stored
+        /// photo: the simulator's camera gives a pose but no pixels on a Mac, and the API does not run over Quest Link.
+        /// `pnpm sync:fixtures` puts the photo in StreamingAssets; without it the copilot asks with no frame.
+        /// </summary>
+        static MonoBehaviour AddCameraSource(GameObject go)
+        {
+            if (Application.isEditor) return go.AddComponent<FixtureFrameSource>();
+            var frames = go.AddComponent<PcaFrameSource>();
+            frames.cameraAccess = go.AddComponent<Meta.XR.PassthroughCameraAccess>();
+            return frames;
         }
     }
 }

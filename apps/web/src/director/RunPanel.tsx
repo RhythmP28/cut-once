@@ -25,19 +25,7 @@ export function RunPanel({ assembly, plan, state, noRun, onChanged }: Props) {
   return (
     <section className="card run-panel">
       <div className="run-head">
-        <div>
-          <div className="label">Run</div>
-          <div className="run-id mono">{assembly ? assembly.assembly_id : noRun ? "no run yet" : "loading…"}</div>
-          {assembly && (
-            <div className="muted">
-              {plan?.name ?? assembly.plan_id} · rev {assembly.plan_revision} · seed {assembly.seed}
-            </div>
-          )}
-        </div>
-        <div className="run-version">
-          <div className="label">Version</div>
-          <div className="big">{state ? state.version : "–"}</div>
-        </div>
+        <div className="step-title">{assembly ? plan?.name ?? assembly.plan_id : noRun ? "No run yet" : "Loading…"}</div>
       </div>
 
       <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
@@ -61,7 +49,7 @@ export function RunPanel({ assembly, plan, state, noRun, onChanged }: Props) {
       </div>
 
       <div className="row new-run">
-        <label htmlFor="seed">Seed</label>
+        <label htmlFor="seed" className="muted">Start again from</label>
         <select id="seed" value={seed} onChange={(e) => setSeed(e.target.value)}>
           {SEEDS.map((s) => <option key={s} value={s}>{SEED_LABEL[s]}</option>)}
         </select>
