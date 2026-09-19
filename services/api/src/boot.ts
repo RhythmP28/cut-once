@@ -1,0 +1,37 @@
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { S, type Plan } from "@cutonce/schemas";
+import type { FastifyBaseLogger } from "fastify";
+import type { Config } from "./config.js";
+import type { Store } from "./store/store.js";
+
+const json = (p: string) => JSON.parse(readFileSync(p, "utf8"));
+
+/** Copies the committed demo data into DATA_DIR when it is missing, so a fresh VM or laptop starts out identical. */
+export async function boot(store: Store, cfg: Config, log: FastifyBaseLogger) {
+  const planFiles: string[] = [];
+  const demo = join(cfg.repoRoot, "data", "demo");
+  if (existsSync(demo)) planFiles.push(...readdirSync(demo).filter((f) => f.endsWith(".plan.json")).map((f) => join(demo, f)));
+  const e7 = join(cfg.repoRoot, "data", "e7", "out", "e7.plan.json");
+  if (existsSync(e7)) planFiles.push(e7);
+  for (const f of ["plan_desk_archetype.json", "plan_asymmetric.json"]) {
+    const p = join(cfg.repoRoot, "data", "fixtures", f);
+    if (existsSync(p)) planFiles.push(p);
+  }
+  for (const file of planFiles) {
+    const parsed = S.Plan.safeParse(json(file));
+    if (!parsed.success) { log.warn({ file }, "skipped a plan file that does not match the schema"); continue; }
+    if (store.importApproved(parsed.data as Plan)) log.info({ plan_id: parsed.data.plan_id, revision: parsed.data.revision }, "imported plan");
+  }
+
+  const seeds = join(demo, "seeds");
+  if (existsSync(seeds)) for (const f of readdirSync(seeds).filter((f) => f.endsWith(".json"))) {
+    const seed = S.Seed.safeParse(json(join(seeds, f)));
+    if (seed.success) store.putSeed(seed.data);
+  }
+
+  if (!store.currentAssembly() && store.listSeeds().includes("demo_start")) {
+    try { const a = await store.createAssembly({ seed: "demo_start" }); log.info({ assembly_id: a.assembly_id }, "created the first run from demo_start"); }
+    catch (err) { log.warn({ err }, "could not create the first run"); }
+  }
+}

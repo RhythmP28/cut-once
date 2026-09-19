@@ -1,0 +1,254 @@
+import {
+  AssemblySchema, BuildStateSchema, JobSchema, PlanSchema, S,
+  type Assembly, type BuildEvent, type BuildState, type DirectorCommand, type Job, type Plan, type RetrievedChunk,
+} from "@cutonce/schemas";
+import type { ZodTypeAny } from "zod";
+import { clearToken, getToken } from "./auth";
+
+/** The demo project. Override with VITE_PROJECT_ID at build time if the server uses another id. */
+export const PROJECT_ID: string = import.meta.env.VITE_PROJECT_ID ?? "proj_cutonce_demo";
+
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly code: string,
+    message: string,
+    public readonly body?: unknown,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+/** A short sentence for the UI from anything thrown by these helpers. */
+export function describeError(e: unknown): string {
+  if (e instanceof ApiError) {
+    if (e.status === 0) return "Cannot reach the server.";
+    return `${e.message} (${e.status} ${e.code})`;
+  }
+  if (e instanceof Error) return e.message;
+  return String(e);
+}
+
+type Query = Record<string, string | number | undefined | null>;
+
+function withQuery(path: string, query?: Query): string {
+  if (!query) return path;
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(query)) if (v !== undefined && v !== null && v !== "") qs.set(k, String(v));
+  const s = qs.toString();
+  return s ? `${path}?${s}` : path;
+}
+
+function authHeaders(): Record<string, string> {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+/** Errors arrive as `{ error: { code, message } }`. Anything else becomes a generic error. */
+function toApiError(status: number, body: unknown, fallback: string): ApiError {
+  if (body && typeof body === "object" && "error" in body) {
+    const err = (body as { error?: { code?: unknown; message?: unknown } }).error;
+    if (err && typeof err === "object") {
+      return new ApiError(status, String(err.code ?? "error"), String(err.message ?? fallback), body);
+    }
+  }
+  return new ApiError(status, "http_error", fallback, body);
+}
+
+async function readBody(res: Response): Promise<unknown> {
+  const text = await res.text();
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+/**
+ * Check a response against the shared schema. A mismatch is logged, not thrown: during the demo a
+ * teammate's slightly different field must not blank the Director page.
+ */
+function checked<T>(schema: ZodTypeAny, data: unknown, label: string): T {
+  const r = schema.safeParse(data);
+  if (r.success) return r.data as T;
+  console.warn(`[api] ${label} did not match the schema`, r.error.issues);
+  return data as T;
+}
+
+async function request<T>(
+  method: string,
+  path: string,
+  opts: { query?: Query; body?: unknown; schema?: ZodTypeAny; label?: string; auth?: boolean } = {},
+): Promise<T> {
+  const url = withQuery(path, opts.query);
+  const headers: Record<string, string> = { Accept: "application/json", ...(opts.auth === false ? {} : authHeaders()) };
+  let body: BodyInit | undefined;
+  if (opts.body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify(opts.body);
+  }
+  let res: Response;
+  try {
+    res = await fetch(url, { method, headers, body });
+  } catch (e) {
+    throw new ApiError(0, "network", e instanceof Error ? e.message : "Network error");
+  }
+  const data = await readBody(res);
+  if (!res.ok) {
+    if (res.status === 401 && opts.auth !== false) clearToken(true);
+    throw toApiError(res.status, data, `${method} ${path} failed`);
+  }
+  return opts.schema ? checked<T>(opts.schema, data, opts.label ?? path) : (data as T);
+}
+
+const enc = encodeURIComponent;
+
+// ── health ───────────────────────────────────────────────────────────────────
+export interface Health {
+  ok: boolean;
+  version?: string;
+  [dependency: string]: unknown;
+}
+export const getHealth = () => request<Health>("GET", "/health", { auth: false });
+
+// ── assemblies, events, state ────────────────────────────────────────────────
+export const getCurrentAssembly = () =>
+  request<Assembly>("GET", "/v1/assemblies/current", { schema: AssemblySchema, label: "Assembly" });
+
+export interface EventsPage {
+  events: BuildEvent[];
+  head: number;
+}
+const EventsPageSchema = S.BuildEventBase.array();
+export async function getEvents(assemblyId: string, after?: number): Promise<EventsPage> {
+  const page = await request<EventsPage>("GET", `/v1/assemblies/${enc(assemblyId)}/events`, { query: { after } });
+  const events = checked<BuildEvent[]>(EventsPageSchema, page?.events ?? [], "events");
+  return { events, head: typeof page?.head === "number" ? page.head : events.length };
+}
+
+export const getState = (assemblyId: string, version?: number) =>
+  request<BuildState>("GET", `/v1/assemblies/${enc(assemblyId)}/state`, {
+    query: { version }, schema: BuildStateSchema, label: "BuildState",
+  });
+
+export const createAssembly = (body: { plan_id: string; revision?: number; seed: string }) =>
+  request<Assembly>("POST", "/v1/assemblies", { body, schema: AssemblySchema, label: "Assembly" });
+
+// ── plans ────────────────────────────────────────────────────────────────────
+export const getPlan = (planId: string, revision?: number) =>
+  request<Plan>("GET", `/v1/plans/${enc(planId)}`, { query: { revision }, schema: PlanSchema, label: "Plan" });
+
+export const approvePlan = (planId: string, body: { revision: number; approved_by: string }) =>
+  request<Plan>("POST", `/v1/plans/${enc(planId)}/approve`, { body, schema: PlanSchema, label: "Plan" });
+
+// ── director ─────────────────────────────────────────────────────────────────
+export const sendDirectorCommand = (command: DirectorCommand) =>
+  request<{ ok?: boolean } & Record<string, unknown>>("POST", "/v1/director/command", { body: command });
+
+// ── documents and jobs ───────────────────────────────────────────────────────
+export interface UploadResult {
+  /** 201 = new file, a job was started. 200 = the file's hash matched an already processed plan. */
+  status: number;
+  document_id: string;
+  job_id?: string | null;
+  known_plan_id?: string;
+  revision?: number;
+}
+
+/** Multipart upload with real byte progress (fetch cannot report upload progress, so this uses XHR). */
+export function uploadDocument(
+  projectId: string,
+  file: File,
+  onProgress?: (fraction: number) => void,
+): { promise: Promise<UploadResult>; abort: () => void } {
+  const xhr = new XMLHttpRequest();
+  const promise = new Promise<UploadResult>((resolve, reject) => {
+    xhr.open("POST", `/v1/projects/${enc(projectId)}/documents`);
+    const token = getToken();
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.setRequestHeader("Accept", "application/json");
+    xhr.upload.onprogress = (ev) => {
+      if (ev.lengthComputable && onProgress) onProgress(ev.loaded / ev.total);
+    };
+    xhr.onerror = () => reject(new ApiError(0, "network", "Network error during upload"));
+    xhr.onabort = () => reject(new ApiError(0, "aborted", "Upload cancelled"));
+    xhr.onload = () => {
+      let data: unknown;
+      try {
+        data = xhr.responseText ? JSON.parse(xhr.responseText) : undefined;
+      } catch {
+        data = xhr.responseText;
+      }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        if (xhr.status === 401) clearToken(true);
+        const fallback = xhr.status === 413 ? "File is too large (the limit is 25 MB)" : "Upload failed";
+        reject(toApiError(xhr.status, data, fallback));
+        return;
+      }
+      const d = (data ?? {}) as Record<string, unknown>;
+      if (typeof d.document_id !== "string") {
+        reject(new ApiError(xhr.status, "bad_response", "The server did not return a document_id", data));
+        return;
+      }
+      resolve({
+        status: xhr.status,
+        document_id: d.document_id,
+        job_id: typeof d.job_id === "string" ? d.job_id : null,
+        known_plan_id: typeof d.known_plan_id === "string" ? d.known_plan_id : undefined,
+        revision: typeof d.revision === "number" ? d.revision : undefined,
+      });
+    };
+    const form = new FormData();
+    form.append("file", file, file.name);
+    xhr.send(form);
+  });
+  return { promise, abort: () => xhr.abort() };
+}
+
+export const getJob = (jobId: string) =>
+  request<Job>("GET", `/v1/jobs/${enc(jobId)}`, { schema: JobSchema, label: "Job" });
+
+export const pageImagePath = (documentId: string, page: number) =>
+  `/v1/documents/${enc(documentId)}/pages/${page}.png`;
+
+/**
+ * Page images need the bearer token, which an <img src> cannot send. Fetch the PNG with the header
+ * and hand back an object URL (the caller revokes it). Returns null when the page does not exist.
+ */
+export async function fetchPageImage(documentId: string, page: number, signal?: AbortSignal): Promise<string | null> {
+  let res: Response;
+  try {
+    res = await fetch(pageImagePath(documentId, page), { headers: authHeaders(), signal });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") throw e;
+    throw new ApiError(0, "network", e instanceof Error ? e.message : "Network error");
+  }
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    if (res.status === 401) clearToken(true);
+    throw toApiError(res.status, await readBody(res), "Could not load the page image");
+  }
+  return URL.createObjectURL(await res.blob());
+}
+
+// ── analytics, search, webhooks ──────────────────────────────────────────────
+export type AnalyticsName = "step_durations" | "runs_compared" | "sources_breakdown";
+export interface AnalyticsTable {
+  columns: { name: string; type: string }[];
+  rows: unknown[][];
+}
+export async function getAnalytics(name: AnalyticsName, assemblyId?: string): Promise<AnalyticsTable> {
+  const t = await request<Partial<AnalyticsTable>>("GET", `/v1/analytics/${enc(name)}`, { query: { assembly_id: assemblyId } });
+  return { columns: Array.isArray(t?.columns) ? t.columns : [], rows: Array.isArray(t?.rows) ? t.rows : [] };
+}
+
+const ChunksSchema = S.RetrievedChunk.array();
+export async function searchProject(projectId: string, q: string, partId?: string): Promise<{ chunks: RetrievedChunk[] }> {
+  const r = await request<{ chunks?: unknown }>("GET", `/v1/projects/${enc(projectId)}/search`, { query: { q, part_id: partId } });
+  return { chunks: checked<RetrievedChunk[]>(ChunksSchema, r?.chunks ?? [], "search chunks") };
+}
+
+export const postIssueWebhook = (body: { issue_id: string; part_id: string | null; note: string }) =>
+  request<Record<string, unknown>>("POST", "/v1/webhooks/issue", { body });

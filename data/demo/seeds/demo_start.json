@@ -1,0 +1,9 @@
+{
+  "seed": "demo_start",
+  "plan_id": "plan_desk_demo",
+  "built": [
+    "part_tabletop",
+    "part_left_front_leg",
+    "part_right_front_leg"
+  ]
+}
