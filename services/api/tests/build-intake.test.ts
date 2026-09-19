@@ -1,0 +1,64 @@
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { BuildFiles } from "../src/build/files.js";
+import { REPO_ROOT } from "../src/config.js";
+import { auth, makeApp } from "./helpers.js";
+
+let t: Awaited<ReturnType<typeof makeApp>>;
+beforeEach(async () => { t = await makeApp(); });
+afterEach(async () => { await t.cleanup(); });
+
+const photoB64 = () => readFileSync(join(REPO_ROOT, "data", "fixtures", "frame_0001.jpg")).toString("base64");
+const upload = (over: object = {}) => ({
+  device_id: "quest", grid: { cols: 8, rows: 6 }, points_mm: new Array(144).fill(0), hit: "0".repeat(48),
+  camera: { position: [0, 1.6, 0], forward: [0, 0, 1], intrinsics: { width: 1280, height: 960, fx: 853.6, fy: 853.6, cx: 640, cy: 480 } },
+  photo_b64: photoB64(), ...over,
+});
+const post = (body: object) => t.app.inject({ method: "POST", url: "/v1/build/scans", headers: auth, payload: body });
+
+describe("POST /v1/build/scans", () => {
+  it("saves the scan and its photo under the runtime data folder, and starts a session", async () => {
+    const r = await post(upload());
+    expect(r.statusCode).toBe(202);
+    const { scan_id, session_id } = r.json();
+    expect(scan_id).toMatch(/^scan_[a-z0-9]+$/);
+    expect(session_id).toMatch(/^bsess_[a-z0-9]+$/);
+    const dir = join(t.dataDir, "build", "scans", scan_id);
+    expect(existsSync(join(dir, "scan.json")) && existsSync(join(dir, "photo.jpg"))).toBe(true);
+  });
+
+  it("keeps the session when the headset sends it back", async () => {
+    const first = (await post(upload())).json();
+    expect(first.session_id).toMatch(/^bsess_[a-z0-9]+$/);           // without this, two 404s would "agree" on undefined
+    const second = (await post(upload({ session_id: first.session_id }))).json();
+    expect(second.session_id).toBe(first.session_id);
+  });
+
+  it("refuses a grid whose arrays do not match its size", async () => {
+    const r = await post(upload({ hit: "0".repeat(47) }));
+    expect(r.statusCode).toBe(400);
+  });
+
+  it("refuses a photo that is not a JPEG, before anything is saved", async () => {
+    const r = await post(upload({ photo_b64: Buffer.from("x".repeat(300)).toString("base64") }));
+    expect(r.statusCode).toBe(400);
+    expect(existsSync(join(t.dataDir, "build", "scans"))).toBe(false);
+  });
+
+  it("lists saved scans", async () => {
+    const { scan_id } = (await post(upload())).json();
+    const list = (await t.app.inject({ method: "GET", url: "/v1/build/scans", headers: auth })).json();
+    expect(list.scans.some((s: { scan_id: string }) => s.scan_id === scan_id)).toBe(true);
+  });
+});
+
+describe("BuildFiles", () => {
+  it("checks a scan id before it touches a path (ids arrive in URLs)", () => {
+    const files = new BuildFiles(t.dataDir, REPO_ROOT);
+    for (const id of ["scan_rec_../../../etc", "../scan_x", "scan_rec_a/b", "scan_A", "SCAN_x", ""]) {
+      expect(() => files.scanDir(id), id).toThrow(/not found/);
+    }
+    expect(files.scanDir("scan_rec_kit_table")).toBe(join(REPO_ROOT, "data", "build", "recordings", "kit_table"));
+  });
+});
