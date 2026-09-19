@@ -175,6 +175,8 @@ export function buildSchemas(mode: Mode) {
   const CopilotAction = z.discriminatedUnion("type", [
     o({ type: z.literal("mark_state"), part_ids: z.array(PartId), new_state: PartState, source: z.literal("voice") }),
     o({ type: z.literal("log_issue"), issue_id: IssueId }),
+    // Spoken "next" / "back". Headset-local navigation, so it writes no event and carries no part.
+    o({ type: z.literal("step_nav"), direction: z.enum(["next", "back"]) }),
   ]);
   const CopilotResponse = o({
     turn_id: TurnId, transcript: z.string(), answer_text: z.string(),

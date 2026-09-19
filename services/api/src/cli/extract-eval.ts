@@ -1,3 +1,4 @@
+import "../env.js";
 import { readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import type { Plan } from "@cutonce/schemas";

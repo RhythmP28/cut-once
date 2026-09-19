@@ -252,3 +252,43 @@ export async function searchProject(projectId: string, q: string, partId?: strin
 
 export const postIssueWebhook = (body: { issue_id: string; part_id: string | null; note: string }) =>
   request<Record<string, unknown>>("POST", "/v1/webhooks/issue", { body });
+
+// ── copilot (owner: Rhythm) ──────────────────────────────────────────────────
+export interface LastCapture {
+  received_at?: string;
+  frame_bytes?: number;
+  audio_bytes?: number;
+  note?: string;
+  /** The CopilotContext the headset sent, so the panel can draw the projected boxes over the frame. */
+  context?: unknown;
+}
+export const getLastCapture = () => request<LastCapture>("GET", "/v1/copilot/debug/last");
+
+export interface CacheEntry { scripted_query_id: string; transcript: string; promoted_at: string; has_audio: boolean }
+export const getCopilotCache = async () =>
+  (await request<{ entries?: CacheEntry[] }>("GET", "/v1/copilot/cache")).entries ?? [];
+
+/** The last frame the copilot received. Needs the bearer, so it comes back as an object URL. */
+export async function fetchLastFrame(signal?: AbortSignal): Promise<string | null> {
+  const res = await fetch("/v1/copilot/debug/frame.jpg", { headers: authHeaders(), signal });
+  if (res.status === 404) return null;
+  if (!res.ok) return null;
+  return URL.createObjectURL(await res.blob());
+}
+
+/**
+ * The spoken answer, as raw 16-bit PCM. `<audio>` cannot play headerless PCM, so this returns the
+ * samples and the panel feeds them to WebAudio. Null when the turn has no audio (no TTS key, or cached
+ * without a clip).
+ */
+export async function fetchAnswerPcm(turnId: string): Promise<{ samples: Float32Array; rate: number } | null> {
+  const res = await fetch(`/v1/audio/${enc(turnId)}`, { headers: authHeaders() });
+  if (!res.ok) return null;
+  const rate = Number(/rate=(\d+)/.exec(res.headers.get("content-type") ?? "")?.[1] ?? 22050);
+  const buf = await res.arrayBuffer();
+  if (buf.byteLength < 2) return null;
+  const pcm = new Int16Array(buf, 0, Math.floor(buf.byteLength / 2));
+  const samples = new Float32Array(pcm.length);
+  for (let i = 0; i < pcm.length; i++) samples[i] = pcm[i]! / 32768;
+  return { samples, rate };
+}

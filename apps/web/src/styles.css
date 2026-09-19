@@ -213,3 +213,10 @@ a.link-card:hover { border-color: var(--accent); }
 .history-version { font-size: 1.6rem; font-weight: 700; min-width: 110px; text-align: right; }
 .history-event { font-size: 1.2rem; margin: 12px 0 4px; min-height: 1.8em; }
 .history-viewer { height: calc(100vh - 330px); min-height: 380px; }
+
+/* Copilot panel (owner: Rhythm) */
+.copilot-badges { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px; }
+.copilot-badges button { cursor: pointer; }
+.copilot-frame { position: relative; display: inline-block; max-width: 100%; margin-bottom: 12px; }
+.copilot-frame img { display: block; max-width: 100%; border-radius: 6px; }
+.copilot-frame svg { position: absolute; inset: 0; width: 100%; height: 100%; }

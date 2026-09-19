@@ -1,3 +1,4 @@
+import "./env.js";
 import { buildApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { plugins } from "./plugins.js";

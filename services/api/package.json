@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch --env-file-if-exists=../../.env.local src/server.ts",
-    "start": "tsx --env-file-if-exists=../../.env.local src/server.ts",
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json"
   },
@@ -19,6 +19,7 @@
     "@fastify/websocket": "^11.0.1",
     "@modelcontextprotocol/sdk": "^1.0.4",
     "fastify": "^5.2.0",
+    "jpeg-js": "^0.4.4",
     "openai": "^4.77.0",
     "ulid": "^2.3.0",
     "zod": "^3.24.1",
