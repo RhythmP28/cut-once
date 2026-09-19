@@ -143,6 +143,16 @@ describe("the real OpenAI calls", () => {
     } finally { await t.cleanup(); }
   });
 
+  it("outside build mode the router is OpenAI's even with OMNI set for Kit: E7 and the desk route as they did", async () => {
+    process.env.OPENAI_ROUTER_MODEL = "tiny-router";
+    const t = await makeApp({ openaiKey: "sk-test", omniKey: "q", omniBaseUrl: omniUrl, copilotMode: "live" });
+    try {
+      expect((await question(t)).statusCode).toBe(200);
+      expect(seen.filter((s) => s.path === "chat").map((c) => [c.model, c.schema])[0]).toEqual(["tiny-router", "route"]);
+      expect(omniSeen).toEqual([]);
+    } finally { await t.cleanup(); }
+  });
+
   it("the router's own model goes on the wire, and its 'build ideas' ends the turn: a scan, and no answer call", async () => {
     process.env.OPENAI_ROUTER_MODEL = "tiny-router";
     stand.flow = "build_ideas";

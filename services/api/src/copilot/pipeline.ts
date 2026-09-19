@@ -129,7 +129,8 @@ export async function answerQuery(deps: Deps, input: QueryInput, log: Log): Prom
 
   // The router: does this turn want build ideas? A sure yes scans and skips the answer model; anything else is a question.
   const routeStart = Date.now();
-  const routed = await routeTurn(ctx.cfg, m, { transcript, mode: input.context.mode }, aiFor(ctx.cfg, "turn"));
+  // On OpenAI, as the rest of this turn is (it needs OpenAI's key above): Kit's provider is build mode's business.
+  const routed = await routeTurn(ctx.cfg, m, { transcript, mode: input.context.mode }, aiFor(ctx.cfg, "turn", "openai"));
   timings.route = since(routeStart);
   if (routeOutcome(routed) === "scan") {
     const wish = cleanWish(routed?.wish ?? null);
