@@ -13,7 +13,7 @@ namespace CutOnce.Core.Tests
         {
             var f = new BuildFlow();
             f.StartScan();                                  Assert.That(f.Phase, Is.EqualTo(BuildPhase.Scanning));
-            f.OnScanAccepted("bsess_a");
+            f.OnScanAccepted(f.ScanTicket, "bsess_a");
             f.OnInventory(Inv(false));                      Assert.That(f.Phase, Is.EqualTo(BuildPhase.Scanning));
             f.OnInventory(Inv(true));                       Assert.That(f.Phase, Is.EqualTo(BuildPhase.Labelled));
             f.OnIdeas("bsess_a", new List<BuildIdeaDto> { Idea("idea_1", "plan_build_1") }, false);
@@ -56,7 +56,7 @@ namespace CutOnce.Core.Tests
         public void IdeasFromAnotherSessionAreIgnoredAndExitResets()
         {
             var f = new BuildFlow();
-            f.StartScan(); f.OnScanAccepted("bsess_a"); f.OnInventory(Inv(true));
+            f.StartScan(); f.OnScanAccepted(f.ScanTicket, "bsess_a"); f.OnInventory(Inv(true));
             f.OnIdeas("bsess_b", new List<BuildIdeaDto> { Idea("idea_x", "plan_x") }, true);
             Assert.That(f.Phase, Is.EqualTo(BuildPhase.Labelled));
             f.Exit();
@@ -68,7 +68,7 @@ namespace CutOnce.Core.Tests
         {
             var f = new BuildFlow();
             if (phase == BuildPhase.Off) return f;
-            f.StartScan(); f.OnScanAccepted("bsess_a");
+            f.StartScan(); f.OnScanAccepted(f.ScanTicket, "bsess_a");
             if (phase == BuildPhase.Scanning) return f;
             f.OnInventory(Inv(true));
             if (phase == BuildPhase.Labelled) return f;
@@ -141,19 +141,89 @@ namespace CutOnce.Core.Tests
         public void AFailedScanPutsYouBackWhereYouWere()
         {
             var f = new BuildFlow();
-            f.StartScan(); f.ScanFailed();
+            f.StartScan(); f.ScanFailed(f.ScanTicket);
             Assert.That(f.Phase, Is.EqualTo(BuildPhase.Off), "the first scan failed: build mode never started");
 
             f.OnInventory(Inv(true));
             f.OnIdeas("bsess_a", new List<BuildIdeaDto> { Idea("idea_1", "plan_build_1") }, true);
-            f.StartScan(); f.ScanFailed();                  // a look-around scan (trigger on empty space) that failed
+            f.StartScan(); f.ScanFailed(f.ScanTicket);                  // a look-around scan (trigger on empty space) that failed
             Assert.That(f.Phase, Is.EqualTo(BuildPhase.Ideas), "the ideas are still there to pick from");
 
             f.Pick("idea_1"); f.TryPlace("plan_build_1"); f.OnPlaced(); f.OnAssembled();
-            f.StartScan(); f.ScanFailed();                  // "what can I build?" said mid-build, and the scan failed
+            f.StartScan(); f.ScanFailed(f.ScanTicket);                  // "what can I build?" said mid-build, and the scan failed
             Assert.That(f.Phase, Is.EqualTo(BuildPhase.Walkthrough), "carry on building");
-            f.ScanFailed();
+            f.ScanFailed(f.ScanTicket);
             Assert.That(f.Phase, Is.EqualTo(BuildPhase.Walkthrough), "a failure with no scan running changes nothing");
+        }
+
+        [Test]
+        public void OneScanAtATimeSoTwoNeverOpenTwoSessions()
+        {
+            // The session comes back with the first scan's 202. X pressed again before that sent a second scan with no
+            // session, and the server opened a second one: two sets of objects and ideas, each ignoring the other's.
+            var f = new BuildFlow();
+            Assert.That(f.StartScan(), Is.True);
+            Assert.That(f.ScanInFlight, Is.True);
+            Assert.That(f.StartScan(), Is.False, "until the server has answered the first");
+            Assert.That(f.OnScanAccepted(f.ScanTicket, "bsess_a"), Is.True);
+            Assert.That(new object[] { f.ScanInFlight, f.SessionId }, Is.EqualTo(new object[] { false, "bsess_a" }));
+            Assert.That(f.StartScan(), Is.True, "another view, sent with the session the first one opened");
+            f.ScanFailed(f.ScanTicket);
+            Assert.That(f.ScanInFlight, Is.False);
+            Assert.That(f.StartScan(), Is.True, "and a failed scan does not block the next");
+        }
+
+        [Test]
+        public void AScanThatLandsAfterYouLeftDoesNotSwitchBuildModeBackOn()
+        {
+            var f = new BuildFlow();
+            f.StartScan(); int first = f.ScanTicket;
+            f.Exit();                                       // the Director started E7 while the first scan was still uploading
+            Assert.That(f.ScanInFlight, Is.False, "leaving forgets the scan, so X works again at once");
+            Assert.That(f.OnScanAccepted(first, "bsess_late"), Is.False, "its 202 arrives after all");
+            Assert.That(new object[] { f.Active, f.SessionId }, Is.EqualTo(new object[] { false, null }));
+            Assert.That(f.OnInventory(Inv(true, "bsess_late")), Is.False, "and its objects do not start build mode over the run that took its place");
+            Assert.That(f.Active, Is.False);
+
+            f.StartScan();                                  // X, deliberately: a new scan while the old one's results are still trickling in
+            f.ScanFailed(first);
+            Assert.That(f.Phase, Is.EqualTo(BuildPhase.Scanning), "the old scan's failure is not this scan's");
+            Assert.That(f.OnScanAccepted(first, "bsess_later_still"), Is.False);
+            Assert.That(f.OnInventory(Inv(true, "bsess_late")), Is.False, "the session that was left stays left, whatever the phase");
+            Assert.That(new object[] { f.Phase, f.SessionId, f.ScanInFlight }, Is.EqualTo(new object[] { BuildPhase.Scanning, null, true }));
+            Assert.That(f.OnScanAccepted(f.ScanTicket, "bsess_new"), Is.True);
+            Assert.That(f.OnInventory(Inv(true, "bsess_new")), Is.True);
+        }
+
+        [Test]
+        public void IdeasTheServerNoLongerHasAreDroppedSoNothingUnstartableIsShown()
+        {
+            // The start answered 404: the server restarted, or the Director page opened a new session or replayed a scan. Every
+            // preview of that session would answer 404 for ever.
+            var f = At(BuildPhase.Starting);
+            f.PickGone();
+            Assert.That(new object[] { f.Phase, f.Ideas.Count, f.Chosen }, Is.EqualTo(new object[] { BuildPhase.Labelled, 0, null }));
+            Assert.That(f.CanScanFromButton, Is.True, "X scans again");
+
+            var walking = At(BuildPhase.Walkthrough);
+            walking.PickGone();
+            Assert.That(walking.Phase, Is.EqualTo(BuildPhase.Walkthrough), "only a start that is waiting can be gone");
+        }
+
+        [Test]
+        public void AnotherSessionsObjectsDropTheIdeasOfTheSessionBefore()
+        {
+            var f = At(BuildPhase.Ideas);
+            Assert.That(f.OnInventory(Inv(true, "bsess_replay")), Is.True);      // the Director replayed a recorded scan
+            Assert.That(new object[] { f.Phase, f.Ideas.Count, f.SessionId }, Is.EqualTo(new object[] { BuildPhase.Labelled, 0, "bsess_replay" }));
+
+            var unlabelled = At(BuildPhase.Ideas);
+            unlabelled.OnInventory(Inv(false, "bsess_replay"));
+            Assert.That(new object[] { unlabelled.Phase, unlabelled.Ideas.Count }, Is.EqualTo(new object[] { BuildPhase.Scanning, 0 }));
+
+            var same = At(BuildPhase.Ideas);
+            same.OnInventory(Inv(true));                                         // another view merged into the same session
+            Assert.That(new object[] { same.Phase, same.Ideas.Count }, Is.EqualTo(new object[] { BuildPhase.Ideas, 1 }), "its ideas stand until new ones arrive");
         }
 
         [Test]
@@ -164,7 +234,7 @@ namespace CutOnce.Core.Tests
             var f = At(BuildPhase.Assembling);
             Assert.That(f.StartScan(), Is.False, "by button or by voice: wait the second or two the flight takes");
             Assert.That(f.Phase, Is.EqualTo(BuildPhase.Assembling));
-            f.ScanFailed();
+            f.ScanFailed(f.ScanTicket);
             Assert.That(f.Phase, Is.EqualTo(BuildPhase.Assembling), "a failure with no scan running changes nothing");
             f.OnAssembled();
             Assert.That(f.Phase, Is.EqualTo(BuildPhase.Walkthrough));
@@ -175,7 +245,7 @@ namespace CutOnce.Core.Tests
         public void ALateInventoryFromTheSessionYouLeftDoesNotRestartBuildMode()
         {
             var f = new BuildFlow();
-            f.StartScan(); f.OnScanAccepted("bsess_a"); f.OnInventory(Inv(false));
+            f.StartScan(); f.OnScanAccepted(f.ScanTicket, "bsess_a"); f.OnInventory(Inv(false));
             f.Exit();                                       // the Director started another run while the labels were on their way
             f.OnInventory(Inv(true));
             Assert.That(f.Active, Is.False, "the labels of the session that was left");

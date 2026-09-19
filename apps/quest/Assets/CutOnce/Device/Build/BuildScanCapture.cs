@@ -24,9 +24,26 @@ namespace CutOnce.Device
         public int cols = 128, rows = 96, raysPerFrame = 1024;
         public float millisecondsPerFrame = 4f;
         public bool Busy { get; private set; }
+        Coroutine _running;
 
-        public IEnumerator Capture(ICameraFrameSource frames, ISurfaceRaycaster surface, string sessionId, string deviceId,
-                                   Action<BuildScanUploadDto> done, Action<string> failed)
+        /// <summary>
+        /// Starts a scan. Exactly one of the two callbacks is called, unless the scan is cancelled first. The upload's
+        /// session is not set here: it is read when the scan is sent, because it can change while the rays are cast.
+        /// </summary>
+        public void Begin(ICameraFrameSource frames, ISurfaceRaycaster surface, string deviceId, Action<BuildScanUploadDto> done, Action<string> failed)
+        {
+            Cancel();
+            _running = StartCoroutine(Capture(frames, surface, deviceId, done, failed));
+        }
+
+        /// <summary>Build mode was left while the rays were still being cast: stop, and call neither callback. (A stopped coroutine never reaches its finally.)</summary>
+        public void Cancel()
+        {
+            if (_running != null) StopCoroutine(_running);
+            _running = null; Busy = false;
+        }
+
+        IEnumerator Capture(ICameraFrameSource frames, ISurfaceRaycaster surface, string deviceId, Action<BuildScanUploadDto> done, Action<string> failed)
         {
             if (Busy) { failed("already scanning"); yield break; }
             if (frames == null || !frames.IsReady) { failed("the camera is not ready"); yield break; }
@@ -59,7 +76,7 @@ namespace CutOnce.Device
                     var forward = frame.Rotation * Vector3.forward;
                     dto = new BuildScanUploadDto
                     {
-                        session_id = sessionId, device_id = deviceId, grid = new BuildGridDto { cols = cols, rows = rows },
+                        device_id = deviceId, grid = new BuildGridDto { cols = cols, rows = rows },
                         points_mm = enc.PointsMm, hit = enc.HitMask,
                         camera = new BuildCameraDto
                         {

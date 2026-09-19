@@ -42,10 +42,27 @@ namespace CutOnce.Net.Tests
         public async Task StartingAnIdeaPostsToItsEscapedIdAndReturnsTheRun()
         {
             var http = new OneAnswer { Body = "{\"assembly_id\":\"asm_1\",\"plan_id\":\"plan_build_1\",\"revision\":1}" };
-            var started = await Client(http).StartBuildIdea("idea 1/x");
+            var outcome = await Client(http).StartBuildIdea("idea 1/x");
             Assert.That(http.Seen.Method + " " + http.Seen.Url, Is.EqualTo("POST http://fake:8080/v1/build/ideas/idea%201%2Fx/start"));
             Assert.That(http.Seen.Body, Is.EqualTo("{}"));
-            Assert.That(started.plan_id, Is.EqualTo("plan_build_1"));
+            Assert.That(new object[] { outcome.Started.plan_id, outcome.Started.assembly_id, outcome.Gone }, Is.EqualTo(new object[] { "plan_build_1", "asm_1", false }));
+        }
+
+        [Test]
+        public async Task AStartSaysWhenTheIdeaIsGoneSoItsPreviewCanBeDropped()
+        {
+            // 404: the idea is not in the server's current session (a restart, or New session / Replay on the Director page).
+            // Trying again can never work, unlike a 500 or no network, so the two must be told apart.
+            var http = new OneAnswer { Status = 404, Body = "{\"error\":{\"code\":\"not_found\",\"message\":\"build idea idea_1\"}}" };
+            var gone = await Client(http).StartBuildIdea("idea_1");
+            Assert.That(new object[] { gone.Started, gone.Gone }, Is.EqualTo(new object[] { null, true }));
+
+            http.Status = 500; http.Body = "{}";
+            var failed = await Client(http).StartBuildIdea("idea_1");
+            Assert.That(new object[] { failed.Started, failed.Gone }, Is.EqualTo(new object[] { null, false }));
+
+            http.Status = 0; http.Body = null;
+            Assert.That((await Client(http).StartBuildIdea("idea_1")).Gone, Is.False, "no network is not \"gone\"");
         }
 
         [Test]

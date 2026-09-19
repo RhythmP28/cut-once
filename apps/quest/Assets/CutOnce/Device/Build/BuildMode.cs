@@ -75,36 +75,40 @@ namespace CutOnce.Device
         {
             if (_capture.Busy) return;
             bool wasOff = !_flow.Active;
-            if (!_flow.StartScan()) return;
+            if (!_flow.StartScan()) return;                                  // the pieces are flying, or the last scan has not been answered yet
+            int ticket = _flow.ScanTicket;                                   // names this scan: whatever comes back for another one is stale
             if (wasOff) _overServerRun = _sync.HasServerRun;
             _previews.Clear(); _hovered = null;
             ShowOrHideHologram();
             _hud.Toast("Scanning… hold still for a second", 3f);
             var copilot = FindAnyObjectByType<CopilotController>();
             var frames = copilot != null ? copilot.frameSourceBehaviour as ICameraFrameSource : null;
-            StartCoroutine(_capture.Capture(frames, _surface, _flow.SessionId, _config.device_id, Scanned, ScanFailed));
+            _capture.Begin(frames, _surface, _config.device_id, scan => Scanned(scan, ticket), error => ScanFailed(error, ticket));
         }
 
-        void Scanned(BuildScanUploadDto scan)
+        void Scanned(BuildScanUploadDto scan, int ticket)
         {
+            if (!_flow.Active || ticket != _flow.ScanTicket) return;         // build mode was left meanwhile: the scan is dropped, not uploaded
             _hud.Toast("Got it · finding the objects…", 4f);              // the rays are done: you can move again
-            Run(Upload(scan));
+            Run(Upload(scan, ticket));
         }
 
-        void ScanFailed(string error)
+        void ScanFailed(string error, int ticket)
         {
+            if (ticket != _flow.ScanTicket || !_flow.ScanInFlight) return;   // a scan that was given up: its failure is nobody's news
             _hud.Toast("Couldn't scan: " + error, 4f);
-            _flow.ScanFailed();
+            _flow.ScanFailed(ticket);
             if (_flow.Phase == BuildPhase.Ideas) ShowPreviews();             // a look-around scan that failed: the ideas are still good
             ShowOrHideHologram();
         }
 
-        async Task Upload(BuildScanUploadDto scan)
+        async Task Upload(BuildScanUploadDto scan, int ticket)
         {
+            scan.session_id = _flow.SessionId;                               // as it is now, when the scan leaves: not as it was when the rays started
             var accepted = await _api.PostBuildScan(scan);
             if (this == null) return;
-            if (accepted == null) { ScanFailed("the server didn't get the scan"); return; }
-            _flow.OnScanAccepted(accepted.session_id);
+            if (accepted == null) { ScanFailed("the server didn't get the scan", ticket); return; }
+            _flow.OnScanAccepted(ticket, accepted.session_id);               // for a scan given up meanwhile, this only marks its session as left
         }
 
         // ── what the server sends ─────────────────────────────────────────────────────────────────────────────────
@@ -116,6 +120,7 @@ namespace CutOnce.Device
                 if (!_flow.OnInventory(m.inventory)) return;
                 if (wasOff) _overServerRun = _sync.HasServerRun;             // a Director replay starts build mode too
                 _twins.Show(m.inventory);
+                if (_flow.Phase != BuildPhase.Ideas) { _previews.Clear(); _hovered = null; }   // another session's objects: the old session's ideas went with it
                 ShowOrHideHologram();
                 if (!string.IsNullOrEmpty(m.inventory.message)) _hud.Toast(m.inventory.message, 5f);
             }
@@ -156,11 +161,21 @@ namespace CutOnce.Device
         {
             if (!_flow.Pick(ideaId)) return;
             _hud.Toast("Building: " + _flow.Chosen.title, 3f);
-            var started = await _api.StartBuildIdea(ideaId);
+            var outcome = await _api.StartBuildIdea(ideaId);
             if (this == null) return;
+            var started = outcome.Started;
             if (started == null)
             {
                 if (_flow.Phase != BuildPhase.Starting) return;              // the answer was lost, but the run arrived and is placed
+                if (outcome.Gone)
+                {
+                    // 404: the server's session no longer has these ideas (it restarted, or the Director page opened a new
+                    // session). None of them can ever start, so they go; the objects stay, and X scans again.
+                    _flow.PickGone();
+                    _previews.Clear(); _hovered = null;
+                    _hud.Toast("Those ideas are gone. Scan again (X).", 6f);
+                    return;
+                }
                 _hud.Toast("Couldn't start that build", 4f);
                 _flow.PickFailed();
                 return;
@@ -255,6 +270,7 @@ namespace CutOnce.Device
 
         public void Exit()
         {
+            _capture.Cancel();                                               // a scan still casting rays must not upload after build mode has ended
             _fly.Stop();
             _flow.Exit();
             _twins.Clear(); _previews.Clear();

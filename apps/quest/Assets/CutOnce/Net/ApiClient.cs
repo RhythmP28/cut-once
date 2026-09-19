@@ -5,6 +5,12 @@ namespace CutOnce.Net
 {
     public enum AppendStatus { Accepted, Refused, Unreachable }
 
+    public sealed class IdeaStartOutcome
+    {
+        public IdeaStartedDto Started;   // null when the run was not started
+        public bool Gone;                // 404: the server's session no longer has this idea
+    }
+
     public sealed class AppendOutcome
     {
         public AppendStatus Status;
@@ -94,9 +100,15 @@ namespace CutOnce.Net
             return ParseOrNull<ScanAcceptedDto>(await Send("POST", "/v1/build/scans", json, 20));
         }
 
-        /// <summary>Starts a run of a checked design. The run itself arrives on the stream (assembly_changed).</summary>
-        public async Task<IdeaStartedDto> StartBuildIdea(string ideaId) =>
-            ParseOrNull<IdeaStartedDto>(await Send("POST", $"/v1/build/ideas/{System.Uri.EscapeDataString(ideaId)}/start", "{}", 15));
+        /// <summary>
+        /// Starts a run of a checked design. The run itself arrives on the stream (assembly_changed). A 404 is told apart
+        /// from every other failure: the idea is not in the server's session any more, so trying again can never work.
+        /// </summary>
+        public async Task<IdeaStartOutcome> StartBuildIdea(string ideaId)
+        {
+            var r = await Send("POST", $"/v1/build/ideas/{System.Uri.EscapeDataString(ideaId)}/start", "{}", 15);
+            return new IdeaStartOutcome { Started = ParseOrNull<IdeaStartedDto>(r), Gone = r.Status == 404 };
+        }
 
         /// <summary>Speaks a sentence in the copilot's voice; play the returned audio_url with the copilot's player.</summary>
         public async Task<SayDto> BuildSay(string text) =>
