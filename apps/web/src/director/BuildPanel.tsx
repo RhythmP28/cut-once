@@ -45,6 +45,26 @@ export function BuildPanel() {
   };
 
   return (
+    <BuildPanelView
+      twins={twins} ideas={ideas} scans={scans} vocab={vocab} pick={pick} busy={busy} status={status} error={error}
+      onPick={setPick}
+      onStart={(i) => void run(`start ${i.title}`, () => startBuildIdea(i.idea_id))()}
+      onAdd={() => void run("add object", () => addBuildObject(pick))()}
+      onReplay={(scanId, labels) => void run(labels === "saved" ? "replay" : "replay with new names", () => replayBuildScan(scanId, labels))()}
+      onNewSession={() => void run("new session", () => newBuildSession())()}
+    />
+  );
+}
+
+export interface BuildPanelViewProps {
+  twins: Twin[]; ideas: BuildIdea[]; scans: BuildScanRow[]; vocab: BuildVocabItem[]; pick: string; busy: boolean; status: string; error: string | null;
+  onPick: (name: string) => void; onStart: (idea: BuildIdea) => void; onAdd: () => void;
+  onReplay: (scanId: string, labels: "saved" | "live") => void; onNewSession: () => void;
+}
+
+/** What the panel shows, with no state of its own: the test renders it with a session's data. */
+export function BuildPanelView({ twins, ideas, scans, vocab, pick, busy, status, error, onPick, onStart, onAdd, onReplay, onNewSession }: BuildPanelViewProps) {
+  return (
     <section className="card">
       <h2>Build mode</h2>
 
@@ -68,17 +88,17 @@ export function BuildPanel() {
             <span className="client-kind">{i.source}</span>
             <span>{i.title}</span>
             <span className="muted small">{i.plan.steps.length - 1} pieces</span>
-            <button type="button" className="small" disabled={busy} onClick={run(`start ${i.title}`, () => startBuildIdea(i.idea_id))}>Start</button>
+            <button type="button" className="small" disabled={busy} onClick={() => onStart(i)}>Start</button>
           </li>
         ))}
       </ul>
 
       <h3>Add a missed object</h3>
       <div className="row wrap">
-        <select value={pick} onChange={(e) => setPick(e.target.value)} aria-label="Object to add">
+        <select value={pick} onChange={(e) => onPick(e.target.value)} aria-label="Object to add">
           {vocab.map((v) => <option key={v.name} value={v.name}>{v.label}</option>)}
         </select>
-        <button type="button" disabled={!pick || busy} onClick={run("add object", () => addBuildObject(pick))}>Add</button>
+        <button type="button" disabled={!pick || busy} onClick={onAdd}>Add</button>
       </div>
 
       <h3>Scans</h3>
@@ -88,15 +108,15 @@ export function BuildPanel() {
           <li key={s.scan_id}>
             <span className="client-kind">{s.recording ? "recording" : "live"}</span>
             <span className="run-id">{s.scan_id}</span>
-            <button type="button" className="small" disabled={busy} title="Replay with the names it was saved with: no model, the same every time" onClick={run("replay", () => replayBuildScan(s.scan_id, "saved"))}>Replay</button>
-            <button type="button" className="small" disabled={busy} title="Replay, asking the vision model for names again" onClick={run("replay with new names", () => replayBuildScan(s.scan_id, "live"))}>New names</button>
+            <button type="button" className="small" disabled={busy} title="Replay with the names it was saved with: no model, the same every time" onClick={() => onReplay(s.scan_id, "saved")}>Replay</button>
+            <button type="button" className="small" disabled={busy} title="Replay, asking the vision model for names again" onClick={() => onReplay(s.scan_id, "live")}>New names</button>
           </li>
         ))}
       </ul>
       {scans.length > SCANS_SHOWN && <p className="muted small">Showing the newest {SCANS_SHOWN} of {scans.length}.</p>}
 
       <div className="row wrap">
-        <button type="button" disabled={busy} onClick={run("new session", () => newBuildSession())}>New session</button>
+        <button type="button" disabled={busy} onClick={onNewSession}>New session</button>
         {status && !error && <span className="muted small">{status}</span>}
         {error && <span className="error-text">{error}</span>}
       </div>
