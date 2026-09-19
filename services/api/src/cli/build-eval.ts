@@ -70,7 +70,7 @@ for (const name of recs) {
   const twins = fixSizes(named.twins, vocab);
   const ideas = await computeIdeas(
     { cfg, vocab, rules, call: args.has("--live") ? aiFor(cfg, "ideas")?.call ?? null : null, model: aiFor(cfg, "ideas")?.model ?? "none",
-      cacheDir: join(files.root, "idea-cache"), timeoutMs: 20_000, log },
+      cacheDir: join(files.root, "idea-cache"), timeoutMs: 20_000, liveMs: cfg.buildLiveMs, log },
     { sessionId: "bsess_eval", twins, surfaces: built.surfaces, camera: scan.camera.position, photo, request: null }, () => {});
   // Two size errors: as measured (the twin builder's own work), and after known objects took their standard size (what
   // the designs use; zero for every object the vocabulary has a size for, so only the first shows a twin builder slipping).

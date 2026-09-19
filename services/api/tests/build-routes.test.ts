@@ -40,11 +40,12 @@ describe("a scan of the kit", () => {
     expect((await post("/v1/build/scans", kitUpload())).statusCode).toBe(202);
     await t.app.ctx.hooks.build!.idle();
     const kinds = seen.map((m) => (m.type === "build_inventory" ? `inventory:${m.inventory.labelled}` : m.type === "build_ideas" ? `ideas:${m.final}` : m.type));
-    expect(kinds).toEqual(["inventory:false", "inventory:true", "ideas:false", "ideas:true"]);
+    expect(kinds).toEqual(["inventory:false", "inventory:true", "ideas:true"]);
     const last = seen.at(-1)!;
     expect(nameTwins).toHaveBeenCalledOnce();
     const named = seen.find((m) => m.type === "build_inventory" && m.inventory.labelled);
-    expect(named?.type === "build_inventory" && named.inventory.message).toBeNull();          // named by the (stand-in) vision model, not by size
+    // Named by the (stand-in) vision model, so no "by size" note: just what it sees and what it is doing.
+    expect(named?.type === "build_inventory" && named.inventory.message).toBe("I see three tall cans and a pizza box. Working out what they could become…");
     expect(last.type === "build_ideas" && last.ideas.map((i) => i.title)).toEqual(["Laptop riser"]);
     expect(last.type === "build_ideas" && last.message).toMatch(/You could build a laptop riser/);
   });

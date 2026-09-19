@@ -5,6 +5,7 @@ import { z } from "zod";
 import { validatePlan } from "@cutonce/project-model";
 import { S, Strict, type BuildIdea, type IdeaDraft, type Surface, type Twin, type Vec3 } from "@cutonce/schemas";
 import type { Config } from "../config.js";
+import { normalise } from "../copilot/fastpath.js";
 import { writeJsonAtomic } from "../store/fs.js";
 import type { Payload, Rule, Vocab } from "./data.js";
 import { newId } from "./files.js";
@@ -17,26 +18,44 @@ import { solve } from "./solver.js";
 import { checkStability } from "./stability.js";
 
 export interface IdeasDeps {
-  /** The designing job's model call, or null when no provider has a key (then: rules only). */
+  /** The designing job's model call, or null when no provider has a key (then: the cache, then the rules). */
   cfg: Config; vocab: Vocab; rules: Rule[]; call: ModelCall | null; model: string; cacheDir: string; timeoutMs: number;
+  /** How long the live answer is waited for before the rehearsal cache is shown (BUILD_LIVE_MS). */
+  liveMs: number;
   log: { warn: (o: object, m: string) => void };
+  /** Work that finishes after the answer (a late live answer refreshing the cache); the session's idle() awaits it. */
+  background?: (work: Promise<unknown>) => void;
+  /** A progress line for the HUD, such as "Checked 4 designs: 3 stand up." */
+  note?: (text: string) => void;
 }
-export interface IdeasInput { sessionId: string; twins: Twin[]; surfaces: Surface[]; camera: Vec3; photo: Buffer | null; request: string | null }
-type Candidate = { draft: IdeaDraft; source: "rule" | "ai"; ruleId: string | null; payload: Payload | null };
+export interface IdeasInput {
+  sessionId: string; twins: Twin[]; surfaces: Surface[]; camera: Vec3; photo: Buffer | null;
+  /** What the builder asked for ("a birdhouse"), or null. */
+  request: string | null;
+  /** Titles already offered in this session: not offered again unless the request names them. */
+  offered?: string[];
+}
+type Made = NonNullable<BuildIdea["made"]>;
+type Candidate = { draft: IdeaDraft; source: "rule" | "ai"; made: Made; ruleId: string | null; payload: Payload | null };
 
 const Out = z.object({ ideas: z.array(S.IdeaDraft) });
 const OutStrict = z.object({ ideas: z.array(Strict.IdeaDraft) });
 
+/** Part of every cache key: a change to SYSTEM below must retire the designs cached under the old words. */
+export const PROMPT_VERSION = "kit-2";
+
 const SYSTEM = [
-  "You design small things a person can build right now from the real objects in front of them, like a Master Builder in the Lego Movie.",
-  "You get an inventory of objects with measured sizes, and a photo. Return exactly 4 designs, each as bottom-up placement steps:",
+  "You are Kit, the Kitbash co-pilot. You design small things a person can build right now from the real objects in front of them, like a Master Builder in the Lego Movie.",
+  "You get an inventory of objects with measured sizes, and a photo. The objects can be anything. Return exactly 4 designs, each as bottom-up placement steps:",
   "- place: an object id from the inventory (each at most once).",
   "- orientation: upright (tallest side up), flat (thinnest side up) or on_side (middle side up). Cans, bottles, mugs and other cylinders can only be upright.",
   "- on: [] for the table, or ids already placed that it rests on. Supports must be able to hold weight and be the SAME height: use identical objects as supports.",
   "- at_cm: {x, z} on the table (x to the right, z toward the viewer, origin the centre of the build), or null.",
   "- next_to, side (left/right/front/back), gap_cm: or put it beside an object already on the table.",
   "Something resting on supports needs at least 3 supports that are not in a line, or one support at least as wide as it. Keep weight over what holds it.",
-  "At most 6 objects. No cutting in this version. Title: 2–4 words saying what it is for. why: one fun sentence a judge would enjoy.",
+  "If THE BUILDER ASKED for something, every design must be that thing or clearly serve it. If these objects cannot make it, give the closest designs you can and say so in why.",
+  "Designs listed as already offered must not be repeated unless the builder asks for one again.",
+  "At most 6 objects. No cutting. Title: 2–4 words saying what it is for. why: one fun sentence a judge would enjoy.",
 ].join("\n");
 
 export function inventoryText(twins: Twin[], surfaces: Surface[]): string {
@@ -45,10 +64,19 @@ export function inventoryText(twins: Twin[], surfaces: Surface[]): string {
   return `Surfaces: ${s || "none"}.\nObjects:\n${lines.join("\n")}`;
 }
 
-/** Same names and sizes → same key; canonical ids c1… in name-then-size order, so cached designs map onto a new scan. */
-export function canonical(twins: Twin[]) {
-  const sorted = [...twins].sort((a, b) => a.name.localeCompare(b.name) || volumeOf(a.shape) - volumeOf(b.shape) || a.twin_id.localeCompare(b.twin_id));
-  const key = createHash("sha1").update(sorted.map((t) => `${t.name}:${dimsCm(t.shape).map(Math.round).join("x")}`).join("|")).digest("hex").slice(0, 16);
+/** An object's identity in a cache key: a vocabulary name, or the model's own name for anything else. */
+const kindOf = (t: Twin) => (t.name === "other" ? `other:${normalise(t.label)}` : t.name);
+
+/**
+ * The cache key and the canonical ids (c1… in kind-then-size order) that map cached designs onto a new scan of the
+ * same things. Sizes to the centimetre for objects with a standard size, to 5 cm for measured ones: two scans of one
+ * box differ by a centimetre or two, and a cached design is checked again against today's sizes anyway. The wish,
+ * the model and the prompt's version are in the key too: a birdhouse is not the answer to "something crazier".
+ */
+export function canonical(twins: Twin[], wish: string | null = null, model = "") {
+  const sorted = [...twins].sort((a, b) => kindOf(a).localeCompare(kindOf(b)) || volumeOf(a.shape) - volumeOf(b.shape) || a.twin_id.localeCompare(b.twin_id));
+  const size = (t: Twin) => dimsCm(t.shape).map((v) => (t.snapped ? Math.round(v) : 5 * Math.round(v / 5)));
+  const key = createHash("sha1").update(JSON.stringify([PROMPT_VERSION, model, sorted.map((t) => [kindOf(t), size(t)]), wish ? normalise(wish) : ""])).digest("hex").slice(0, 16);
   return { key, toCanon: new Map(sorted.map((t, i) => [t.twin_id, `c${i + 1}`])), fromCanon: new Map(sorted.map((t, i) => [`c${i + 1}`, t.twin_id])) };
 }
 
@@ -60,9 +88,12 @@ const roomBox = (t: Twin): Box2 => {
 
 const remap = (d: IdeaDraft, m: Map<string, string>): IdeaDraft | null => {
   const id = (x: string) => m.get(x);
-  const ids = [...d.uses, ...d.steps.flatMap((s) => [s.place, ...s.on, ...(s.next_to ? [s.next_to] : [])])];
+  const ids = [...d.uses, ...d.steps.flatMap((s) => [s.place, ...s.on, ...(s.next_to ? [s.next_to] : []), ...(s.taped_to ?? [])])];
   if (ids.some((x) => !id(x))) return null;
-  return { ...d, uses: d.uses.map((x) => id(x)!), steps: d.steps.map((s) => ({ ...s, place: id(s.place)!, on: s.on.map((x) => id(x)!), next_to: s.next_to ? id(s.next_to)! : null })) };
+  return {
+    ...d, uses: d.uses.map((x) => id(x)!),
+    steps: d.steps.map((s) => ({ ...s, place: id(s.place)!, on: s.on.map((x) => id(x)!), next_to: s.next_to ? id(s.next_to)! : null, ...(s.taped_to ? { taped_to: s.taped_to.map((x) => id(x)!) } : {}) })),
+  };
 };
 
 function buildSurface(twins: Twin[], surfaces: Surface[]): Surface | null {
@@ -90,7 +121,7 @@ function check(c: Candidate, byId: Map<string, Twin>, surface: Surface, input: I
   const site = chooseSite(surface, pile, { w: size[0], d: size[1] }, input.camera, inTheWay);
   return { idea: {
     idea_id: ideaId, session_id: input.sessionId, source: c.source, rule_id: c.ruleId, title: c.draft.title, why: c.draft.why, tools: c.draft.tools,
-    plan, origin: { position: site.position, rotation_quat: site.rotation_quat }, twin_of: twinOf, score: (c.source === "rule" ? 100 : 50) + used.length,
+    plan, origin: { position: site.position, rotation_quat: site.rotation_quat }, twin_of: twinOf, score: (c.source === "rule" ? 50 : 100) + used.length, made: c.made,
   } };
 }
 
@@ -99,65 +130,122 @@ const top3 = (list: BuildIdea[]) => {
   return [...list].sort((a, b) => b.score - a.score).filter((i) => { const k = i.title.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 3);
 };
 
-/** Rule ideas go out as soon as they pass (final: false); the AI's join them in the final list. */
+const sleep = (ms: number) => new Promise<null>((resolve) => { const t = setTimeout(() => resolve(null), ms); t.unref?.(); });
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * The designs for what is on the table: Kit's own, asked for live. If the live answer is not back within liveMs,
+ * the designs saved earlier (at rehearsal) for the same objects and wish are shown instead, and the live answer only
+ * refreshes the cache when it lands: a preview never changes under the judge's pointer. With nothing cached, Kit
+ * keeps waiting for the live answer. The stored rules come last: with no model at all, or when nothing else stands.
+ * Designs already offered in this session are not offered again, unless the request names one. One final list.
+ */
 export async function computeIdeas(deps: IdeasDeps, input: IdeasInput, emit: (ideas: BuildIdea[], final: boolean) => void): Promise<BuildIdea[]> {
   const usable = input.twins.filter((t) => t.name !== "unknown" && t.confidence >= 0.5);
   const byId = new Map(usable.map((t) => [t.twin_id, t]));
   const surface = buildSurface(usable, input.surfaces);
   if (!surface || usable.length === 0) { emit([], true); return []; }
-  const ruleIdeas = matchRules(deps.rules, usable)
-    .map((m) => check({ draft: m.draft, source: "rule", ruleId: m.rule.rule_id, payload: m.payload }, byId, surface, input, deps))
+  const canon = canonical(usable, input.request, deps.model);
+  const offered = new Set((input.offered ?? []).map((t) => t.toLowerCase()));
+  const asked = input.request ? normalise(input.request) : "";
+  const fresh = (list: BuildIdea[]) => list.filter((i) => !offered.has(i.title.toLowerCase()) || (asked !== "" && asked.includes(normalise(i.title))));
+  const fromCache = () => cachedIdeas(deps, input, byId, surface, canon);
+  const fromRules = () => matchRules(deps.rules, usable)
+    .map((m) => check({ draft: m.draft, source: "rule", made: "rule", ruleId: m.rule.rule_id, payload: m.payload }, byId, surface, input, deps))
     .flatMap((r) => ("idea" in r ? [r.idea] : []));
-  if (ruleIdeas.length) emit(top3(ruleIdeas), false);
-  let aiIdeas: BuildIdea[] = [];
+
+  // Each source in order: the live answer (or, when it is late, the cache), the cache, the stored rules. New designs
+  // from any source beat repeats; repeats beat an empty list (a rethink whose only designs were shown already).
+  let first: BuildIdea[] = [];
   if (deps.call) {
-    try { aiIdeas = await invent(deps, input, usable, byId, surface, ruleIdeas.map((i) => i.title)); }
-    catch (err) { deps.log.warn({ err: (err as Error).message }, "AI build ideas failed; offering rule ideas only"); }
+    const live = invent(deps, input, usable, byId, surface, canon);
+    const settled = live.then((r) => ({ r }), (e: Error) => ({ e }));
+    const early = await Promise.race([settled, sleep(deps.liveMs)]);
+    const cached = early === null ? fromCache() : [];
+    if (early === null && cached.length) {
+      first = cached;
+      deps.background?.(settled.then((s) => { if ("e" in s) deps.log.warn({ err: s.e.message }, "a late live design answer failed"); }));
+    } else {
+      const done = early ?? (await settled);
+      if ("e" in done) deps.log.warn({ err: done.e.message }, "live build ideas failed; using the cache or the rules");
+      else {
+        first = done.r.ideas;
+        if (done.r.tried > 0) deps.note?.(`Checked ${plural(done.r.tried, "design", "designs")}: ${plural(done.r.ideas.length, "stands", "stand")} up.`);
+      }
+    }
   }
-  const all = top3([...ruleIdeas, ...aiIdeas]);
-  emit(all, true);
-  return all;
+  let ideas: BuildIdea[] = [], repeats: BuildIdea[] = [];
+  for (const source of [() => first, fromCache, fromRules]) {
+    const all = source(), kept = fresh(all);
+    if (kept.length) { ideas = kept; break; }
+    if (!repeats.length) repeats = all;
+  }
+  if (!ideas.length) ideas = repeats;
+  const shown = top3(ideas);
+  emit(shown, true);
+  return shown;
 }
 
-async function invent(deps: IdeasDeps, input: IdeasInput, usable: Twin[], byId: Map<string, Twin>, surface: Surface, offered: string[]): Promise<BuildIdea[]> {
-  const canon = canonical(usable), cachePath = join(deps.cacheDir, `${canon.key}.json`);
+/** The designs cached for these objects and this wish, mapped onto today's twins and checked again. */
+function cachedIdeas(deps: IdeasDeps, input: IdeasInput, byId: Map<string, Twin>, surface: Surface, canon: ReturnType<typeof canonical>): BuildIdea[] {
+  const path = join(deps.cacheDir, `${canon.key}.json`);
+  if (!existsSync(path)) return [];
+  try {
+    const drafts = (JSON.parse(readFileSync(path, "utf8")) as { drafts: IdeaDraft[] }).drafts;
+    return drafts.map((d) => remap(d, canon.fromCanon)).filter((d): d is IdeaDraft => d !== null)
+      .map((draft) => check({ draft, source: "ai", made: "cache", ruleId: null, payload: null }, byId, surface, input, deps))
+      .flatMap((r) => ("idea" in r ? [r.idea] : []));
+  } catch (err) {
+    deps.log.warn({ err: (err as Error).message }, "the cached build ideas could not be read");
+    return [];
+  }
+}
+
+/** One live ask (and one repair round for the designs that fail a check); what stands is cached under the key. */
+async function invent(deps: IdeasDeps, input: IdeasInput, usable: Twin[], byId: Map<string, Twin>, surface: Surface, canon: ReturnType<typeof canonical>): Promise<{ ideas: BuildIdea[]; tried: number }> {
+  const call = deps.call!;
+  const offered = input.offered ?? [];
   const text = inventoryText(usable, input.surfaces)
     + (offered.length ? `\nAlready offered, do not repeat: ${offered.join(", ")}.` : "")
     + (input.request ? `\nThe builder asked: "${input.request}".` : "");
-  const call = deps.call!;
   const ask = async (t: string, photo: Buffer | null) => Out.parse(await call(deps.cfg, {
     name: "build_ideas", model: deps.model, schema: Out, strictSchema: OutStrict, system: SYSTEM, text: t, timeoutMs: deps.timeoutMs,
     images: photo ? [{ data: photo, mime: "image/jpeg" as const }] : [],
   }));
-  const cached = !input.request && existsSync(cachePath)
-    ? (JSON.parse(readFileSync(cachePath, "utf8")) as { drafts: IdeaDraft[] }).drafts.map((d) => remap(d, canon.fromCanon)).filter((d): d is IdeaDraft => d !== null)
-    : null;
-  const drafts = cached ?? (await ask(text, input.photo)).ideas;
-  const ai = (draft: IdeaDraft) => check({ draft, source: "ai", ruleId: null, payload: null }, byId, surface, input, deps);
+  const drafts = (await ask(text, input.photo)).ideas;
+  const ai = (draft: IdeaDraft) => check({ draft, source: "ai", made: "live", ruleId: null, payload: null }, byId, surface, input, deps);
   const ok: { draft: IdeaDraft; idea: BuildIdea }[] = [], failed: { draft: IdeaDraft; reason: string }[] = [];
   for (const draft of drafts) { const r = ai(draft); if ("idea" in r) ok.push({ draft, idea: r.idea }); else failed.push({ draft, reason: r.reason }); }
-  if (!cached && failed.length) {
+  let tried = drafts.length;
+  if (failed.length) {
     const fix = `${text}\n\nThese designs failed a check. Fix each one and return only the fixed designs:\n${failed.map((f) => `- ${JSON.stringify(f.draft)}\n  failed because ${f.reason}`).join("\n")}`;
     // The repair is a bonus: if it fails, the designs that already passed still go out.
-    try { for (const draft of (await ask(fix, null)).ideas) { const r = ai(draft); if ("idea" in r) ok.push({ draft, idea: r.idea }); } }
-    catch (err) { deps.log.warn({ err: (err as Error).message }, "the repair round for AI build ideas failed; keeping the designs that passed"); }
+    try {
+      const repaired = (await ask(fix, null)).ideas;
+      tried += repaired.length;
+      for (const draft of repaired) { const r = ai(draft); if ("idea" in r) ok.push({ draft, idea: r.idea }); }
+    } catch (err) { deps.log.warn({ err: (err as Error).message }, "the repair round for AI build ideas failed; keeping the designs that passed"); }
   }
-  // Only a plain ask is cached under the pile's key: a rethink's designs ("for my phone instead") answer its request, not the pile.
-  if (!cached && !input.request && ok.length) {
-    try { writeJsonAtomic(cachePath, { drafts: ok.map((o) => remap(o.draft, canon.toCanon)).filter(Boolean) }); }
+  if (ok.length) {
+    try { writeJsonAtomic(join(deps.cacheDir, `${canon.key}.json`), { drafts: ok.map((o) => remap(o.draft, canon.toCanon)).filter(Boolean), model: deps.model, at: new Date().toISOString() }); }
     catch (err) { deps.log.warn({ err: (err as Error).message }, "could not cache the AI build ideas"); }
   }
-  return ok.map((o) => o.idea);
+  return { ideas: ok.map((o) => o.idea), tried };
 }
 
 const NUM = ["no", "a", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
 const list = (w: string[]) => (w.length <= 1 ? w.join("") : `${w.slice(0, -1).join(", ")} and ${w.at(-1)}`);
 
-/** What the voice says when the final ideas arrive. */
-export function summary(twins: Twin[], ideas: Pick<BuildIdea, "title">[]): string {
+/** "three tall cans, a pizza box and a tape roll": every named object, counted. Empty when none has a name. */
+export function describeFound(twins: Twin[]): string {
   const counts = new Map<string, number>();
   for (const t of twins) if (t.name !== "unknown") counts.set(t.label, (counts.get(t.label) ?? 0) + 1);
-  const found = list([...counts.entries()].map(([label, n]) => (n === 1 ? `a ${label}` : `${NUM[n] ?? n} ${label}s`)));
+  return list([...counts.entries()].map(([label, n]) => (n === 1 ? `a ${label}` : `${NUM[n] ?? n} ${label}s`)));
+}
+
+/** What the voice says when the final ideas arrive. */
+export function summary(twins: Twin[], ideas: Pick<BuildIdea, "title">[]): string {
+  const found = describeFound(twins);
   if (!found) return "I couldn't make out any objects. Try looking from a little closer.";
   if (!ideas.length) return `I found ${found}, but nothing I tried stands up. Add something flat to go on top, or three things the same height.`;
   return `I found ${found}. You could build ${list(ideas.map((i) => `a ${i.title.toLowerCase()}`))}.`;

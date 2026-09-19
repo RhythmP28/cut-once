@@ -7,7 +7,7 @@ import { normalise } from "../copilot/fastpath.js";
 import { badRequest, notFound } from "../errors.js";
 import { standardShape, type Rule, type Vocab } from "./data.js";
 import { BuildFiles, newId } from "./files.js";
-import { computeIdeas, summary } from "./ideas.js";
+import { computeIdeas, describeFound, summary } from "./ideas.js";
 import type { AiCall } from "../ai.js";
 import { nameTwins } from "./label.js";
 import { appendTwin, mergeSurfaces, mergeTwins } from "./merge.js";
@@ -74,11 +74,17 @@ export class BuildSessions {
   private expected: { wish: string | null; at: number } | null = null;
   /** What the queue is doing right now: reading a scan, naming its objects, or designing. */
   private busy: "reading" | "naming" | "designing" | null = null;
+  /** Work that outlives its queue step: a late live design answer refreshing the cache. */
+  private readonly background = new Set<Promise<unknown>>();
 
   constructor(private readonly ctx: Ctx, private readonly deps: BuildDeps) { this.files = new BuildFiles(ctx.cfg.dataDir, ctx.cfg.repoRoot); }
 
   current = () => this.session;
-  idle = () => this.queue;
+  /** Resolves once every queued scan has been processed and nothing is still running behind it. */
+  idle = async (): Promise<void> => {
+    await this.queue;
+    await Promise.all([...this.background]);
+  };
   ideaTitles = () => this.session?.ideas.map((i) => i.title) ?? [];
 
   newSession(): Session {
@@ -130,7 +136,7 @@ export class BuildSessions {
     if (!s || !this.canRethink()) return Promise.resolve(false);
     s.wish = cleanWish(request) ?? s.wish;
     const photo = s.photo && existsSync(s.photo) ? readFileSync(s.photo) : null;
-    this.enqueue(() => this.ideas(s, photo));
+    this.enqueue(() => { this.broadcastInventory(s, s.twins, null, true, s.wish ? `Designing ${s.wish}…` : "Thinking again…"); return this.ideas(s, photo); });
     return Promise.resolve(true);
   }
 
@@ -203,7 +209,7 @@ export class BuildSessions {
       const named = await this.label(scan, photo, incoming, surfaces, cloud, labels);
       if (this.replaced(session)) return;
       session.twins = fixSizes(mergeTwins(session.twins, named.twins), this.deps.vocab);
-      this.broadcastInventory(session, session.twins, scan.scan_id, true, named.note);
+      this.broadcastInventory(session, session.twins, scan.scan_id, true, [named.note, this.seeing(session)].filter(Boolean).join(" ") || null);
       await this.ideas(session, photo);
     } catch (err) {
       // A schema error's message is a page of JSON, and this sentence is read on the HUD.
@@ -241,11 +247,24 @@ export class BuildSessions {
     } finally { this.busy = busyBefore; }
   }
 
+  /** "I see three tall cans and a pizza box. Designing a birdhouse…": what the HUD says once the objects have names. */
+  private seeing(session: Session): string | null {
+    const found = describeFound(session.twins);
+    return found ? `I see ${found}. ${session.wish ? `Designing ${session.wish}…` : "Working out what they could become…"}` : null;
+  }
+
+  private track(work: Promise<unknown>): void {
+    const done = work.catch(() => {}).finally(() => this.background.delete(done));
+    this.background.add(done);
+  }
+
   private async design(session: Session, photo: Buffer | null, ai: AiCall | null): Promise<void> {
     await computeIdeas(
       { cfg: this.ctx.cfg, vocab: this.deps.vocab, rules: this.deps.rules, call: ai?.call ?? null, model: ai?.model ?? "none",
-        cacheDir: join(this.files.root, "idea-cache"), timeoutMs: 20_000, log: this.deps.log },
-      { sessionId: session.session_id, twins: session.twins, surfaces: session.surfaces, camera: session.camera ?? [0, 1.6, 0], photo, request: session.wish },
+        cacheDir: join(this.files.root, "idea-cache"), timeoutMs: 20_000, liveMs: this.ctx.cfg.buildLiveMs, log: this.deps.log,
+        background: (work) => this.track(work),
+        note: (text) => this.broadcastInventory(session, session.twins, null, true, text) },
+      { sessionId: session.session_id, twins: session.twins, surfaces: session.surfaces, camera: session.camera ?? [0, 1.6, 0], photo, request: session.wish, offered: session.offered },
       (ideas, final) => {
         if (this.replaced(session)) return;
         session.ideas = ideas;
