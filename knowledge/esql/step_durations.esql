@@ -1,0 +1,4 @@
+FROM cutonce-build-events
+| WHERE kind == "part_state" AND new_state == "built" AND source != "seed"
+| STATS runs = COUNT_DISTINCT(assembly_id), median_s = MEDIAN(seconds_since_prev), slowest_s = MAX(seconds_since_prev) BY step_id
+| SORT step_id

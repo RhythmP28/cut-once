@@ -1,0 +1,45 @@
+{
+  "mappings": {
+    "dynamic": false,
+    "properties": {
+      "chunk_id": {
+        "type": "keyword"
+      },
+      "project_id": {
+        "type": "keyword"
+      },
+      "document_id": {
+        "type": "keyword"
+      },
+      "sheet_id": {
+        "type": "keyword"
+      },
+      "doc_type": {
+        "type": "keyword"
+      },
+      "page": {
+        "type": "integer"
+      },
+      "title": {
+        "type": "text"
+      },
+      "text": {
+        "type": "text"
+      },
+      "part_ids": {
+        "type": "keyword"
+      },
+      "material_ids": {
+        "type": "keyword"
+      },
+      "bbox_norm": {
+        "type": "float"
+      },
+      "page_image_uri": {
+        "type": "keyword",
+        "index": false,
+        "doc_values": false
+      }
+    }
+  }
+}

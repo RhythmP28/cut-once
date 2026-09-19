@@ -94,15 +94,22 @@ export function buildSchemas(mode: Mode) {
   // ── plan draft (what the drawing-reading model returns) ─────────────────────
   // Every field is required and nullable instead of optional: OpenAI's strict JSON-schema mode needs that.
   const Evidence = o({ page: z.number().int().min(1), text: z.string() });
+  // Vectors are {x,y,z} objects here, not tuples: strict JSON-schema mode does not accept tuple schemas.
+  const DraftVec = o({ x: z.number(), y: z.number(), z: z.number() });
+  const DraftShape = z.discriminatedUnion("type", [
+    o({ type: z.literal("box"), size: DraftVec }),
+    o({ type: z.literal("cylinder"), axis: z.enum(["x", "y", "z"]), diameter: z.number(), length: z.number() }),
+    o({ type: z.literal("polyline"), points: z.array(DraftVec), diameter: z.number() }),
+  ]);
   const DraftPart = o({
-    name: z.string(), aliases: z.array(z.string()), kind: z.string(), layer: z.string(), shape: Shape, position: Vec3,
+    name: z.string(), aliases: z.array(z.string()), kind: z.string(), layer: z.string(), shape: DraftShape, position: DraftVec,
     rests_on_names: z.array(z.string()), attaches_to: z.array(o({ name: z.string(), relation: Relation })),
-    material_name: z.string().nullable(), verify_hint: z.string(), install_minutes: z.number().nonnegative(),
+    material_name: z.string().nullable(), verify_hint: z.string(), install_minutes: z.number(),
     evidence: z.array(Evidence), assumptions: z.array(z.string()),
   });
-  const DraftMaterial = o({ name: z.string(), spec: z.string(), unit: z.string(), quantity: z.number().nonnegative(), evidence: z.array(Evidence) });
+  const DraftMaterial = o({ name: z.string(), spec: z.string(), unit: z.string(), quantity: z.number(), evidence: z.array(Evidence) });
   const PlanDraft = o({
-    name: z.string(), overall_size: o({ value: Size3, evidence: z.array(Evidence) }),
+    name: z.string(), overall_size: o({ value: DraftVec, evidence: z.array(Evidence) }),
     parts: z.array(DraftPart), materials: z.array(DraftMaterial), assumptions: z.array(z.string()),
   });
 
@@ -192,7 +199,7 @@ export function buildSchemas(mode: Mode) {
   });
   const Job = o({
     job_id: JobId, document_ids: z.array(DocumentId),
-    status: z.enum(["queued", "running", "needs_review", "approved", "failed"]), stages: z.array(JobStage),
+    status: z.enum(["queued", "running", "needs_review", "indexed", "approved", "failed"]), stages: z.array(JobStage),
     plan_id: PlanId.optional(), revision: z.number().int().min(1).optional(),
     issues: z.array(ValidationIssue).optional(), created_at: Timestamp,
   });
@@ -220,7 +227,7 @@ export function buildSchemas(mode: Mode) {
 
   return {
     Vec3, Size3, DocRef, DocType, Sheet, Document, Project, Shape, Relation, Part, Material, BuildStep, Marker,
-    TouchPoint, ValidationIssue, Plan, Evidence, DraftPart, DraftMaterial, PlanDraft, Assembly, Seed, PartState,
+    TouchPoint, ValidationIssue, Plan, Evidence, DraftVec, DraftShape, DraftPart, DraftMaterial, PlanDraft, Assembly, Seed, PartState,
     EventSource, Verdict, BuildEventBase, BuildEvent, PartStatus, BuildState, SpatialAnchor, CameraIntrinsics,
     VisiblePart, CopilotContext, CopilotAction, CopilotResponse, VerificationRequest, VerificationResult,
     JobStage, Job, RetrievedChunk, DirectorCommand, Presence, WsMessage,

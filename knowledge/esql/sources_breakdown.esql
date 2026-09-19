@@ -1,0 +1,4 @@
+FROM cutonce-build-events
+| WHERE assembly_id == ?assembly_id
+| STATS events = COUNT(*) BY source, kind
+| SORT events DESC

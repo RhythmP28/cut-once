@@ -21,6 +21,7 @@
             "queued",
             "running",
             "needs_review",
+            "indexed",
             "approved",
             "failed"
           ]

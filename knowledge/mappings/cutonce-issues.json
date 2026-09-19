@@ -1,0 +1,28 @@
+{
+  "mappings": {
+    "dynamic": false,
+    "properties": {
+      "@timestamp": {
+        "type": "date"
+      },
+      "issue_id": {
+        "type": "keyword"
+      },
+      "assembly_id": {
+        "type": "keyword"
+      },
+      "part_id": {
+        "type": "keyword"
+      },
+      "note": {
+        "type": "text"
+      },
+      "photo_ref": {
+        "type": "keyword"
+      },
+      "status": {
+        "type": "keyword"
+      }
+    }
+  }
+}

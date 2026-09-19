@@ -1,0 +1,6 @@
+FROM cutonce-build-events
+| WHERE kind == "part_state" AND source != "seed"
+| STATS events = COUNT(*), built = COUNT(*) WHERE new_state == "built", started = MIN(@timestamp), ended = MAX(@timestamp) BY assembly_id
+| EVAL minutes = DATE_DIFF("seconds", started, ended) / 60.0
+| SORT started DESC
+| LIMIT 20

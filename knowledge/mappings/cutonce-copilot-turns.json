@@ -1,0 +1,38 @@
+{
+  "mappings": {
+    "dynamic": false,
+    "properties": {
+      "@timestamp": {
+        "type": "date"
+      },
+      "turn_id": {
+        "type": "keyword"
+      },
+      "assembly_id": {
+        "type": "keyword"
+      },
+      "transcript": {
+        "type": "text"
+      },
+      "answer_text": {
+        "type": "text"
+      },
+      "selected_part_id": {
+        "type": "keyword"
+      },
+      "highlight_parts": {
+        "type": "keyword"
+      },
+      "chunk_ids": {
+        "type": "keyword"
+      },
+      "timings_ms": {
+        "type": "object",
+        "dynamic": true
+      },
+      "cached": {
+        "type": "boolean"
+      }
+    }
+  }
+}

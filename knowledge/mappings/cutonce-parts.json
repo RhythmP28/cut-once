@@ -1,0 +1,48 @@
+{
+  "mappings": {
+    "dynamic": false,
+    "properties": {
+      "part_id": {
+        "type": "keyword"
+      },
+      "plan_id": {
+        "type": "keyword"
+      },
+      "revision": {
+        "type": "integer"
+      },
+      "name": {
+        "type": "text",
+        "fields": {
+          "keyword": {
+            "type": "keyword"
+          }
+        }
+      },
+      "aliases": {
+        "type": "text"
+      },
+      "layer": {
+        "type": "keyword"
+      },
+      "kind": {
+        "type": "keyword"
+      },
+      "material_id": {
+        "type": "keyword"
+      },
+      "step_id": {
+        "type": "keyword"
+      },
+      "dims_text": {
+        "type": "text"
+      },
+      "description": {
+        "type": "text"
+      },
+      "rests_on": {
+        "type": "keyword"
+      }
+    }
+  }
+}

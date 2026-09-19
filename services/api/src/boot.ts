@@ -3,12 +3,13 @@ import { join } from "node:path";
 import { S, type Plan } from "@cutonce/schemas";
 import type { FastifyBaseLogger } from "fastify";
 import type { Config } from "./config.js";
+import type { DocumentStore, KnownHash } from "./store/documents.js";
 import type { Store } from "./store/store.js";
 
 const json = (p: string) => JSON.parse(readFileSync(p, "utf8"));
 
 /** Copies the committed demo data into DATA_DIR when it is missing, so a fresh VM or laptop starts out identical. */
-export async function boot(store: Store, cfg: Config, log: FastifyBaseLogger) {
+export async function boot(store: Store, docs: DocumentStore, cfg: Config, log: FastifyBaseLogger) {
   const planFiles: string[] = [];
   const demo = join(cfg.repoRoot, "data", "demo");
   if (existsSync(demo)) planFiles.push(...readdirSync(demo).filter((f) => f.endsWith(".plan.json")).map((f) => join(demo, f)));
@@ -29,6 +30,9 @@ export async function boot(store: Store, cfg: Config, log: FastifyBaseLogger) {
     const seed = S.Seed.safeParse(json(join(seeds, f)));
     if (seed.success) store.putSeed(seed.data);
   }
+
+  const known = join(demo, "known_hashes.json");
+  if (existsSync(known)) docs.mergeKnown(json(known) as Record<string, KnownHash>);
 
   if (!store.currentAssembly() && store.listSeeds().includes("demo_start")) {
     try { const a = await store.createAssembly({ seed: "demo_start" }); log.info({ assembly_id: a.assembly_id }, "created the first run from demo_start"); }

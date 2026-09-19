@@ -1,0 +1,87 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { loadConfig } from "../src/config.js";
+import { startEventIndexer } from "../src/search/indexEvents.js";
+import { buildSearchBody } from "../src/search/retrieve.js";
+import { callKnowledgeTool, knowledgeToolSpecs } from "../src/search/tools.js";
+import { auth, builtEvent, makeApp } from "./helpers.js";
+
+let t: Awaited<ReturnType<typeof makeApp>>;
+beforeEach(async () => { t = await makeApp(); });
+afterEach(async () => { await t.cleanup(); });
+const post = (url: string, payload: unknown, headers = auth) => t.app.inject({ method: "POST", url, headers, payload: payload as object });
+
+describe("search request", () => {
+  const q = { query: "where does the cable go", projectId: "proj_cutonce_demo", partId: "part_power_cable" };
+  it("BM25: boosts the pointed part, filters the project", () => {
+    const body = buildSearchBody(loadConfig({}), q, "bm25") as any;
+    expect(body.query.bool.should[0].term.part_ids).toEqual({ value: "part_power_cable", boost: 3 });
+    expect(body.query.bool.filter[0]).toEqual({ term: { project_id: "proj_cutonce_demo" } });
+  });
+  it("hybrid: reranker around RRF of BM25 and semantic", () => {
+    const body = buildSearchBody(loadConfig({ JINA_EMBED_ID: "jina-embed", JINA_RERANK_ID: "jina-rerank" }), q, "hybrid") as any;
+    const rr = body.retriever.text_similarity_reranker;
+    expect([rr.inference_id, rr.field, rr.retriever.rrf.retrievers.length]).toEqual(["jina-rerank", "text", 2]);
+    expect(rr.retriever.rrf.retrievers[1].standard.query.bool.must[0].semantic.field).toBe("text_semantic");
+  });
+  it("hybrid without Jina ids degrades to BM25", () => expect(buildSearchBody(loadConfig({}), q, "hybrid")).toHaveProperty("query"));
+  it("search route answers with no cluster configured", async () => {
+    const r = await t.app.inject({ method: "GET", url: "/v1/projects/proj_cutonce_demo/search?q=cable", headers: auth });
+    expect(r.json()).toEqual({ mode: "bm25", chunks: [] });
+  });
+});
+
+describe("event indexer", () => {
+  it("retries a failed write and computes seconds_since_prev", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
+    const seen: any[] = [];
+    let failOnce = true;
+    const indexer = startEventIndexer(t.app.ctx, async (id, doc) => { if (failOnce) { failOnce = false; throw new Error("cluster down"); } seen.push({ id, doc }); });
+    const aid = t.app.ctx.store.currentAssembly()!.assembly_id;
+    for (const p of ["part_left_rear_leg", "part_right_rear_leg", "part_cable_tray"]) await post(`/v1/assemblies/${aid}/events`, builtEvent(aid, p));
+    await vi.advanceTimersByTimeAsync(1500);
+    await indexer.flush();
+    vi.useRealTimers();
+    expect(seen.map((s) => s.doc.version)).toEqual([4, 5, 6]);
+    expect(seen.every((s) => s.doc.seconds_since_prev >= 0 && s.doc.plan_id === "plan_desk_demo")).toBe(true);
+    expect(indexer.pending()).toBe(0);
+  });
+});
+
+describe("knowledge tools", () => {
+  it("falls back to the direct twin when MCP hangs", async () => {
+    const started = Date.now();
+    const r = await callKnowledgeTool(t.app.ctx, "find_parts", { query: "rear leg" }, { timeoutMs: 150, remote: () => new Promise(() => undefined) });
+    expect(Date.now() - started).toBeLessThan(1500);
+    expect(r).toMatchObject({ ok: true, via: "direct" });
+    expect((r as any).data.parts.map((p: any) => p.part_id).sort()).toEqual(["part_left_rear_leg", "part_right_rear_leg"]);
+  });
+  it("falls back when MCP errors, and uses MCP when it answers", async () => {
+    expect(await callKnowledgeTool(t.app.ctx, "lookup_material", { material_id: "mat_leg_700" }, { remote: async () => { throw new Error("403"); } })).toMatchObject({ ok: true, via: "direct" });
+    expect(await callKnowledgeTool(t.app.ctx, "find_parts", { query: "x" }, { remote: async (name) => ({ name }) })).toEqual({ ok: true, via: "mcp", data: { name: "cutonce_find_parts" } });
+  });
+  it("never throws", async () => expect(await callKnowledgeTool(t.app.ctx, "nope" as never, {})).toMatchObject({ ok: false }));
+  it("answers build_history from disk with no cluster", async () =>
+    expect(((await callKnowledgeTool(t.app.ctx, "build_history", {})) as any).data.events).toHaveLength(3));
+  it("exposes five well-formed tool specs", () => {
+    expect(knowledgeToolSpecs.map((s) => s.name)).toEqual(["search_documents", "find_parts", "lookup_material", "build_history", "log_issue"]);
+    for (const s of knowledgeToolSpecs) expect(s.parameters).toMatchObject({ type: "object", additionalProperties: false });
+  });
+});
+
+describe("issue webhook and analytics", () => {
+  it("records an annotation on the current run", async () => {
+    const r = await post("/v1/webhooks/issue", { issue_id: "issue_test_1", part_id: "part_left_rear_leg", note: "Thread is damaged" });
+    expect(r.json()).toEqual({ ok: true, issue_id: "issue_test_1" });
+    const { events } = t.app.ctx.store.getEvents(t.app.ctx.store.currentAssembly()!.assembly_id, 3);
+    expect(events[0]).toMatchObject({ kind: "annotation", part_id: "part_left_rear_leg", note: "issue_test_1: Thread is damaged" });
+    expect(t.app.ctx.store.getState(events[0]!.assembly_id).progress.built).toBe(3);
+  });
+  it("needs the token and a valid body", async () => {
+    expect((await post("/v1/webhooks/issue", { issue_id: "issue_x", note: "n" }, {} as never)).statusCode).toBe(401);
+    expect((await post("/v1/webhooks/issue", { issue_id: "bad id", note: "n" })).statusCode).toBe(400);
+  });
+  it("analytics: unknown name is 404, no cluster is 503", async () => {
+    expect((await t.app.inject({ method: "GET", url: "/v1/analytics/nope", headers: auth })).statusCode).toBe(404);
+    expect((await t.app.inject({ method: "GET", url: "/v1/analytics/step_durations", headers: auth })).statusCode).toBe(503);
+  });
+});

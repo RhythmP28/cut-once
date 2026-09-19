@@ -1,0 +1,55 @@
+{
+  "mappings": {
+    "dynamic": false,
+    "properties": {
+      "@timestamp": {
+        "type": "date"
+      },
+      "event_id": {
+        "type": "keyword"
+      },
+      "assembly_id": {
+        "type": "keyword"
+      },
+      "plan_id": {
+        "type": "keyword"
+      },
+      "version": {
+        "type": "integer"
+      },
+      "kind": {
+        "type": "keyword"
+      },
+      "part_id": {
+        "type": "keyword"
+      },
+      "previous_state": {
+        "type": "keyword"
+      },
+      "new_state": {
+        "type": "keyword"
+      },
+      "source": {
+        "type": "keyword"
+      },
+      "confidence": {
+        "type": "float"
+      },
+      "step_id": {
+        "type": "keyword"
+      },
+      "actor": {
+        "type": "keyword"
+      },
+      "verdict": {
+        "type": "keyword"
+      },
+      "note": {
+        "type": "text"
+      },
+      "seconds_since_prev": {
+        "type": "float"
+      }
+    }
+  }
+}

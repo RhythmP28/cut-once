@@ -1,0 +1,31 @@
+{
+  "mappings": {
+    "dynamic": false,
+    "properties": {
+      "material_id": {
+        "type": "keyword"
+      },
+      "plan_id": {
+        "type": "keyword"
+      },
+      "name": {
+        "type": "text"
+      },
+      "spec": {
+        "type": "text"
+      },
+      "unit": {
+        "type": "keyword"
+      },
+      "quantity": {
+        "type": "float"
+      },
+      "used_by": {
+        "type": "keyword"
+      },
+      "raw_text": {
+        "type": "text"
+      }
+    }
+  }
+}

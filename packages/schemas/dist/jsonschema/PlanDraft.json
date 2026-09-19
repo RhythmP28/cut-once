@@ -11,23 +11,24 @@
           "type": "object",
           "properties": {
             "value": {
-              "type": "array",
-              "minItems": 3,
-              "maxItems": 3,
-              "items": [
-                {
-                  "type": "number",
-                  "exclusiveMinimum": 0
+              "type": "object",
+              "properties": {
+                "x": {
+                  "type": "number"
                 },
-                {
-                  "type": "number",
-                  "exclusiveMinimum": 0
+                "y": {
+                  "type": "number"
                 },
-                {
-                  "type": "number",
-                  "exclusiveMinimum": 0
+                "z": {
+                  "type": "number"
                 }
-              ]
+              },
+              "required": [
+                "x",
+                "y",
+                "z"
+              ],
+              "additionalProperties": false
             },
             "evidence": {
               "type": "array",
@@ -86,23 +87,24 @@
                         "const": "box"
                       },
                       "size": {
-                        "type": "array",
-                        "minItems": 3,
-                        "maxItems": 3,
-                        "items": [
-                          {
-                            "type": "number",
-                            "exclusiveMinimum": 0
+                        "type": "object",
+                        "properties": {
+                          "x": {
+                            "type": "number"
                           },
-                          {
-                            "type": "number",
-                            "exclusiveMinimum": 0
+                          "y": {
+                            "type": "number"
                           },
-                          {
-                            "type": "number",
-                            "exclusiveMinimum": 0
+                          "z": {
+                            "type": "number"
                           }
-                        ]
+                        },
+                        "required": [
+                          "x",
+                          "y",
+                          "z"
+                        ],
+                        "additionalProperties": false
                       }
                     },
                     "required": [
@@ -127,12 +129,10 @@
                         ]
                       },
                       "diameter": {
-                        "type": "number",
-                        "exclusiveMinimum": 0
+                        "type": "number"
                       },
                       "length": {
-                        "type": "number",
-                        "exclusiveMinimum": 0
+                        "type": "number"
                       }
                     },
                     "required": [
@@ -153,26 +153,28 @@
                       "points": {
                         "type": "array",
                         "items": {
-                          "type": "array",
-                          "minItems": 3,
-                          "maxItems": 3,
-                          "items": [
-                            {
+                          "type": "object",
+                          "properties": {
+                            "x": {
                               "type": "number"
                             },
-                            {
+                            "y": {
                               "type": "number"
                             },
-                            {
+                            "z": {
                               "type": "number"
                             }
-                          ]
-                        },
-                        "minItems": 2
+                          },
+                          "required": [
+                            "x",
+                            "y",
+                            "z"
+                          ],
+                          "additionalProperties": false
+                        }
                       },
                       "diameter": {
-                        "type": "number",
-                        "exclusiveMinimum": 0
+                        "type": "number"
                       }
                     },
                     "required": [
@@ -181,87 +183,28 @@
                       "diameter"
                     ],
                     "additionalProperties": false
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "type": {
-                        "type": "string",
-                        "const": "mesh"
-                      },
-                      "uri": {
-                        "type": "string"
-                      },
-                      "node": {
-                        "type": "string"
-                      },
-                      "bounds": {
-                        "type": "object",
-                        "properties": {
-                          "min": {
-                            "type": "array",
-                            "minItems": 3,
-                            "maxItems": 3,
-                            "items": [
-                              {
-                                "type": "number"
-                              },
-                              {
-                                "type": "number"
-                              },
-                              {
-                                "type": "number"
-                              }
-                            ]
-                          },
-                          "max": {
-                            "type": "array",
-                            "minItems": 3,
-                            "maxItems": 3,
-                            "items": [
-                              {
-                                "type": "number"
-                              },
-                              {
-                                "type": "number"
-                              },
-                              {
-                                "type": "number"
-                              }
-                            ]
-                          }
-                        },
-                        "required": [
-                          "min",
-                          "max"
-                        ],
-                        "additionalProperties": false
-                      }
-                    },
-                    "required": [
-                      "type",
-                      "uri",
-                      "node"
-                    ],
-                    "additionalProperties": false
                   }
                 ]
               },
               "position": {
-                "type": "array",
-                "minItems": 3,
-                "maxItems": 3,
-                "items": [
-                  {
+                "type": "object",
+                "properties": {
+                  "x": {
                     "type": "number"
                   },
-                  {
+                  "y": {
                     "type": "number"
                   },
-                  {
+                  "z": {
                     "type": "number"
                   }
-                ]
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "z"
+                ],
+                "additionalProperties": false
               },
               "rests_on_names": {
                 "type": "array",
@@ -303,8 +246,7 @@
                 "type": "string"
               },
               "install_minutes": {
-                "type": "number",
-                "minimum": 0
+                "type": "number"
               },
               "evidence": {
                 "type": "array",
@@ -366,8 +308,7 @@
                 "type": "string"
               },
               "quantity": {
-                "type": "number",
-                "minimum": 0
+                "type": "number"
               },
               "evidence": {
                 "type": "array",
