@@ -74,13 +74,14 @@ const kindOf = (t: Twin) => (t.name === "other" ? `other:${normalise(t.label)}` 
 /**
  * The cache key and the canonical ids (c1… in kind-then-size order) that map cached designs onto a new scan of the
  * same things. Sizes to the centimetre for objects with a standard size, to 5 cm for measured ones: two scans of one
- * box differ by a centimetre or two, and a cached design is checked again against today's sizes anyway. The wish,
- * the model and the prompt's version are in the key too: a birdhouse is not the answer to "something crazier".
+ * box differ by a centimetre or two, and a cached design is checked again against today's sizes anyway. The wish and
+ * the prompt's version are in the key too: a birdhouse is not the answer to "something crazier". Not the model: a
+ * design that stands is checked again whoever made it, and a rehearsal on one provider must serve the other, or none.
  */
-export function canonical(twins: Twin[], wish: string | null = null, model = "") {
+export function canonical(twins: Twin[], wish: string | null = null) {
   const sorted = [...twins].sort((a, b) => kindOf(a).localeCompare(kindOf(b)) || volumeOf(a.shape) - volumeOf(b.shape) || a.twin_id.localeCompare(b.twin_id));
   const size = (t: Twin) => dimsCm(t.shape).map((v) => (t.snapped ? Math.round(v) : 5 * Math.round(v / 5)));
-  const key = createHash("sha1").update(JSON.stringify([PROMPT_VERSION, model, sorted.map((t) => [kindOf(t), size(t)]), wish ? normalise(wish) : ""])).digest("hex").slice(0, 16);
+  const key = createHash("sha1").update(JSON.stringify([PROMPT_VERSION, sorted.map((t) => [kindOf(t), size(t)]), wish ? normalise(wish) : ""])).digest("hex").slice(0, 16);
   return { key, toCanon: new Map(sorted.map((t, i) => [t.twin_id, `c${i + 1}`])), fromCanon: new Map(sorted.map((t, i) => [`c${i + 1}`, t.twin_id])) };
 }
 
@@ -149,10 +150,11 @@ export async function computeIdeas(deps: IdeasDeps, input: IdeasInput, emit: (id
   const byId = new Map(usable.map((t) => [t.twin_id, t]));
   const surface = buildSurface(usable, input.surfaces);
   if (!surface || usable.length === 0) { emit([], true); return []; }
-  const canon = canonical(usable, input.request, deps.model);
+  const canon = canonical(usable, input.request);
   const offered = new Set((input.offered ?? []).map((t) => t.toLowerCase()));
   const fresh = (list: BuildIdea[]) => list.filter((i) => !offered.has(i.title.toLowerCase()));
-  const fromCache = () => cachedIdeas(deps, input, byId, surface, canon);
+  let cache: BuildIdea[] | null = null;                                // read and checked once, whoever asks first
+  const fromCache = () => (cache ??= cachedIdeas(deps, input, byId, surface, canon));
   const fromRules = () => matchRules(deps.rules, usable)
     .map((m) => check({ draft: m.draft, source: "rule", made: "rule", ruleId: m.rule.rule_id, payload: m.payload }, byId, surface, input, deps))
     .flatMap((r) => ("idea" in r ? [r.idea] : []));
@@ -164,7 +166,8 @@ export async function computeIdeas(deps: IdeasDeps, input: IdeasInput, emit: (id
     const live = invent(deps, input, usable, byId, surface, canon);
     const settled = live.then((r) => ({ r }), (e: Error) => ({ e }));
     const early = await Promise.race([settled, sleep(deps.liveMs)]);
-    const cached = early === null ? fromCache() : [];
+    // Only new designs from the cache end the wait: repeats of what was just shown are worth less than the live answer.
+    const cached = early === null ? fresh(fromCache()) : [];
     if (early === null && cached.length) {
       first = cached;
       deps.background?.(settled.then((s) => { if ("e" in s) deps.log.warn({ err: s.e.message }, "a late live design answer failed"); }));
