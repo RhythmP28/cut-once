@@ -78,7 +78,7 @@ export function HistoryPage() {
 
   return (
     <main className="page history">
-      <h1>History <span className="muted small mono">{assembly?.assembly_id ?? ""}</span></h1>
+      <h1>History</h1>
       {error && <p className="banner error-text">{error}</p>}
 
       <section className="card">
@@ -98,7 +98,7 @@ export function HistoryPage() {
             <>
               <strong>{partName(event.part_id)}</strong>{" "}
               {event.kind === "part_state" ? <span>{event.previous_state} → <span className={`state-${event.new_state}`}>{event.new_state}</span></span> : <span>{event.kind}{event.verdict ? `: ${event.verdict}` : ""}{event.note ? `: ${event.note}` : ""}</span>}
-              <span className="muted"> · {event.source} · {event.actor} · {clock(event.timestamp)}</span>
+              <span className="muted"> · {clock(event.timestamp)}</span>
             </>
           )}
         </div>

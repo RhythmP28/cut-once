@@ -1,10 +1,23 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="light dark" />
     <title>Cut Once</title>
+    <!-- The theme is set before first paint, as in mayim: a React effect runs after paint, which is where a white
+         flash would come from. Light unless the viewer chose otherwise. -->
+    <script>
+      (function () {
+        var t = "light";
+        try { var s = localStorage.getItem("cutonce-theme"); if (s === "light" || s === "dark" || s === "auto") t = s; } catch (e) {}
+        document.documentElement.setAttribute("data-theme", t);
+        document.documentElement.style.colorScheme = t === "auto" ? "light dark" : t;
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>

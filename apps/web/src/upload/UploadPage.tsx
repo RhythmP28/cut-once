@@ -98,7 +98,7 @@ export function UploadPage() {
           onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) start(f); }}
         />
         <p className="dropzone-title">Drop a PDF, image or CSV here</p>
-        <p className="muted">or click to choose a file · 25 MB limit · project <span className="mono">{PROJECT_ID}</span></p>
+        <p className="muted">or click to choose a file · up to 25 MB</p>
       </div>
 
       {phase.name === "uploading" && (
@@ -127,7 +127,7 @@ export function UploadPage() {
           ) : (
             <section className="card">
               <h2>{phase.file.name} <span className="muted small">{fileSize(phase.file.size)} · uploaded</span></h2>
-              <p className="muted">Document <span className="mono">{result.document_id}</span>{result.job_id ? <> · job <span className="mono">{result.job_id}</span></> : null}</p>
+
             </section>
           )}
 
