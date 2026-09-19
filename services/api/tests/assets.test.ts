@@ -2,17 +2,19 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
+import { REPO_ROOT } from "../src/config.js";
 import { auth, makeApp } from "./helpers.js";
 
 let t: Awaited<ReturnType<typeof makeApp>>;
 beforeEach(async () => { t = await makeApp(); });
 afterEach(async () => { await t.cleanup(); });
 
-it("serves the E7 model that boot copied next to its plan", async () => {
+it("serves the E7 model that boot copied next to its plan, byte for byte", async () => {
   const r = await t.app.inject({ method: "GET", url: "/v1/plans/plan_e7_massing/assets/e7.glb", headers: auth });
   expect(r.statusCode).toBe(200);
   expect(r.headers["content-type"]).toBe("model/gltf-binary");
-  expect(r.rawPayload.subarray(0, 4).toString()).toBe("glTF");
+  // The committed file, whatever it holds: a checkout without Git LFS has a pointer here, not a GLB.
+  expect(r.rawPayload.equals(readFileSync(join(REPO_ROOT, "data", "e7", "out", "e7.glb")))).toBe(true);
 });
 
 it("refreshes an asset when its source file changes (a regenerated E7 model)", () => {

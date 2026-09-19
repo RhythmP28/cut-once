@@ -23,9 +23,19 @@ export async function boot(store: Store, docs: DocumentStore, cfg: Config, log: 
     const parsed = S.Plan.safeParse(json(file));
     if (!parsed.success) { log.warn({ file }, "skipped a plan file that does not match the schema"); continue; }
     if (store.importApproved(parsed.data as Plan)) log.info({ plan_id: parsed.data.plan_id, revision: parsed.data.revision }, "imported plan");
+    const meshFiles = new Set<string>();
     for (const part of parsed.data.parts) {
       const shape = part.shape as { type: string; uri?: string };
-      if (shape.type === "mesh" && shape.uri) store.syncAsset(parsed.data.plan_id, shape.uri, join(dirname(file), shape.uri));
+      if (shape.type === "mesh" && shape.uri) meshFiles.add(shape.uri);
+    }
+    for (const uri of meshFiles) {
+      const source = join(dirname(file), uri);
+      // A clone made without Git LFS has a small text pointer here instead of the model: say so, or the
+      // preview and headset quietly fall back to boxes.
+      if (existsSync(source) && readFileSync(source).subarray(0, 64).toString().startsWith("version https://git-lfs")) {
+        log.warn({ file: source }, `${uri} is a Git LFS pointer, not the model: install git-lfs and run \`git lfs pull\``);
+      }
+      store.syncAsset(parsed.data.plan_id, uri, source);
     }
   }
 
