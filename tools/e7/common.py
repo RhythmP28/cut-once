@@ -64,7 +64,7 @@ def part_ids() -> list[str]:
 # ---------- files ----------
 
 def ensure_dirs() -> None:
-    for d in (RAW, STAGES / "scale", STAGES / "footprints", STAGES / "heights", FLOORS, OUT):
+    for d in (RAW, STAGES / "scale", STAGES / "footprints", STAGES / "heights", STAGES / "mesh", FLOORS, OUT):
         d.mkdir(parents=True, exist_ok=True)
 
 
@@ -164,3 +164,25 @@ def load_floor_polygon(n: int):
     from shapely.geometry import Polygon
     floor = read_json(FLOORS / f"{level_key(n)}.json")
     return Polygon(floor["polygon_m"])
+
+
+def part_specs() -> list[dict]:
+    """Every part in build order with its footprint level and its bottom/top elevation in metres.
+
+    Model Y = 0 is Level 1 finished floor. A floor line on the section is the TOP of that level's slab:
+      slab N      [E_N - 0.3, E_N]
+      envelope N  [E_N, E_(N+1) - 0.3]      (clear height = floor-to-floor minus the slab above)
+      envelope 8  [E_8, roof base]
+      roof        [roof base, roof top]      on the level 8 footprint
+    """
+    h = read_json(STAGES / "heights" / "heights.json")
+    elev = {lv["level"]: lv["floor_elevation_m"] for lv in h["levels"]}
+    roof_base, roof_top = h["roof"]["base_elevation_m"], h["roof"]["top_elevation_m"]
+    specs: list[dict] = []
+    for n in LEVELS:
+        top = r3(elev[n + 1] - SLAB_THICKNESS_M) if n < LEVELS[-1] else roof_base
+        specs.append({"part_id": f"part_e7_l{n:02d}_slab", "role": "slab", "level": n,
+                      "y0": r3(elev[n] - SLAB_THICKNESS_M), "y1": elev[n]})
+        specs.append({"part_id": f"part_e7_l{n:02d}_envelope", "role": "envelope", "level": n, "y0": elev[n], "y1": top})
+    specs.append({"part_id": "part_e7_roof", "role": "roof", "level": LEVELS[-1], "y0": roof_base, "y1": roof_top})
+    return specs
