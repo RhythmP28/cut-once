@@ -26,3 +26,6 @@ apps/quest/MemoryCaptures/
 
 # Simulation runs (pnpm sim)
 sim-out/
+# dotnet build output of the headset's fast tests
+tools/quest-tests/bin/
+tools/quest-tests/obj/
