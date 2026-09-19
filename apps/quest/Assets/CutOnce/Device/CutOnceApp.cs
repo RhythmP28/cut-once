@@ -234,7 +234,12 @@ namespace CutOnce.Device
             _dirty = true;
         }
 
-        public void ShowAnswer(CopilotResponseDto response) => _hud.ShowAnswer(response?.answer_text);
+        /// <summary>The answer, then the drawing it came from (the "source card": sheet and page).</summary>
+        public void ShowAnswer(CopilotResponseDto response)
+        {
+            var source = response?.drawing_refs != null && response.drawing_refs.Length > 0 ? response.drawing_refs[0] : null;
+            _hud.ShowAnswer(HudText.AnswerCard(response?.answer_text, source?.title, source?.sheet_id, source?.page ?? 0));
+        }
 
         public void OnActionApplied(CopilotActionDto action)
         {
