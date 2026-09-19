@@ -1,7 +1,15 @@
 # `RoomSense/` — the Zelda room scan (owner: Rhythm, coordinate with A2 before wiring into Main)
 
-Put the headset on and every surface the Quest knows about glows blue — walls, floor, tables,
-couches — revealed by a sonar pulse from the player, BOTW style.
+Put the headset on and **everything** glows blue — walls, floor, the desk, and the stuff sitting
+on the desk — revealed by a sonar pulse from the player, BOTW style.
+
+Two layers from one scan: the **global scene mesh** (a triangle mesh of the whole room, clutter
+included) is the base glow, and the labelled anchors (tables, couches, walls) are tinted shapes on
+top so furniture reads brighter. `glowEverything` / `glowLabelledShapes` toggle each layer.
+
+Known limit: the scene mesh is a snapshot from scan time — move an object and its glow stays where
+it was scanned until a rescan. Live-updating glow on moving objects means a Depth API screen-space
+effect instead; that is a bigger build, ask Rhythm first.
 
 ## Why there is no ML in here
 
@@ -18,7 +26,8 @@ place a label in 3D. It is a P2 flourish; this folder does not depend on it.
 
 1. Packages: Meta MR Utility Kit (`com.meta.xr.mrutilitykit`) — A1's QuestCameraKit fork already
    pulls the Meta XR SDK.
-2. Scene: an `[MRUK]` prefab, plus one GameObject with `RoomGlow`.
+2. Scene: an `[MRUK]` prefab with **"Load Global Mesh" enabled in its Scene Settings**, plus one
+   GameObject with `RoomGlow`.
 3. Material: create one from `CutOnce/SheikahGlow`, assign it to `RoomGlow.glowMaterial`.
 4. Manifest: `com.oculus.permission.USE_SCENE`. On device, Space Setup must have been run once
    (Settings → Physical Space). In the Editor, MRUK's mock rooms stand in for a scan.
