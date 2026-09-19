@@ -55,7 +55,7 @@ namespace CutOnce.Device
             var api = new ApiClient(new UnityHttpTransport(), _config);
             _sync = new SyncEngine(api, _store, new Journal(Path.Combine(Application.persistentDataPath, "cutonce")), () => Resource("CutOnce/desk.plan"));
             _sync.RunLoaded += OnRunLoaded;
-            _sync.PlanReady += (planId, revision) => _hud.Toast($"New plan ready: {planId} revision {revision}", 4f);
+            _sync.PlanReady += OnPlanReady;
             _sync.DirectorCommand += OnDirectorCommand;
             _stream = new StreamClient(() => new NetSocket(), _config);
             _handleMessage = _sync.Handle;
@@ -79,9 +79,21 @@ namespace CutOnce.Device
             Run(_sync.Start());
             _stream.Run();
             if (createCopilot) TryCreateCopilot();
+            // AGENTS rule 3: any copilot, built here or placed in the scene (Rhythm's [Copilot] prefab), needs the camera
+            // and microphone. Ask on the headset before first use (the Editor grants at once). The camera waits for its
+            // grant by itself; a refusal only costs the copilot its eyes or ears, so the HUD says what still works.
+            if (FindAnyObjectByType<CopilotController>() != null)
+                QuestPermissions.Request(new[] { QuestPermissions.Camera, QuestPermissions.Microphone }, (p, ok) => _permissionAnswers.Enqueue((p, ok)));
         }
 
-        void OnDestroy() => _stream?.Dispose();
+        void OnDestroy()
+        {
+            _stream?.Dispose();
+            // Sync work still in flight (SyncEngine.Start, a catch-up) must not call back into a destroyed app: that
+            // throws MissingReferenceException on a scene reload, and in tests it fails whichever test runs next.
+            if (_sync != null) { _sync.RunLoaded -= OnRunLoaded; _sync.PlanReady -= OnPlanReady; _sync.DirectorCommand -= OnDirectorCommand; }
+            if (_store != null) _store.Changed -= OnStateChanged;
+        }
 
         static string Resource(string path)
         {
@@ -141,6 +153,8 @@ namespace CutOnce.Device
             if (_alignment.State == AlignmentState.Locked) { StandHud(); _waitForMarkRelease = true; }   // the B that finished a touch alignment is not a mark
             else _hudInFront = false;                                                                  // placing again: bring the panel back to the operator
         }
+
+        void OnPlanReady(string planId, int revision) => _hud.Toast($"New plan ready: {planId} revision {revision}", 4f);
 
         void OnDirectorCommand(DirectorCommandDto command)
         {
@@ -270,9 +284,6 @@ namespace CutOnce.Device
                 controller.pushToTalkBehaviour = go.AddComponent<QuestPushToTalk>();
                 controller.mic = go.AddComponent<MicRecorder>(); controller.speaker = go.AddComponent<PcmStreamPlayer>();
                 go.SetActive(true);
-                // AGENTS rule 3: ask on the headset before first use (the Editor grants at once). The camera waits for its
-                // grant by itself; a refusal only costs the copilot its eyes or ears, so the HUD says what still works.
-                QuestPermissions.Request(new[] { QuestPermissions.Camera, QuestPermissions.Microphone }, (p, ok) => _permissionAnswers.Enqueue((p, ok)));
             }
             catch (Exception e) { Debug.LogWarning("[CutOnce] The copilot could not be created; the build guide still works: " + e.Message); }
         }

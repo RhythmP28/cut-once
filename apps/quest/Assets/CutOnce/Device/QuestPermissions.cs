@@ -16,8 +16,12 @@ namespace CutOnce.Device
         public const string Camera = "horizonos.permission.HEADSET_CAMERA";
         public const string Microphone = "android.permission.RECORD_AUDIO";
 
+        /// <summary>How many times permissions were asked for (Editor included). The app's PlayMode tests check it.</summary>
+        public static int RequestCount { get; private set; }
+
         public static void Request(string[] permissions, Action<string, bool> answered)
         {
+            RequestCount++;
 #if UNITY_ANDROID && !UNITY_EDITOR
             var missing = Array.FindAll(permissions, p => !Permission.HasUserAuthorizedPermission(p));
             foreach (var p in permissions) if (Array.IndexOf(missing, p) < 0) answered(p, true);

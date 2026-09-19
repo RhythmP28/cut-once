@@ -16,6 +16,23 @@ namespace CutOnce.Device.PlayTests
     /// </summary>
     public class AppSmokeTests
     {
+        /// <summary>
+        /// Every test starts from an empty scene, even after a failure: destroy everything an app or a copilot created
+        /// (the app makes AssemblyRoot, [Pointer] and the HUD as separate root objects). A leftover copilot would make
+        /// the next app skip building its own.
+        /// </summary>
+        [UnityTearDown]
+        public IEnumerator DestroyWhatTheAppCreated()
+        {
+            LogAssert.ignoreFailingMessages = false;
+            var app = Type.GetType("CutOnce.Device.CutOnceApp, Assembly-CSharp");
+            foreach (var type in new[] { app, typeof(CutOnce.Copilot.CopilotController), typeof(AssemblyView), typeof(HudController), typeof(SelectionController) })
+                if (type != null)
+                    foreach (var found in UnityEngine.Object.FindObjectsByType(type, FindObjectsInactive.Include, FindObjectsSortMode.None))
+                        UnityEngine.Object.Destroy(((Component)found).gameObject);
+            yield return null;                                                   // Destroy takes effect at the end of the frame
+        }
+
         [UnityTest]
         public IEnumerator TheAppComesUpOfflineWithAHologramAndAHud()
         {
@@ -68,6 +85,34 @@ namespace CutOnce.Device.PlayTests
             Assert.That(copilot.speaker, Is.Not.Null);
 
             UnityEngine.Object.Destroy(copilot.gameObject);
+            UnityEngine.Object.Destroy(go);
+        }
+
+        [UnityTest]
+        public IEnumerator ACopilotPlacedInTheSceneStillGetsItsPermissionsAskedFor()
+        {
+            // Rhythm's [Copilot] prefab in Main.unity is the other way a copilot arrives; it needs the camera and mic too.
+            LogAssert.ignoreFailingMessages = true;                            // this bare copilot has no host or camera wired
+            var placed = new GameObject("[Copilot] (placed in the scene)").AddComponent<CutOnce.Copilot.CopilotController>();
+            var permissions = Type.GetType("CutOnce.Device.QuestPermissions, Assembly-CSharp");
+            Assert.That(permissions, Is.Not.Null, "QuestPermissions is missing from Assembly-CSharp");
+            int before = (int)permissions.GetProperty("RequestCount").GetValue(null);
+
+            var type = Type.GetType("CutOnce.Device.CutOnceApp, Assembly-CSharp");
+            var go = new GameObject("[App] (scene copilot test)");
+            var app = go.AddComponent(type);
+            type.GetField("createCopilot").SetValue(app, false);                  // the app must not build a second one
+            for (float waited = 0f; waited < 15f; waited += Time.unscaledDeltaTime)  // let start-up finish before tearing down
+            {
+                var assembly = UnityEngine.Object.FindAnyObjectByType<AssemblyView>();
+                if (assembly != null && assembly.Views.Count > 0) break;
+                yield return null;
+            }
+
+            Assert.That((int)permissions.GetProperty("RequestCount").GetValue(null), Is.EqualTo(before + 1),
+                "the app asked for the camera and microphone for the copilot already in the scene");
+            LogAssert.ignoreFailingMessages = false;
+            UnityEngine.Object.Destroy(placed.gameObject);
             UnityEngine.Object.Destroy(go);
         }
     }
