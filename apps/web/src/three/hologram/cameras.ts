@@ -23,8 +23,9 @@ export function placeCamera(camera: THREE.PerspectiveCamera, box: Aabb, view: Vi
   if (view === "operator") {
     camera.position.set(centre.x, Math.max(1.6, max.y + 0.6), max.z + Math.max(0.6, size.z * 0.5));
   } else if (view === "top") {
+    // Far enough that tall parts (legs) don't loom at the lens: the layout reads like a plan drawing.
     const fitH = Math.max(size.z, size.x / Math.max(camera.aspect, 0.1)) / 2;
-    camera.position.set(centre.x, max.y + (fitH / Math.tan(halfFov)) * 1.15, centre.z + 0.001);
+    camera.position.set(centre.x, max.y + Math.max((fitH / Math.tan(halfFov)) * 1.2, radius * 1.5), centre.z + 0.001);
   } else {
     const fitAspect = Math.min(1, camera.aspect);
     const dist = (radius / Math.sin(Math.atan(Math.tan(halfFov) * fitAspect))) * 1.1;

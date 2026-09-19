@@ -1,0 +1,23 @@
+{
+  "name": "@cutonce/sim",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run --dir tests --passWithNoTests",
+    "typecheck": "tsc -p tsconfig.json",
+    "capture": "playwright test"
+  },
+  "dependencies": {
+    "@cutonce/project-model": "workspace:*",
+    "@cutonce/schemas": "workspace:*",
+    "pixelmatch": "^7.2.0",
+    "pngjs": "^7.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^22.10.1",
+    "@types/pngjs": "^6.0.5",
+    "vitest": "^2.1.9"
+  }
+}

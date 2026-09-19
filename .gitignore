@@ -23,3 +23,6 @@ apps/quest/Builds/
 apps/quest/Logs/
 apps/quest/UserSettings/
 apps/quest/MemoryCaptures/
+
+# Simulation runs (pnpm sim)
+sim-out/
