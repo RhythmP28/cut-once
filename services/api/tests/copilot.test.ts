@@ -85,6 +85,27 @@ describe("fast path", () => {
   it("'what can I build' starts a scan without the model", () =>
     expect(matchFastPath("What can I build with this?", input())?.action).toEqual({ type: "start_scan" }));
 
+  it("a plain 'what can I build?' clears the wish; 'scan again' keeps it", () => {
+    expect(matchFastPath("What can I build?", input())).toMatchObject({ action: { type: "start_scan" }, wish: null });
+    expect(matchFastPath("scan again", input())?.wish).toBeUndefined();
+  });
+
+  it("'build me a birdhouse' and its cousins scan at once and carry the wish, with no model", () => {
+    const wish = (said: string) => matchFastPath(said, input())?.wish;
+    expect(wish("Can you build me a birdhouse?")).toBe("a birdhouse");
+    expect(wish("Hey Kit, make me something crazier.")).toBe("something crazier");
+    expect(wish("I want to build a stand for my phone")).toBe("a stand for my phone");
+    expect(wish("Let's make a robot")).toBe("a robot");
+    expect(wish("could we build a tower with these")).toBe("a tower");
+    expect(matchFastPath("Can you build me a birdhouse?", input())?.answer_text).toBe("Let me see how to make a birdhouse from what's here.");
+  });
+
+  it("leaves everything else to the model: changes, questions, parts and very long wishes", () => {
+    for (const said of ["make it taller", "how do I build a birdhouse", "build the left rear leg", "build me a house for the little bird that lives outside my kitchen window every spring"]) {
+      expect([said, matchFastPath(said, input())]).toEqual([said, null]);
+    }
+  });
+
   it("'look again' rescans in build mode only: anywhere else it asks the copilot to look at the part again", () => {
     expect(matchFastPath("look again", input({ mode: "build" }))?.action).toEqual({ type: "start_scan" });
     expect(matchFastPath("look again", input({ mode: "overlay" }))).toBeNull();

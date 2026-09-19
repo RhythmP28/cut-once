@@ -94,6 +94,14 @@ export async function answerQuery(deps: Deps, input: QueryInput, log: Log): Prom
   // Fast path: a spoken command is decided from the plan and the log, so it skips the model entirely.
   const fast = matchFastPath(transcript, { plan: g.plan, state: g.state, selectedPartId: input.context.selected_part_id, recentEvents: g.recentEvents, mode: input.context.mode });
   if (fast) {
+    // A wish said outright ("build me a birdhouse"). In build mode with the objects already known, the designs are
+    // rethought from them, with no new scan to wait for; otherwise the scan carries the wish (null forgets it).
+    if (fast.action?.type === "start_scan" && fast.wish !== undefined && ctx.hooks.build) {
+      if (fast.wish && input.context.mode === "build" && ctx.hooks.build.canRethink()) {
+        await ctx.hooks.build.rethink(fast.wish);
+        fast.action = null;
+      } else ctx.hooks.build.expectScan(fast.wish);
+    }
     if (fast.action) await applyAction(deps, input.assemblyId, fast.action, "operator", { confidence: 1, note: fast.note ?? "spoken command" });
     speech.start(turnId, fast.answer_text);
     const response: CopilotResponse = {
@@ -145,7 +153,10 @@ export async function answerQuery(deps: Deps, input: QueryInput, log: Log): Prom
   timings.route = since(routeStart);
   const outcome = routeOutcome(routed, { mode: input.context.mode, canRethink: ctx.hooks.build?.canRethink() ?? false });
   if (outcome === "clarify") return quick(deps, turnId, transcript, "Do you want ideas for what to build, or an answer about this step?", null, timings, t0, recordTurn, true);
-  if (outcome === "scan") return quick(deps, turnId, transcript, "Let me see what you've got.", { type: "start_scan" }, timings, t0, recordTurn);
+  if (outcome === "scan") {
+    ctx.hooks.build?.expectScan(routed?.wish ?? null);
+    return quick(deps, turnId, transcript, "Let me see what you've got.", { type: "start_scan" }, timings, t0, recordTurn);
+  }
   if (outcome === "rethink" && (await ctx.hooks.build!.rethink(transcript))) return quick(deps, turnId, transcript, "Let me rethink that.", null, timings, t0, recordTurn);
   const [chunks, annotated] = await Promise.all([retrieving, annotating]);
 

@@ -6,8 +6,12 @@ export interface FastPathInput {
   /** The headset's mode. "build" from the first scan to the end of the walkthrough. */
   mode?: "upload" | "overlay" | "build";
 }
-/** `action: null` is a spoken reply with nothing to apply; `note` is written on the event (blueprint §550 for undo). */
-export interface FastPath { action: CopilotAction | null; answer_text: string; highlight_parts: string[]; note?: string }
+/**
+ * `action: null` is a spoken reply with nothing to apply; `note` is written on the event (blueprint §550 for undo).
+ * `wish`, on a scan: what the builder asked for (a string), a plain "what can I build?" (null: forget the last wish),
+ * or absent (another look: the wish stays). The pipeline hands it to build mode with the scan.
+ */
+export interface FastPath { action: CopilotAction | null; answer_text: string; highlight_parts: string[]; note?: string; wish?: string | null }
 
 /**
  * Lower case, no punctuation, single spaces. "Mark the left rear leg, built." → "mark the left rear leg built".
@@ -46,6 +50,28 @@ export function resolvePart(phrase: string, parts: Part[]): Part | null {
   return best && !tied ? best.part : null;
 }
 
+const PLAIN_ASK = /^(what can (i|we) (build|make)( with (this|these|that|all this|all of this|this stuff))?|what could (i|we) (build|make)( with (this|these|that))?|help me build something|build something|make something)$/;
+const ASKING = "(?:hey kit )?(?:kit )?(?:(?:can|could|would|will) you |please )?";
+/** "Build me a birdhouse", "let's make a robot", "can we build a tower with these": the thing asked for, as said. */
+const WISH_PHRASES = [
+  new RegExp(`^${ASKING}(?:help me )?(?:build|make) me (an? .+|something(?: .+)?)$`),
+  /^(?:hey kit )?(?:i want to|i wanna|i would like to|id like to|lets|let us) (?:build|make) (an? .+|something(?: .+)?)$/,
+  /^(?:hey kit )?(?:can|could) (?:i|we) (?:build|make) (an? .+?)(?: with (?:this|these|that|all this|this stuff))?$/,
+  new RegExp(`^${ASKING}(?:help me )?(?:build|make) (an? .+)$`),
+];
+/**
+ * The wish in a sentence, or null. Kept to short, plain asks: a long one, and "a smaller one" / "another one" (a
+ * change to designs already on show, not a new thing), are left to the model, which knows what is on show.
+ */
+function wishIn(text: string): string | null {
+  for (const re of WISH_PHRASES) {
+    const wish = re.exec(text)?.[1]?.trim();
+    if (!wish) continue;
+    return wish.split(" ").length <= 10 && !/\bone$/.test(wish) ? wish : null;
+  }
+  return null;
+}
+
 const STATE_WORDS: Record<string, PartState> = { built: "built", done: "built", in: "built", wrong: "wrong", missing: "missing", out: "missing" };
 
 const markState = (partId: string, newState: PartState): CopilotAction =>
@@ -61,10 +87,13 @@ export function matchFastPath(transcript: string, input: FastPathInput): FastPat
   const { plan, state, selectedPartId, recentEvents, mode } = input;
   const nameOf = (id: string) => plan.parts.find((p) => p.part_id === id)?.name ?? id;
 
-  // "What can I build?": the rehearsed line never depends on a model. The headset scans and uploads.
+  // "What can I build?": the rehearsed lines never depend on a model. The headset scans and uploads. A plain ask
+  // forgets the last wish; "build me a birdhouse" carries its own; another look ("scan again") keeps the one there is.
   // "Look again" is a rescan only in build mode: anywhere else it asks the copilot to look at the part again.
-  if (/^(what can (i|we) (build|make)( with (this|these|that|all this|all of this|this stuff))?|what could (i|we) (build|make)( with (this|these|that))?|help me build something|build something|make something|scan (this|that|again|the table))$/.test(text)
-    || (mode === "build" && text === "look again")) {
+  if (PLAIN_ASK.test(text)) return { action: { type: "start_scan" }, answer_text: "Let me see what you've got.", highlight_parts: [], wish: null };
+  const wish = wishIn(text);
+  if (wish) return { action: { type: "start_scan" }, answer_text: `Let me see how to make ${wish} from what's here.`, highlight_parts: [], wish };
+  if (/^scan (this|that|again|the table)$/.test(text) || (mode === "build" && text === "look again")) {
     return { action: { type: "start_scan" }, answer_text: "Let me see what you've got.", highlight_parts: [] };
   }
 

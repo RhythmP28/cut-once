@@ -9,8 +9,10 @@ const m = { ...base, budgets: { ...base.budgets, route: 50 } };
 const input = { transcript: "what could we make with these", mode: "overlay", ideaTitles: [] };
 
 describe("routeTurn", () => {
-  it("returns the model's flow", async () =>
-    expect(await routeTurn(cfg, m, input, vi.fn(async () => ({ flow: "build_ideas", confidence: 0.93 })))).toEqual({ flow: "build_ideas", confidence: 0.93 }));
+  it("returns the model's flow, and what they want built", async () =>
+    expect(await routeTurn(cfg, m, input, vi.fn(async () => ({ flow: "build_ideas", confidence: 0.93, wish: "a birdhouse" })))).toEqual({ flow: "build_ideas", confidence: 0.93, wish: "a birdhouse" }));
+  it("reads a missing wish as none", async () =>
+    expect(await routeTurn(cfg, m, input, vi.fn(async () => ({ flow: "question", confidence: 0.9 })))).toEqual({ flow: "question", confidence: 0.9, wish: null }));
   it("gives up at the budget, so the turn is treated as a question", async () =>
     expect(await routeTurn(cfg, m, input, vi.fn(() => new Promise<unknown>(() => {})))).toBeNull());
   it("treats an error or a malformed answer as a question", async () => {

@@ -3,7 +3,11 @@ import type { Config } from "../config.js";
 import { jsonCall, type JsonCall } from "../llm.js";
 import type { CopilotModels } from "./models.js";
 
-export const Routed = z.object({ flow: z.enum(["question", "build_ideas", "modify_design"]), confidence: z.number().min(0).max(1) });
+export const Routed = z.object({
+  flow: z.enum(["question", "build_ideas", "modify_design"]), confidence: z.number().min(0).max(1),
+  /** What they want built, in a few words ("a birdhouse"), or null. Missing counts as null. */
+  wish: z.string().nullable().default(null),
+});
 export type Routed = z.infer<typeof Routed>;
 /** Below this the copilot asks back rather than guessing a flow. */
 export const ROUTE_MIN = 0.7;
@@ -19,6 +23,7 @@ export const ROUTER_SYSTEM = [
   "- question: everything else: how to do the current step, where a piece goes, why, what something is, whether it is right.",
   "  e.g. \"how do I build the shelf\", \"where does this go\", \"why the cans at the back\", \"is this straight\", \"what's next\".",
   "If no ideas are on show and no build is under way, modify_design is unlikely. Give your confidence from 0 to 1.",
+  "wish: for build_ideas and modify_design, what they want in a few words, as they said it (\"a birdhouse\", \"something for my phone\"); null for a plain \"what can I build\" and for questions.",
 ].join("\n");
 
 /** Which flow a spoken turn wants. Null means "treat it as a question": no key, a timeout, an error or a malformed answer. */
@@ -39,7 +44,7 @@ export type RouteOutcome = "question" | "clarify" | "scan" | "rethink";
  * headset would hear. Outside build mode an unsure router changes nothing: E7 and the desk are answered as they always
  * were. "Change the design" with no design on show to change is a question, however sure the router is.
  */
-export function routeOutcome(routed: Routed | null, at: { mode: string; canRethink: boolean }): RouteOutcome {
+export function routeOutcome(routed: Pick<Routed, "flow" | "confidence"> | null, at: { mode: string; canRethink: boolean }): RouteOutcome {
   if (!routed || routed.flow === "question") return "question";
   if (routed.flow === "modify_design" && !at.canRethink) return "question";
   if (routed.confidence < ROUTE_MIN) return at.mode === "build" ? "clarify" : "question";

@@ -24,8 +24,23 @@ export interface BuildDeps {
 export interface Session {
   session_id: string; created_at: string; scans: string[]; surfaces: Surface[]; twins: Twin[]; ideas: BuildIdea[];
   camera: Vec3 | null; photo: string | null;
+  /** Which way the camera faced for the last scan, so "the can on your left" can be said. */
+  forward: Vec3 | null;
   /** The idea being built, from its start until the next scan. The headset shows no new ideas mid-build, and drops out of build mode if another run appears. */
   started: string | null;
+  /** What the builder asked for ("a birdhouse"), for every design asked for in this session until a new wish or a plain ask. */
+  wish: string | null;
+  /** Titles already offered in this session, so "something crazier" brings new ones. A plain ask starts afresh. */
+  offered: string[];
+}
+
+/** How long a wish said with "start a scan" waits for that scan. A scan much later is someone else's question. */
+export const WISH_TTL_MS = 60_000;
+
+/** A wish as it is kept: one line, no trailing punctuation, at most 120 characters. Empty is no wish. */
+export function cleanWish(wish: string | null): string | null {
+  const w = (wish ?? "").replace(/\s+/g, " ").trim().replace(/[.!?,;:\s]+$/, "").slice(0, 120);
+  return w || null;
 }
 
 /** What may surround an idea's name when it is being picked: "let's build the laptop riser, please". */
@@ -55,6 +70,10 @@ export class BuildSessions {
   readonly files: BuildFiles;
   private session: Session | null = null;
   private queue: Promise<void> = Promise.resolve();
+  /** A wish the copilot sent with a scan it asked the headset for, until that scan arrives. */
+  private expected: { wish: string | null; at: number } | null = null;
+  /** What the queue is doing right now: reading a scan, naming its objects, or designing. */
+  private busy: "reading" | "naming" | "designing" | null = null;
 
   constructor(private readonly ctx: Ctx, private readonly deps: BuildDeps) { this.files = new BuildFiles(ctx.cfg.dataDir, ctx.cfg.repoRoot); }
 
@@ -63,13 +82,19 @@ export class BuildSessions {
   ideaTitles = () => this.session?.ideas.map((i) => i.title) ?? [];
 
   newSession(): Session {
-    this.session = { session_id: newId("bsess"), created_at: new Date().toISOString(), scans: [], surfaces: [], twins: [], ideas: [], camera: null, photo: null, started: null };
+    this.session = {
+      session_id: newId("bsess"), created_at: new Date().toISOString(), scans: [], surfaces: [], twins: [], ideas: [],
+      camera: null, forward: null, photo: null, started: null, wish: null, offered: [],
+    };
     return this.session;
   }
 
   accept(upload: BuildScanUpload): { scan_id: string; session_id: string } {
     const session = upload.session_id && this.session?.session_id === upload.session_id ? this.session : this.newSession();
     session.started = null;                                          // scanning again puts the headset back to picking
+    const said = this.expected;
+    this.expected = null;
+    if (said && Date.now() - said.at <= WISH_TTL_MS) this.setWish(session, said.wish);
     const scan = this.files.saveScan(upload, session.session_id);
     const photo = Buffer.from(upload.photo_b64, "base64");
     this.enqueue(() => this.process(session, scan, photo, "live"));
@@ -85,11 +110,27 @@ export class BuildSessions {
 
   canRethink = (): boolean => Boolean(this.session && this.session.twins.length > 0 && !this.session.started);
 
+  /**
+   * The copilot asked the headset for a scan, and the builder said what they want (null: a plain "what can I build?").
+   * The wish goes with the next scan to arrive, or straight to the scan being read or named now: its designs have
+   * not been asked for yet.
+   */
+  expectScan(wish: string | null): void {
+    this.expected = { wish: cleanWish(wish), at: Date.now() };
+    if (this.session && (this.busy === "reading" || this.busy === "naming")) this.setWish(this.session, this.expected.wish);
+  }
+
+  private setWish(session: Session, wish: string | null): void {
+    session.wish = wish;
+    if (wish === null) session.offered = [];                          // a plain ask: anything may be offered again
+  }
+
   rethink(request: string): Promise<boolean> {
     const s = this.session;
     if (!s || !this.canRethink()) return Promise.resolve(false);
+    s.wish = cleanWish(request) ?? s.wish;
     const photo = s.photo && existsSync(s.photo) ? readFileSync(s.photo) : null;
-    this.enqueue(() => this.ideas(s, photo, request));
+    this.enqueue(() => this.ideas(s, photo));
     return Promise.resolve(true);
   }
 
@@ -131,7 +172,7 @@ export class BuildSessions {
     });
     this.broadcastInventory(s, s.twins, null, true, null);
     const photo = s.photo && existsSync(s.photo) ? readFileSync(s.photo) : null;
-    this.enqueue(() => this.ideas(s, photo, null));
+    this.enqueue(() => this.ideas(s, photo));
     return s.twins.at(-1)!;
   }
 
@@ -148,26 +189,29 @@ export class BuildSessions {
 
   private async process(session: Session, scan: BuildScan, photo: Buffer, labels: "saved" | "live"): Promise<void> {
     if (this.replaced(session)) return;
+    this.busy = "reading";
     try {
       const cloud = decodeScan(scan);
       const built = buildTwins(cloud, scan.scan_id);
       const { surfaces, idMap } = mergeSurfaces(session.surfaces, built.surfaces);
       const incoming = built.twins.map((t) => ({ ...t, sits_on: t.sits_on ? idMap.get(t.sits_on) ?? t.sits_on : null }));
-      session.surfaces = surfaces; session.camera = scan.camera.position; session.scans.push(scan.scan_id);
+      session.surfaces = surfaces; session.camera = scan.camera.position; session.forward = scan.camera.forward; session.scans.push(scan.scan_id);
       session.photo = join(this.files.scanDir(scan.scan_id), "photo.jpg");
       this.broadcastInventory(session, mergeTwins(session.twins, incoming), scan.scan_id, false,
         incoming.length ? null : "I couldn't see any objects. Try looking at them from a little closer.");
+      this.busy = "naming";
       const named = await this.label(scan, photo, incoming, surfaces, cloud, labels);
       if (this.replaced(session)) return;
       session.twins = fixSizes(mergeTwins(session.twins, named.twins), this.deps.vocab);
       this.broadcastInventory(session, session.twins, scan.scan_id, true, named.note);
-      await this.ideas(session, photo, null);
+      await this.ideas(session, photo);
     } catch (err) {
       // A schema error's message is a page of JSON, and this sentence is read on the HUD.
       const why = err instanceof ZodError ? "its saved data is not in the form I expect." : (err as Error).message;
       this.broadcastInventory(session, session.twins, scan.scan_id, true, `I couldn't read that scan: ${why}`);
       throw err;
     } finally {
+      this.busy = null;
       this.files.saveSession(session);
     }
   }
@@ -188,15 +232,24 @@ export class BuildSessions {
     return { twins, note: named ? `I named ${named} of ${twins.length} objects by their size alone.` : "I can see objects but couldn't name them. Add them from the laptop, or ask again." };
   }
 
-  private async ideas(session: Session, photo: Buffer | null, request: string | null): Promise<void> {
+  private async ideas(session: Session, photo: Buffer | null): Promise<void> {
     const ai = this.deps.ai("ideas");
+    const busyBefore = this.busy;
+    this.busy = "designing";
+    try {
+      await this.design(session, photo, ai);
+    } finally { this.busy = busyBefore; }
+  }
+
+  private async design(session: Session, photo: Buffer | null, ai: AiCall | null): Promise<void> {
     await computeIdeas(
       { cfg: this.ctx.cfg, vocab: this.deps.vocab, rules: this.deps.rules, call: ai?.call ?? null, model: ai?.model ?? "none",
         cacheDir: join(this.files.root, "idea-cache"), timeoutMs: 20_000, log: this.deps.log },
-      { sessionId: session.session_id, twins: session.twins, surfaces: session.surfaces, camera: session.camera ?? [0, 1.6, 0], photo, request },
+      { sessionId: session.session_id, twins: session.twins, surfaces: session.surfaces, camera: session.camera ?? [0, 1.6, 0], photo, request: session.wish },
       (ideas, final) => {
         if (this.replaced(session)) return;
         session.ideas = ideas;
+        if (final) session.offered = [...new Set([...session.offered, ...ideas.map((i) => i.title)])];
         const message = final ? summary(session.twins, ideas) : null;
         const audio = message ? this.ctx.hooks.say?.(message) ?? null : null;
         this.ctx.store.bus.emit("broadcast", { type: "build_ideas", session_id: session.session_id, ideas, final, audio_url: audio?.audio_url ?? null, message });

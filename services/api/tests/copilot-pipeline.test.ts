@@ -337,6 +337,35 @@ describe("the demo cache", () => {
   });
 });
 
+describe("the wish, from the first ask", () => {
+  it("'build me a birdhouse' scans at once with the wish, and no model is asked", async () => {
+    transcribe.mockResolvedValue("Can you build me a birdhouse?");
+    const expect_ = vi.spyOn(t.app.ctx.hooks.build!, "expectScan");
+    const body = (await query()).json();
+    expect(body.action).toEqual({ type: "start_scan" });
+    expect(body.answer_text).toBe("Let me see how to make a birdhouse from what's here.");
+    expect(expect_).toHaveBeenCalledWith("a birdhouse");
+    expect([routeTurn.mock.calls.length, ask.mock.calls.length]).toEqual([0, 0]);
+  });
+  it("a plain 'what can I build?' clears the wish, and 'scan again' leaves it alone", async () => {
+    const expect_ = vi.spyOn(t.app.ctx.hooks.build!, "expectScan");
+    transcribe.mockResolvedValue("what can I build");
+    await query();
+    expect(expect_).toHaveBeenLastCalledWith(null);
+    expect_.mockClear();
+    transcribe.mockResolvedValue("scan again");
+    await query();
+    expect(expect_).not.toHaveBeenCalled();
+  });
+  it("the router's 'build ideas' carries its wish", async () => {
+    transcribe.mockResolvedValue("could you come up with something to hold my phone");
+    routeTurn.mockResolvedValue({ flow: "build_ideas", confidence: 0.9, wish: "something to hold my phone" });
+    const expect_ = vi.spyOn(t.app.ctx.hooks.build!, "expectScan");
+    expect((await query()).json().action).toEqual({ type: "start_scan" });
+    expect(expect_).toHaveBeenCalledWith("something to hold my phone");
+  });
+});
+
 describe("build-mode routing", () => {
   it("'what can I build' is instant: start_scan, no router and no answer model", async () => {
     transcribe.mockResolvedValue("what can I build");

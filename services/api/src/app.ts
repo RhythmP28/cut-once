@@ -26,6 +26,8 @@ export interface Hooks {
     /** Is there a design on show that could be changed? (Objects are known and no build is under way.) */
     canRethink: () => boolean;
     rethink: (request: string) => Promise<boolean>;
+    /** The copilot is about to start a scan: what the builder asked for goes with it (null: a plain ask, forget the last wish). */
+    expectScan: (wish: string | null) => void;
     startByName: (transcript: string) => Promise<string | null>;
     ideaTitles: () => string[];
     /** Resolves once every queued scan has been processed (tests, the eval CLI). */

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Twin, WsMessage } from "@cutonce/schemas";
 import { KIT, CAMERA, photoB64, synthScan } from "./build-synth.js";
 import { BuildFiles } from "../src/build/files.js";
+import { jsonCall } from "../src/llm.js";
 import { pickIdea } from "../src/build/session.js";
 import { auth, makeApp } from "./helpers.js";
 
@@ -166,5 +167,62 @@ describe("pickIdea: which idea a sentence picks", () => {
     expect(picked("the laptop riser is wobbly")).toBeNull();
     expect(picked("build the laptop riser not the two tier display stand")).toBeNull();
     expect(picked("build a shelf")).toBeNull();
+  });
+});
+
+describe("the wish", () => {
+  const asked = () => vi.mocked(jsonCall).mock.calls.map((c) => (c[1] as { text: string }).text);
+  const current = async () => (await t.app.inject({ method: "GET", url: "/v1/build/sessions/current", headers: auth })).json();
+  beforeEach(() => vi.mocked(jsonCall).mockClear());
+
+  it("said before a scan reaches that scan's designs, stays through another view (X), and a plain ask clears it", async () => {
+    const build = t.app.ctx.hooks.build!;
+    build.expectScan("a birdhouse");
+    const { session_id } = (await post("/v1/build/scans", kitUpload())).json();
+    await build.idle();
+    expect(asked().at(-1)).toContain('The builder asked: "a birdhouse"');
+    expect((await current()).wish).toBe("a birdhouse");
+
+    await post("/v1/build/scans", { ...kitUpload(), session_id });           // X: another view, nothing said
+    await build.idle();
+    expect(asked().at(-1)).toContain('The builder asked: "a birdhouse"');
+
+    build.expectScan(null);                                                   // "what can I build?"
+    await post("/v1/build/scans", { ...kitUpload(), session_id });
+    await build.idle();
+    expect(asked().at(-1)).not.toContain("The builder asked");
+    expect((await current()).wish).toBeNull();
+  });
+
+  it("is dropped when no scan follows within a minute: it belongs to that question, not a later one", async () => {
+    const build = t.app.ctx.hooks.build!;
+    build.expectScan("a robot");
+    const later = Date.now() + 61_000;
+    vi.spyOn(Date, "now").mockReturnValue(later);
+    await post("/v1/build/scans", kitUpload());
+    await build.idle();
+    vi.mocked(Date.now).mockRestore();
+    expect(asked().at(-1)).not.toContain("a robot");
+  });
+
+  it("said while the scan is still being named reaches that scan's designs", async () => {
+    let release = () => {};
+    nameTwins.mockImplementationOnce(async (d: unknown, ph: unknown, twins: Twin[]) => { await new Promise<void>((r) => { release = r; }); return byShape(d, ph, twins); });
+    await post("/v1/build/scans", kitUpload());
+    await vi.waitFor(() => expect(nameTwins).toHaveBeenCalled());
+    t.app.ctx.hooks.build!.expectScan("a robot");
+    release();
+    await t.app.ctx.hooks.build!.idle();
+    expect(asked().at(-1)).toContain('The builder asked: "a robot"');
+  });
+
+  it("is replaced by a rethink's request, and tidied (spaces, trailing punctuation)", async () => {
+    const build = t.app.ctx.hooks.build!;
+    await post("/v1/build/scans", kitUpload());
+    await build.idle();
+    expect(await build.rethink("  something   for my phone!! ")).toBe(true);
+    await build.idle();
+    expect((await current()).wish).toBe("something for my phone");
+    expect(asked().at(-1)).toContain('The builder asked: "something for my phone"');
   });
 });
