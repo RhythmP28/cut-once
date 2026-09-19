@@ -1,9 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, NavLink, Route, Routes } from "react-router-dom";
+import { Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { describeError, getCurrentAssembly, getHealth, type Health } from "./api";
 import { clearToken, setToken, tokenWasRejected, useToken } from "./auth";
 import { DirectorPage } from "./director/DirectorPage";
 import { HistoryPage } from "./history/HistoryPage";
+import { PreviewPage } from "./preview/PreviewPage";
 import { ReviewPage } from "./review/ReviewPage";
 import { UploadPage } from "./upload/UploadPage";
 
@@ -113,8 +114,19 @@ function NotFound() {
   );
 }
 
+/** Pages that fill the whole window, like the headset's view: no top bar. */
+const BARE_PAGES = new Set(["/preview"]);
+
 export function App() {
   const token = useToken();
+  const { pathname } = useLocation();
+  if (token && BARE_PAGES.has(pathname)) {
+    return (
+      <Routes>
+        <Route path="/preview" element={<PreviewPage />} />
+      </Routes>
+    );
+  }
   return (
     <div className="app">
       <header className="topbar">
@@ -123,6 +135,7 @@ export function App() {
           <NavLink to="/director">Director</NavLink>
           <NavLink to="/upload">Upload</NavLink>
           <NavLink to="/history">History</NavLink>
+          <NavLink to="/preview">Preview</NavLink>
         </nav>
         {token && <button type="button" className="ghost small" onClick={() => clearToken()}>Forget token</button>}
       </header>

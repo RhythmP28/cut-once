@@ -23,6 +23,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@cutonce/project-model':
+        specifier: workspace:*
+        version: link:../../packages/project-model
       '@cutonce/schemas':
         specifier: workspace:*
         version: link:../../packages/schemas
@@ -57,6 +60,9 @@ importers:
       vite:
         specifier: ^6.0.3
         version: 6.4.3(@types/node@22.20.4)(tsx@4.23.13)
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@22.20.4)
 
   packages/project-model:
     dependencies:

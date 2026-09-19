@@ -477,7 +477,7 @@ export function placeCamera(camera: THREE.PerspectiveCamera, box: Aabb, view: Vi
   const radius = Math.max(size.length() / 2, 0.05);
   if (view === "operator") {
     // Standing at the near (+Z) edge, eyes at 1.6 m or 0.6 m above the top of the model, whichever is higher.
-    camera.position.set(centre.x, Math.max(1.6, max.y + 0.6), max.z + Math.max(0.9, size.z * 0.8));
+    camera.position.set(centre.x, Math.max(1.6, max.y + 0.6), max.z + Math.max(0.6, size.z * 0.5));
   } else if (view === "top") {
     camera.position.set(centre.x, max.y + radius / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * 1.1, centre.z + 0.001);
   } else {

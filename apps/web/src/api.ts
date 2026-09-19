@@ -40,7 +40,7 @@ function withQuery(path: string, query?: Query): string {
   return s ? `${path}?${s}` : path;
 }
 
-function authHeaders(): Record<string, string> {
+export function authHeaders(): Record<string, string> {
   const token = getToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
@@ -139,6 +139,9 @@ export const createAssembly = (body: { plan_id: string; revision?: number; seed:
 // ── plans ────────────────────────────────────────────────────────────────────
 export const getPlan = (planId: string, revision?: number) =>
   request<Plan>("GET", `/v1/plans/${enc(planId)}`, { query: { revision }, schema: PlanSchema, label: "Plan" });
+
+/** Where a plan's mesh files (such as e7.glb) are served. Needs the bearer header. */
+export const planAssetUrl = (planId: string, name: string) => `/v1/plans/${enc(planId)}/assets/${enc(name)}`;
 
 export const approvePlan = (planId: string, body: { revision: number; approved_by: string }) =>
   request<Plan>("POST", `/v1/plans/${enc(planId)}/approve`, { body, schema: PlanSchema, label: "Plan" });
