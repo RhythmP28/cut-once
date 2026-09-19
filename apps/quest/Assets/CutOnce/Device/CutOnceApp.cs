@@ -209,7 +209,7 @@ namespace CutOnce.Device
         {
             _stream.Drain(_handleMessage);
 
-            if (_stream.Connects != _seenConnects) { _seenConnects = _stream.Connects; Run(_sync.CatchUp()); }        // (re)connected: fetch what was missed
+            if (_stream.Connects != _seenConnects) { _seenConnects = _stream.Connects; Run(_sync.CatchUp()); _build.OnStreamReconnected(); }   // (re)connected: fetch what was missed
             else if (!_sync.Online && Time.time > _nextRetry) { _nextRetry = Time.time + RetrySeconds; Run(_sync.CatchUp()); }
 
             if (!_hudInFront && _alignment.State != AlignmentState.Locked && Camera.main != null)

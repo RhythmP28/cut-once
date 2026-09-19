@@ -66,6 +66,22 @@ namespace CutOnce.Net.Tests
         }
 
         [Test]
+        public async Task TheCurrentSessionIsFetchedAfterAReconnectWithItsObjectsAndIdeas()
+        {
+            var http = new OneAnswer { Body = "{\"session\":{\"session_id\":\"bsess_1\",\"created_at\":\"2026-09-19T12:00:00.000Z\",\"scans\":[\"scan_1\"]},\"surfaces\":[],"
+                + "\"twins\":[{\"twin_id\":\"o1\",\"name\":\"tall_can\",\"label\":\"tall can\",\"shape\":{\"type\":\"cylinder\",\"axis\":\"y\",\"diameter\":0.066,\"length\":0.157},\"position\":[0.1,0.8185,0.5]}],"
+                + "\"ideas\":[{\"idea_id\":\"idea_1\",\"session_id\":\"bsess_1\",\"title\":\"Can on a stage\",\"plan\":{\"plan_id\":\"plan_build_1\"}}]}" };
+            var snapshot = await Client(http).GetBuildSession();
+            Assert.That(http.Seen.Method + " " + http.Seen.Url, Is.EqualTo("GET http://fake:8080/v1/build/sessions/current"));
+            Assert.That(new object[] { snapshot.session.session_id, snapshot.twins[0].twin_id, snapshot.ideas[0].plan.plan_id }, Is.EqualTo(new object[] { "bsess_1", "o1", "plan_build_1" }));
+
+            http.Body = "{\"session\":null,\"surfaces\":[],\"twins\":[],\"ideas\":[]}";   // the server restarted: no session
+            Assert.That((await Client(http).GetBuildSession()).session, Is.Null);
+            http.Status = 0; http.Body = null;
+            Assert.That(await Client(http).GetBuildSession(), Is.Null, "no network");
+        }
+
+        [Test]
         public async Task SayingAStepSendsTheTextAndReturnsTheAudioOrNullWhenTheVoiceIsOff()
         {
             var http = new OneAnswer { Body = "{\"turn_id\":\"turn_1\",\"audio_url\":\"/v1/copilot/audio/turn_1\"}" };

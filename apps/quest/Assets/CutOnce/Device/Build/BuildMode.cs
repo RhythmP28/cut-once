@@ -137,6 +137,31 @@ namespace CutOnce.Device
             }
         }
 
+        /// <summary>
+        /// The stream (re)connected. It only resends the current run, so labels and ideas sent while the Wi-Fi was down
+        /// (a window of up to half a minute) are gone: ask the server for the session and take what was missed through
+        /// the same two doors the stream uses.
+        /// </summary>
+        public void OnStreamReconnected()
+        {
+            if (!_flow.Active || _catchingUp) return;
+            Run(CatchUp());
+        }
+
+        bool _catchingUp;
+
+        async Task CatchUp()
+        {
+            _catchingUp = true;
+            try
+            {
+                var snapshot = await _api.GetBuildSession();
+                if (this == null) return;
+                foreach (var m in _flow.CatchUp(snapshot)) OnBuildMessage(m);
+            }
+            finally { _catchingUp = false; }
+        }
+
         void ShowPreviews()
         {
             _hovered = null;

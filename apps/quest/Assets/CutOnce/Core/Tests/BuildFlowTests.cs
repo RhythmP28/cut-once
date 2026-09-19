@@ -226,6 +226,43 @@ namespace CutOnce.Core.Tests
             Assert.That(new object[] { same.Phase, same.Ideas.Count }, Is.EqualTo(new object[] { BuildPhase.Ideas, 1 }), "its ideas stand until new ones arrive");
         }
 
+        static BuildSessionSnapshotDto Snapshot(string session, bool twins, bool ideas)
+        {
+            var s = new BuildSessionSnapshotDto { session = session == null ? null : new BuildSessionInfoDto { session_id = session } };
+            if (twins) s.twins.Add(new TwinDto { twin_id = "o1", name = "tall_can", label = "tall can" });
+            if (ideas) s.ideas.Add(Idea("idea_1", "plan_build_1"));
+            return s;
+        }
+
+        [Test]
+        public void AfterAReconnectTheSessionsObjectsAndIdeasAreCaughtUpOn()
+        {
+            // The 202 came, then the Wi-Fi dropped for the half minute the labels and the ideas took. The stream only resends
+            // the current run on a reconnect, so the headset asks for the session and feeds it through the same two doors.
+            var f = At(BuildPhase.Scanning);
+            var messages = f.CatchUp(Snapshot("bsess_a", twins: true, ideas: true));
+            Assert.That(messages.ConvertAll(m => m.type), Is.EqualTo(new[] { "build_inventory", "build_ideas" }));
+            Assert.That(new object[] { messages[0].inventory.session_id, messages[0].inventory.labelled, messages[0].inventory.twins.Count }, Is.EqualTo(new object[] { "bsess_a", true, 1 }),
+                "the server only keeps objects it has named, so what it holds is labelled");
+            Assert.That(new object[] { messages[1].session_id, messages[1].ideas.Count, messages[1].final }, Is.EqualTo(new object[] { "bsess_a", 1, false }), "not final: nothing is said twice");
+
+            Assert.That(f.OnInventory(messages[0].inventory), Is.True);
+            Assert.That(f.OnIdeas(messages[1].session_id, messages[1].ideas, messages[1].final), Is.True);
+            Assert.That(f.Phase, Is.EqualTo(BuildPhase.Ideas));
+        }
+
+        [Test]
+        public void ASnapshotOnlyCatchesUpTheSessionThisHeadsetIsIn()
+        {
+            Assert.That(At(BuildPhase.Scanning).CatchUp(Snapshot("bsess_other", true, true)), Is.Empty, "another session");
+            Assert.That(At(BuildPhase.Scanning).CatchUp(Snapshot(null, false, false)), Is.Empty, "the server has no session (it restarted)");
+            Assert.That(At(BuildPhase.Scanning).CatchUp(null), Is.Empty, "the server could not be reached");
+            Assert.That(new BuildFlow().CatchUp(Snapshot("bsess_a", true, true)), Is.Empty, "build mode is off");
+            Assert.That(At(BuildPhase.Walkthrough).CatchUp(Snapshot("bsess_a", true, true)), Is.Empty, "nothing interrupts a build");
+            Assert.That(At(BuildPhase.Labelled).CatchUp(Snapshot("bsess_a", true, false)).ConvertAll(m => m.type), Is.EqualTo(new[] { "build_inventory" }), "no ideas yet: they will come on the stream");
+            Assert.That(At(BuildPhase.Scanning).CatchUp(Snapshot("bsess_a", false, false)), Is.Empty, "no named objects yet either");
+        }
+
         [Test]
         public void TheSiteIsWhereTheChosenDesignStandsElseWhereTheIdeasWouldGo()
         {

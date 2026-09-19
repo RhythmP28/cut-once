@@ -53,6 +53,16 @@ namespace CutOnce.Core
     }
 
     public sealed class IdeaStartedDto { public string assembly_id, plan_id; public int revision; }
+
+    /// <summary>GET /v1/build/sessions/current: the session (null after a server restart) and what it holds. The server only keeps objects it has named.</summary>
+    public sealed class BuildSessionSnapshotDto
+    {
+        public BuildSessionInfoDto session;
+        public List<SurfaceDto> surfaces = new List<SurfaceDto>();
+        public List<TwinDto> twins = new List<TwinDto>();
+        public List<BuildIdeaDto> ideas = new List<BuildIdeaDto>();
+    }
+    public sealed class BuildSessionInfoDto { public string session_id, created_at; public List<string> scans = new List<string>(); }
     public sealed class SayRequestDto { public string text; }
     public sealed class SayDto { public string turn_id, audio_url; }
 }

@@ -110,6 +110,9 @@ namespace CutOnce.Net
             return new IdeaStartOutcome { Started = ParseOrNull<IdeaStartedDto>(r), Gone = r.Status == 404 };
         }
 
+        /// <summary>The server's build session and what it holds, after a reconnect (the stream does not resend build messages). Null when the server cannot be reached.</summary>
+        public async Task<BuildSessionSnapshotDto> GetBuildSession() => ParseOrNull<BuildSessionSnapshotDto>(await Send("GET", "/v1/build/sessions/current"));
+
         /// <summary>Speaks a sentence in the copilot's voice; play the returned audio_url with the copilot's player.</summary>
         public async Task<SayDto> BuildSay(string text) =>
             ParseOrNull<SayDto>(await Send("POST", "/v1/build/say", CoreJson.Write(new SayRequestDto { text = text }), 10));

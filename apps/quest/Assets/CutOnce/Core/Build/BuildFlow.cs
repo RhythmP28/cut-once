@@ -135,6 +135,24 @@ namespace CutOnce.Core
             return true;
         }
 
+        /// <summary>
+        /// After a reconnect: the stream only resends the current run, so labels and ideas sent while the Wi-Fi was down
+        /// are gone. This turns the server's session into the messages that were missed, to be handled like any others
+        /// (so nothing is said twice: the ideas are not final). Empty unless the snapshot is this headset's session and
+        /// build mode is waiting on it: the server only keeps objects it has named, so what it holds is labelled.
+        /// </summary>
+        public List<WsMessageDto> CatchUp(BuildSessionSnapshotDto snapshot)
+        {
+            var messages = new List<WsMessageDto>();
+            string session = snapshot?.session?.session_id;
+            if (!Active || Building || session == null || SessionId == null || session != SessionId) return messages;
+            if (snapshot.twins != null && snapshot.twins.Count > 0)
+                messages.Add(new WsMessageDto { type = "build_inventory", inventory = new InventoryDto { session_id = session, labelled = true, surfaces = snapshot.surfaces ?? new List<SurfaceDto>(), twins = snapshot.twins } });
+            if (snapshot.ideas != null && snapshot.ideas.Count > 0)
+                messages.Add(new WsMessageDto { type = "build_ideas", session_id = session, ideas = snapshot.ideas, final = false });
+            return messages;
+        }
+
         public void OnPlaced() { if (Phase == BuildPhase.Starting) Phase = BuildPhase.Assembling; }
         public void OnAssembled() { if (Phase == BuildPhase.Assembling) Phase = BuildPhase.Walkthrough; }
 
