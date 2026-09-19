@@ -133,9 +133,9 @@ export async function answerQuery(deps: Deps, input: QueryInput, log: Log): Prom
   timings.route = since(routeStart);
   if (routeOutcome(routed) === "scan") {
     const wish = cleanWish(routed?.wish ?? null);
-    ctx.hooks.build?.expectScan(wish, false);
+    const taken = ctx.hooks.build?.expectScan(wish, false) ?? false;     // a scan being read takes it: no second scan
     const text = wish ? `Let me see how to make ${wish} from what's here.` : "Let me see what you've got.";
-    return quick(deps, turnId, transcript, text, { type: "start_scan" }, timings, t0, recordTurn);
+    return quick(deps, turnId, transcript, text, taken ? null : { type: "start_scan" }, timings, t0, recordTurn);
   }
   const [chunks, annotated] = await Promise.all([retrieving, annotating]);
 
@@ -207,7 +207,7 @@ async function respondFast(
     if (fast.wish && input.context.mode === "build" && ctx.hooks.build.canRethink()) {
       await ctx.hooks.build.rethink(fast.wish, change);
       fast.action = null;
-    } else ctx.hooks.build.expectScan(fast.wish, change);
+    } else if (ctx.hooks.build.expectScan(fast.wish, change)) fast.action = null;   // a scan being read takes it
   }
   if (fast.startRun) fast.answer_text = await startRun(ctx, g.plan.plan_id, fast.startRun, fast.answer_text, log);
   if (fast.action) await applyAction(deps, input.assemblyId, fast.action, "operator", { confidence: 1, note: fast.note ?? "spoken command" });
@@ -295,9 +295,10 @@ async function kitTurn(
       // Not the model's answer: it says the command happened ("Marked it done!"), and nothing did.
       return quick(deps, turnId, kit.heard, "There's no step to do that to yet.", null, timings, t0, recordTurn, true, said);
     }
-    case "scan":
-      build.expectScan(decision.wish, decision.change);
-      return quick(deps, turnId, kit.heard, decision.text, { type: "start_scan" }, timings, t0, recordTurn, false, said);
+    case "scan": {
+      const taken = build.expectScan(decision.wish, decision.change);       // a scan being read takes it: no second scan
+      return quick(deps, turnId, kit.heard, decision.text, taken ? null : { type: "start_scan" }, timings, t0, recordTurn, false, said);
+    }
     case "rethink":
       await build.rethink(decision.wish, decision.change);
       return quick(deps, turnId, kit.heard, decision.text, null, timings, t0, recordTurn, false, said);

@@ -30,9 +30,9 @@ export interface IdeasDeps {
 }
 export interface IdeasInput {
   sessionId: string; twins: Twin[]; surfaces: Surface[]; camera: Vec3; photo: Buffer | null;
-  /** What the builder asked for ("a birdhouse"), or null. */
+  /** What the builder asked for ("a birdhouse", or "a birdhouse, then something crazier"), or null. */
   request: string | null;
-  /** Titles already offered in this session: not offered again unless the request names them. */
+  /** Titles already offered in this session that must not be offered again (the session decides which count). */
   offered?: string[];
 }
 type Made = NonNullable<BuildIdea["made"]>;
@@ -142,7 +142,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
  * the designs saved earlier (at rehearsal) for the same objects and wish are shown instead, and the live answer only
  * refreshes the cache when it lands: a preview never changes under the judge's pointer. With nothing cached, Kit
  * keeps waiting for the live answer. The stored rules come last: with no model at all, or when nothing else stands.
- * Designs already offered in this session are not offered again, unless the request names one. One final list.
+ * Designs already offered (input.offered) are not offered again, unless nothing else stands. One final list.
  */
 export async function computeIdeas(deps: IdeasDeps, input: IdeasInput, emit: (ideas: BuildIdea[], final: boolean) => void): Promise<BuildIdea[]> {
   const usable = input.twins.filter((t) => t.name !== "unknown" && t.confidence >= 0.5);
@@ -151,8 +151,7 @@ export async function computeIdeas(deps: IdeasDeps, input: IdeasInput, emit: (id
   if (!surface || usable.length === 0) { emit([], true); return []; }
   const canon = canonical(usable, input.request, deps.model);
   const offered = new Set((input.offered ?? []).map((t) => t.toLowerCase()));
-  const asked = input.request ? normalise(input.request) : "";
-  const fresh = (list: BuildIdea[]) => list.filter((i) => !offered.has(i.title.toLowerCase()) || (asked !== "" && asked.includes(normalise(i.title))));
+  const fresh = (list: BuildIdea[]) => list.filter((i) => !offered.has(i.title.toLowerCase()));
   const fromCache = () => cachedIdeas(deps, input, byId, surface, canon);
   const fromRules = () => matchRules(deps.rules, usable)
     .map((m) => check({ draft: m.draft, source: "rule", made: "rule", ruleId: m.rule.rule_id, payload: m.payload }, byId, surface, input, deps))

@@ -113,10 +113,11 @@ describe("computeIdeas: the rehearsal cache", () => {
 });
 
 describe("computeIdeas: no repeats", () => {
-  it("never offers again what this session already offered, unless the request names it", async () => {
+  // Which titles count as offered is the session's call (a change that names one brings it back): here it is only obeyed.
+  it("never offers again what it is told was offered, whatever the request says", async () => {
     const d = deps({ call: vi.fn(async () => ({ ideas: [aiDraft, phoneDraft] })) });
     expect((await computeIdeas(d, { ...input, offered: ["Can tower"] }, () => {})).map((i) => i.title)).toEqual(["Phone stand"]);
-    expect((await computeIdeas(d, { ...input, offered: ["Can tower"], request: "the can tower again" }, () => {})).map((i) => i.title).sort()).toEqual(["Can tower", "Phone stand"]);
+    expect((await computeIdeas(d, { ...input, offered: ["Can tower"], request: "a can tower" }, () => {})).map((i) => i.title)).toEqual(["Phone stand"]);
   });
   it("offers a repeat rather than nothing, when every design it can find was offered already", async () => {
     const out = await computeIdeas(deps({ call: vi.fn(async () => ({ ideas: [aiDraft] })) }), { ...input, offered: ["Can tower", "Laptop riser"], request: "make it taller" }, () => {});

@@ -239,6 +239,57 @@ describe("the wish", () => {
     expect(asked().at(-1)).not.toContain("Already offered");
   });
 
+  it("a change keeps the ask it changes: the designer hears 'a birdhouse, then something crazier'", async () => {
+    const build = t.app.ctx.hooks.build!;
+    await post("/v1/build/scans", kitUpload());
+    await build.idle();
+    await build.rethink("a birdhouse", false);
+    await build.rethink("something crazier", true);
+    await build.idle();
+    expect(asked().at(-1)).toContain('The builder asked: "a birdhouse, then something crazier".');
+    expect([(await current()).wish, build.kitContext().wish]).toEqual(["a birdhouse, then something crazier", "a birdhouse, then something crazier"]);
+    await build.rethink("make it taller", true);                             // the newest change replaces the last one
+    await build.idle();
+    expect(asked().at(-1)).toContain('The builder asked: "a birdhouse, then make it taller".');
+    await build.rethink("a robot", false);                                   // a new ask replaces both
+    await build.idle();
+    expect(asked().at(-1)).toContain('The builder asked: "a robot".');
+  });
+
+  it("only the newest change can bring back a design shown before, by naming it; the ask it changes cannot", async () => {
+    const build = t.app.ctx.hooks.build!;
+    await post("/v1/build/scans", kitUpload());
+    await build.idle();                                                       // offers the laptop riser
+    await build.rethink("make the laptop riser taller", true);
+    await build.idle();
+    expect(asked().at(-1)).not.toContain("Already offered");
+    await build.rethink("a laptop riser", false);
+    await build.rethink("something crazier", true);
+    await build.idle();
+    expect(asked().at(-1)).toContain("Already offered, do not repeat: Laptop riser.");
+  });
+
+  it("said while a rescan is being named, goes to that scan's designs once: no rethink on top, no second scan, nothing left waiting", async () => {
+    const build = t.app.ctx.hooks.build!;
+    const { session_id } = (await post("/v1/build/scans", kitUpload())).json();
+    await build.idle();
+    let release = () => {};
+    nameTwins.mockImplementationOnce(async (d: unknown, ph: unknown, twins: Twin[]) => { await new Promise<void>((r) => { release = r; }); return byShape(d, ph, twins); });
+    await post("/v1/build/scans", { ...kitUpload(), session_id });
+    await vi.waitFor(() => expect(nameTwins).toHaveBeenCalledTimes(2));
+    vi.mocked(jsonCall).mockClear(); seen = [];
+    expect(build.canRethink()).toBe(false);                                   // a rethink now would design twice
+    expect(build.expectScan("a robot", false)).toBe(true);                   // it rides with the scan being named
+    release();
+    await build.idle();
+    expect(asked()).toEqual([expect.stringContaining('The builder asked: "a robot".')]);
+    expect(seen.filter((m) => m.type === "build_ideas" && m.final)).toHaveLength(1);
+    await build.rethink("something crazier", true);
+    await post("/v1/build/scans", { ...kitUpload(), session_id });           // another look: nothing stale re-applied
+    await build.idle();
+    expect(asked().at(-1)).toContain('The builder asked: "a robot, then something crazier".');
+  });
+
   it("is replaced by a rethink's request, and tidied (spaces, trailing punctuation)", async () => {
     const build = t.app.ctx.hooks.build!;
     await post("/v1/build/scans", kitUpload());

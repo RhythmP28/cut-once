@@ -502,6 +502,17 @@ describe("build mode: Kit's turn", () => {
     expect(rethink).toHaveBeenCalledWith("a birdhouse", false);
   });
 
+  it("a wish said while a scan is being read goes with that scan: no second scan is asked for", async () => {
+    onTable({ status: "scanning: finding and naming the objects" });
+    vi.spyOn(build(), "canRethink").mockReturnValue(false);
+    const expect_ = vi.spyOn(build(), "expectScan").mockReturnValue(true);
+    kitHears({ heard: "I'd love a birdhouse", intent: "ideas", wish: "a birdhouse", answer: "" });
+    expect((await query({ mode: "build" })).json()).toMatchObject({ action: null, answer_text: "Let me see how to make a birdhouse from what's here." });
+    kitHears({ heard: "Build me a robot" });
+    expect((await query({ mode: "build" })).json()).toMatchObject({ action: null, answer_text: "Let me see how to make a robot from what's here." });
+    expect(expect_.mock.calls).toEqual([["a birdhouse", false], ["a robot", false]]);
+  });
+
   it("'make me something crazier' said outright changes the designs on show: those shown are not offered again", async () => {
     onTable();
     vi.spyOn(build(), "canRethink").mockReturnValue(true);
