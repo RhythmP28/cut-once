@@ -43,6 +43,12 @@ describe("buildMarkdown", () => {
     expect(md).toContain("Cable tray 23 mm off");
     expect(md).toContain("missing: Power cable");
   });
+  it("compares the blueprint reading with the previous run's", () => {
+    const diff = (unchanged: number) => ({ from: { plan_id: "plan_desk_demo", revision: 1 }, to: { plan_id: "plan_x", revision: 1 },
+      changes: [{ part_id: "part_x_tray", name: "Cable tray", change: "changed" as const, moved_mm: 23, resized_mm: 4, fields: [] }], unchanged });
+    const md = buildMarkdown({ ...base, extraction: { skipped: null, diff: diff(8), baseline: diff(5) } });
+    expect(md).toContain("Blueprint reading: 8/9 parts within 5 mm (was 5/6)");
+  });
 });
 
 describe("buildHtml", () => {

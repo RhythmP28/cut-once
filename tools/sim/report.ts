@@ -39,15 +39,20 @@ function describePlan(p: PlanReport): string {
 /** Error of a blueprint-read part against its known-good match: the larger of its move and its resize. */
 const partError = (c: PartChange) => Math.max(c.moved_mm ?? 0, c.resized_mm ?? 0);
 
-export function describeExtraction(diff: PlanDiff): string {
+/** Known-good parts the reading got within EXTRACTION_OK_MM, out of all known-good parts. */
+export function extractionScore(diff: PlanDiff): { within: number; total: number } {
+  const nearlyRight = diff.changes.filter((c) => c.change === "changed" && partError(c) <= EXTRACTION_OK_MM).length;
+  return { within: diff.unchanged + nearlyRight, total: diff.unchanged + diff.changes.filter((c) => c.change !== "added").length };
+}
+
+export function describeExtraction(diff: PlanDiff, before: PlanDiff | null = null): string {
   const off = diff.changes.filter((c) => c.change === "changed" && partError(c) > EXTRACTION_OK_MM);
   const missing = diff.changes.filter((c) => c.change === "removed");
   const extra = diff.changes.filter((c) => c.change === "added");
-  const nearlyRight = diff.changes.filter((c) => c.change === "changed" && partError(c) <= EXTRACTION_OK_MM).length;
-  const total = diff.unchanged + diff.changes.filter((c) => c.change !== "added").length;
-  const within = diff.unchanged + nearlyRight;
+  const { within, total } = extractionScore(diff);
   const worst = [...off].sort((a, b) => partError(b) - partError(a)).slice(0, 3).map((c) => `${c.name} ${mm(partError(c))} off`);
   let line = `Blueprint reading: ${within}/${total} parts within ${EXTRACTION_OK_MM} mm`;
+  if (before) { const was = extractionScore(before); line += ` (was ${was.within}/${was.total})`; }
   if (worst.length) line += `; worst: ${worst.join(", ")}`;
   if (missing.length) line += `; missing: ${missing.map((c) => c.name).join(", ")}`;
   if (extra.length) line += `; extra: ${extra.map((c) => c.name).join(", ")}`;
@@ -93,7 +98,7 @@ export function buildMarkdown(r: ReportInput): string {
   out.push(rows.length ? `${pictures}\n\n| Scene | Change |\n|---|---|\n${rows.join("\n")}` : pictures);
 
   out.push(`Plans:\n${r.plans.map(describePlan).join("\n")}`);
-  out.push(r.extraction.diff ? describeExtraction(r.extraction.diff) : `Blueprint reading: skipped (${r.extraction.skipped ?? "not run"})`);
+  out.push(r.extraction.diff ? describeExtraction(r.extraction.diff, r.extraction.baseline ?? null) : `Blueprint reading: skipped (${r.extraction.skipped ?? "not run"})`);
   out.push("Full report with images: artifact `sim-out` → report.html");
   return out.join("\n\n") + "\n";
 }
@@ -159,8 +164,9 @@ function main(): number {
   const extracted = readJson<Plan>(join(CURRENT, "extracted.plan.json"));
   const known = readJson<Plan>(join(ROOT, "data/demo/desk.plan.json"));
   const skippedFile = join(CURRENT, "extraction-skipped.txt");
+  const extractedBefore = readJson<Plan>(join(BASELINE, "extracted.plan.json"));
   const extraction = extracted && known
-    ? { diff: diffPlans(known, extracted), skipped: null }
+    ? { diff: diffPlans(known, extracted), skipped: null, baseline: extractedBefore ? diffPlans(known, extractedBefore) : null }
     : { diff: null, skipped: existsSync(skippedFile) ? readFileSync(skippedFile, "utf8").trim() : "not run" };
 
   const input: ReportInput = {

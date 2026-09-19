@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
 import type { Plan } from "@cutonce/schemas";
 import { partAabb } from "@cutonce/project-model";
 import { buildApp } from "../app.js";
@@ -7,9 +7,12 @@ import { loadConfig } from "../config.js";
 import { draftToPlan } from "../reconstruction/draftToPlan.js";
 import { extractPlan } from "../reconstruction/extract.js";
 
-/** pnpm extract:eval <drawing.pdf>. Runs the real extraction and prints each part's error against the known-good plan. */
+/**
+ * pnpm extract:eval <drawing.pdf> [--plan-out <file>]. Runs the real extraction and prints each part's error
+ * against the known-good plan. --plan-out also saves the extracted plan (pnpm sim draws and scores it).
+ */
 const file = process.argv[2];
-if (!file) { console.error("usage: pnpm extract:eval <drawing.pdf>"); process.exit(2); }
+if (!file || file.startsWith("--")) { console.error("usage: pnpm extract:eval <drawing.pdf> [--plan-out <file>]"); process.exit(2); }
 const cfg = loadConfig(process.env, { logLevel: "warn", reconstruction: true });
 const app = await buildApp(cfg);
 const path = resolve(process.env.INIT_CWD ?? process.cwd(), file);
@@ -18,6 +21,13 @@ const { document } = app.ctx.docs.save({ filename: basename(path), mime: "applic
 const started = Date.now();
 const draft = await extractPlan(app.ctx, [document.document_id]);
 const { plan, issues } = draftToPlan(draft, { plan_id: "plan_extract_eval", project_id: cfg.projectId, source_document_ids: [document.document_id], extracted_by: cfg.openaiModel });
+const outIdx = process.argv.indexOf("--plan-out");
+if (outIdx > 0 && process.argv[outIdx + 1]) {
+  const out = resolve(process.env.INIT_CWD ?? process.cwd(), process.argv[outIdx + 1]!);
+  mkdirSync(dirname(out), { recursive: true });
+  writeFileSync(out, JSON.stringify(plan, null, 2));
+  console.log(`wrote the extracted plan to ${out}`);
+}
 const truth = JSON.parse(readFileSync(join(cfg.repoRoot, "data", "demo", "desk.plan.json"), "utf8")) as Plan;
 console.log(`${cfg.openaiModel}: ${plan.parts.length} parts in ${((Date.now() - started) / 1000).toFixed(1)} s; known-good plan has ${truth.parts.length}\n`);
 

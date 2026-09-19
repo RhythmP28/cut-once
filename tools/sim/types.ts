@@ -18,5 +18,6 @@ export interface ReportInput {
   screens: ScreenResult[];
   plans: PlanReport[];
   scenario: { current: ScenarioResult | null; baseline: ScenarioResult | null };
-  extraction: { diff: PlanDiff | null; skipped: string | null };
+  /** The AI-read desk against the known-good one; `baseline` is the previous run's reading, when it had one. */
+  extraction: { diff: PlanDiff | null; skipped: string | null; baseline?: PlanDiff | null };
 }
