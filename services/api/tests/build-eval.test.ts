@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import { REPO_ROOT } from "../src/config.js";
 import { Truth, carryNames, scoreRecording } from "../src/build/score.js";
 import { matchFastPath } from "../src/copilot/fastpath.js";
-import { Routed } from "../src/copilot/router.js";
 import { twin } from "./build-synth.js";
 
 describe("scoreRecording", () => {
@@ -55,7 +54,7 @@ describe("the router test set", () => {
     expect(set.length).toBeGreaterThanOrEqual(40);
     for (const c of set) {
       expect(["upload", "overlay", "build"], c.said).toContain(c.mode);
-      expect(Routed.shape.flow.options, c.said).toContain(c.expect);
+      expect(["question", "build_ideas", "modify_design"], c.said).toContain(c.expect);
       expect(Array.isArray(c.ideas), c.said).toBe(true);
     }
     expect(new Set(set.map((c) => `${c.mode}|${c.said.toLowerCase()}`)).size).toBe(set.length);

@@ -36,6 +36,7 @@ async function openai(req: IncomingMessage, res: ServerResponse) {
   const reply = (content: string | null, tool_calls?: object[]) => send({ id: "chatcmpl_wire", object: "chat.completion", created: 0, model: b.model,
     choices: [{ index: 0, finish_reason: tool_calls ? "tool_calls" : "stop", message: { role: "assistant", content, ...(tool_calls ? { tool_calls } : {}) } }] });
   if (schema === "route") return reply(JSON.stringify({ flow: stand.flow, confidence: 0.95 }));
+  if (schema === "kit_turn") return reply(JSON.stringify({ heard: "(replaced by the transcript)", intent: "question", wish: null, pick: null, answer: "It goes on the cans.", objects: [], confidence: 0.9 }));
   if (schema === "verification") return reply(JSON.stringify({ verdict: "present", confidence: 0.9, evidence: "a tray is there" }));
   if (schema === "g0") return reply(JSON.stringify({ shape: "square", colour: "red", confident: true }));
   if (b.tools && stand.toolRound) return reply(null, ["search_documents", "find_parts", "lookup_material"].map((name, i) =>
@@ -43,19 +44,35 @@ async function openai(req: IncomingMessage, res: ServerResponse) {
   return reply(JSON.stringify(ANSWER));
 }
 
-let oai: Server, stuck: TcpServer, oaiUrl = "", stuckMcpUrl = "";
+type OmniBody = { model: string; stream: boolean; messages: { role: string; content: unknown }[] };
+const omniSeen: OmniBody[] = [];
+const KIT_OMNI = { heard: "which piece goes first", intent: "question", wish: null, pick: null, answer: "Stand the can up first.", objects: [], confidence: 0.9 };
+async function omni(req: IncomingMessage, res: ServerResponse) {
+  omniSeen.push(JSON.parse((await readBody(req)).toString()) as OmniBody);
+  const chunk = (content: string | null, finish: string | null) =>
+    `data: ${JSON.stringify({ id: "c1", object: "chat.completion.chunk", created: 0, model: "qwen", choices: [{ index: 0, delta: content === null ? {} : { content }, finish_reason: finish }] })}\n\n`;
+  res.writeHead(200, { "content-type": "text/event-stream" });
+  const text = JSON.stringify(KIT_OMNI);
+  res.write(chunk(text.slice(0, 20), null)); res.write(chunk(text.slice(20), null)); res.write(chunk(null, "stop"));
+  res.end("data: [DONE]\n\n");
+}
+
+let oai: Server, omniServer: Server, omniUrl = "", stuck: TcpServer, oaiUrl = "", stuckMcpUrl = "";
 const stuckSockets = new Set<Socket>();
 beforeAll(async () => {
   oai = createServer((q, s) => void openai(q, s));
   await new Promise<void>((r) => oai.listen(0, "127.0.0.1", r));
   oaiUrl = `http://127.0.0.1:${(oai.address() as AddressInfo).port}/v1`;
+  omniServer = createServer((q, s) => void omni(q, s));
+  await new Promise<void>((r) => omniServer.listen(0, "127.0.0.1", r));
+  omniUrl = `http://127.0.0.1:${(omniServer.address() as AddressInfo).port}/v1`;
   stuck = createTcp((socket) => { stuckSockets.add(socket); }); // accepts and never answers: a Kibana that is up but hung
   await new Promise<void>((r) => stuck.listen(0, "127.0.0.1", r));
   stuckMcpUrl = `http://127.0.0.1:${(stuck.address() as AddressInfo).port}/api/agent_builder/mcp`;
   process.env.OPENAI_BASE_URL = oaiUrl;
 });
-afterAll(() => { for (const s of stuckSockets) s.destroy(); stuck.close(); oai.close(); delete process.env.OPENAI_BASE_URL; });
-beforeEach(() => { seen.length = 0; stand.toolRound = false; stand.flow = "question"; delete process.env.OPENAI_ROUTER_MODEL; process.env.COPILOT_ROUTE_MS = "5000"; process.env.COPILOT_CAP_MS = "30000"; delete process.env.OPENAI_COPILOT_MODEL; });
+afterAll(() => { for (const s of stuckSockets) s.destroy(); stuck.close(); oai.close(); omniServer.close(); delete process.env.OPENAI_BASE_URL; });
+beforeEach(() => { seen.length = 0; omniSeen.length = 0; stand.toolRound = false; stand.flow = "question"; delete process.env.OPENAI_ROUTER_MODEL; process.env.COPILOT_ROUTE_MS = "5000"; process.env.COPILOT_CAP_MS = "30000"; delete process.env.OPENAI_COPILOT_MODEL; });
 afterEach(() => { delete process.env.COPILOT_ROUTE_MS; delete process.env.COPILOT_CAP_MS; delete process.env.OPENAI_COPILOT_MODEL; });
 
 const FIXTURES = join(REPO_ROOT, "data", "fixtures");
@@ -77,11 +94,11 @@ function multipart(parts: { name: string; value: string | Buffer; filename?: str
 }
 
 type App = Awaited<ReturnType<typeof makeApp>>;
-function question(t: App, opts: { withFrame?: boolean } = {}) {
+function question(t: App, opts: { withFrame?: boolean; mode?: "upload" | "overlay" | "build" } = {}) {
   const aid = t.app.ctx.store.currentAssembly()!.assembly_id;
   const withFrame = opts.withFrame ?? true;
   return t.app.inject({ method: "POST", url: `/v1/assemblies/${aid}/copilot/query`, ...multipart([
-    { name: "context", value: JSON.stringify({ ...fixtureContext(), assembly_id: aid, ...(withFrame ? {} : { camera: null, visible_parts: [] }) }) },
+    { name: "context", value: JSON.stringify({ ...fixtureContext(), assembly_id: aid, ...(opts.mode ? { mode: opts.mode } : {}), ...(withFrame ? {} : { camera: null, visible_parts: [] }) }) },
     { name: "audio", value: Buffer.from("RIFFfake"), filename: "turn.wav", type: "audio/wav" },
     ...(withFrame ? [{ name: "frame", value: frame(), filename: "frame.jpg", type: "image/jpeg" }] : []),
   ]) });
@@ -134,6 +151,37 @@ describe("the real OpenAI calls", () => {
       const r = await question(t);
       expect([r.statusCode, r.json().action]).toEqual([200, { type: "start_scan" }]);
       expect(seen.filter((s) => s.path === "chat").map((c) => [c.model, c.schema])).toEqual([["tiny-router", "route"]]);
+    } finally { await t.cleanup(); }
+  });
+});
+
+describe("Kit's turn (build mode) over the wire", () => {
+  it("on OpenAI: transcribes, then one Kit call with the photo and no tools; what was heard is the transcript", async () => {
+    const t = await makeApp({ openaiKey: "sk-test", copilotMode: "live" });
+    try {
+      const r = await question(t, { mode: "build" });
+      expect([r.statusCode, r.json().answer_text, r.json().transcript]).toEqual([200, "It goes on the cans.", "where does the power cable run"]);
+      expect(seen.map((x) => [x.path, x.schema ?? null])).toEqual([["transcriptions", null], ["chat", "kit_turn"]]);
+      expect(seen[1]).toMatchObject({ tools: 0, images: 1 });
+      expect(r.json().timings_ms).toMatchObject({ kit_openai: 1 });
+    } finally { await t.cleanup(); }
+  });
+
+  it("on OMNI: one streamed call hears the voice clip itself and sees the photo; nothing goes to OpenAI", async () => {
+    const t = await makeApp({ openaiKey: "sk-test", omniKey: "q", omniBaseUrl: omniUrl, copilotMode: "live" });
+    try {
+      const r = await question(t, { mode: "build" });
+      expect([r.statusCode, r.json().answer_text, r.json().transcript]).toEqual([200, "Stand the can up first.", "which piece goes first"]);
+      expect(seen).toEqual([]);
+      expect(omniSeen).toHaveLength(1);
+      const body = omniSeen[0]!;
+      expect([body.model, body.stream]).toEqual(["qwen3.5-omni-flash", true]);
+      expect(String(body.messages[0]!.content)).toMatch(/^You are Kit, the Kitbash co-pilot/);
+      const parts = body.messages[1]!.content as { type: string; text?: string; input_audio?: { data: string; format: string } }[];
+      expect(parts.map((x) => x.type)).toEqual(["text", "image_url", "input_audio"]);
+      expect(parts[0]!.text).toMatch(/SAID: \(in the audio\)$/);
+      expect(parts[2]!.input_audio).toEqual({ data: `data:;base64,${Buffer.from("RIFFfake").toString("base64")}`, format: "wav" });
+      expect(r.json().timings_ms).toMatchObject({ kit_omni: 1 });
     } finally { await t.cleanup(); }
   });
 });

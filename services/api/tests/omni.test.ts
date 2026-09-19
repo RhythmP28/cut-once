@@ -23,8 +23,9 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   const body = JSON.parse(raw) as Body;
   seen.push(body);
   const system = String(body.messages[0]?.content ?? "");
-  // The probe's three checks, answered by what their prompts ask for.
-  const next = replies.shift() ?? (system.includes("\"hello\"") ? ['{"hello":"hi","model":"stand-in"}']
+  // The probe's checks, answered by what their prompts ask for.
+  const next = replies.shift() ?? (system.startsWith("You are Kit") ? ['{"heard":"","intent":"unclear","wish":null,"pick":null,"answer":"Say that again?","objects":[],"confidence":0.2}']
+    : system.includes("\"hello\"") ? ['{"hello":"hi","model":"stand-in"}']
     : system.includes("\"objects\"") ? ['{"objects":["table","box"]}'] : system.includes("\"heard\"") ? ['{"heard":""}'] : ["{}"]);
   res.writeHead(200, { "content-type": "text/event-stream" });
   if (next === "hang") { res.write(chunk("{\"a\":")); hanging.add(res); return; }
@@ -129,14 +130,15 @@ describe("pnpm omni:probe", () => {
     expect(out.stdout).toMatch(/^PASS {2}photo .*table, box/m);
     expect(out.stdout).toMatch(/^PASS {2}voice \(dataurl\)/m);
     expect(out.stdout).toMatch(/^PASS {2}voice \(base64\)/m);
+    expect(out.stdout).toMatch(/^PASS {2}kit .*intent unclear \(0\.2\)/m);
     expect(out.code).toBe(0);
     const voices = seen.filter((b) => JSON.stringify(b.messages).includes("input_audio"));
-    expect(voices).toHaveLength(2);
+    expect(voices).toHaveLength(3);                                  // two voice checks and the Kit turn
   }, 60_000);
 
   it("skips everything without a key, and does not fail", async () => {
     const out = await probe({});
-    expect(out.stdout.match(/^SKIP /gm)).toHaveLength(4);
+    expect(out.stdout.match(/^SKIP /gm)).toHaveLength(5);
     expect(out.code).toBe(0);
   }, 60_000);
 });

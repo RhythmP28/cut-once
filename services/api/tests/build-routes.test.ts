@@ -62,32 +62,32 @@ describe("a scan of the kit", () => {
     expect([state.progress.built, state.progress.total, state.current_step_id]).toEqual([1, 5, "step_02"]);
   });
 
-  it("starts an idea by name for the copilot", async () => {
+  it("tells Kit what is on the table: the objects, where the camera stood, the designs on show and what is happening", async () => {
+    const build = t.app.ctx.hooks.build!;
+    expect(build.kitContext()).toMatchObject({ status: "nothing scanned yet", twins: [], ideas: [], camera: null, started: null, tape: false });
     await post("/v1/build/scans", kitUpload());
-    await t.app.ctx.hooks.build!.idle();
-    expect(await t.app.ctx.hooks.build!.startByName("let's build the laptop riser")).toBe("Laptop riser");
+    await build.idle();
+    const ctx = build.kitContext();
+    expect(ctx.status).toBe("showing 1 design");
+    expect(ctx.twins.map((q) => q.name).sort()).toEqual(["pizza_box", "tall_can", "tall_can", "tall_can"]);
+    expect(ctx.camera?.position).toEqual(CAMERA.cam);
+    expect(ctx.ideas).toEqual([expect.objectContaining({ title: "Laptop riser", steps: 4 })]);
+    expect([...ctx.ideas[0]!.uses].sort()).toEqual(ctx.twins.map((q) => q.twin_id).sort());
   });
 
-  it("a question about an idea never starts it, and once a build is under way names are not picks until the next scan", async () => {
+  it("once a design is started, Kit sees none on show and cannot rethink, until the next scan", async () => {
     const build = t.app.ctx.hooks.build!;
     await post("/v1/build/scans", kitUpload());
     await build.idle();
-    const runs = () => t.app.ctx.store.listAssemblies().length;
-    const before = runs();
-    expect(await build.startByName("how tall is the laptop riser?")).toBeNull();
-    expect(await build.startByName("The laptop riser, please.")).toBe("Laptop riser");
-    expect(runs()).toBe(before + 1);
-    // Mid-build the headset would drop out of build mode if another run appeared, and it shows no new ideas either.
-    expect(await build.startByName("laptop riser")).toBeNull();
-    expect(await build.rethink("make it taller")).toBe(false);
-    expect(runs()).toBe(before + 1);
-    // Scanning again puts the headset back to picking, so names are picks again.
+    const [idea] = build.kitContext().ideas;
+    await build.startIdea(idea!.idea_id);
+    expect(build.kitContext()).toMatchObject({ status: "a design is being built", ideas: [], started: idea!.idea_id });
+    expect([build.canRethink(), await build.rethink("make it taller")]).toEqual([false, false]);
     const { session_id } = (await t.app.inject({ method: "GET", url: "/v1/build/sessions/current", headers: auth })).json();
     await post("/v1/build/scans", { ...kitUpload(), session_id });
     await build.idle();
-    expect(await build.rethink("make it taller")).toBe(true);
-    await build.idle();
-    expect(await build.startByName("laptop riser")).toBe("Laptop riser");
+    expect(build.kitContext()).toMatchObject({ status: "showing 1 design", started: null });
+    expect(build.canRethink()).toBe(true);
   });
 
   it("replays a saved scan into a new session using its saved labels", async () => {

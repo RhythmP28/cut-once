@@ -2,13 +2,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ZodError } from "zod";
 import type { BuildIdea, BuildScan, BuildScanUpload, Surface, Twin, Vec3 } from "@cutonce/schemas";
+import type { AiCall } from "../ai.js";
 import type { Ctx } from "../app.js";
 import { normalise } from "../copilot/fastpath.js";
 import { badRequest, notFound } from "../errors.js";
 import { standardShape, type Rule, type Vocab } from "./data.js";
 import { BuildFiles, newId } from "./files.js";
-import { computeIdeas, describeFound, summary } from "./ideas.js";
-import type { AiCall } from "../ai.js";
+import { computeIdeas, describeFound, hasTape, summary } from "./ideas.js";
 import { nameTwins } from "./label.js";
 import { appendTwin, mergeSurfaces, mergeTwins } from "./merge.js";
 import { flatSize, heightOf } from "./shape.js";
@@ -32,6 +32,21 @@ export interface Session {
   wish: string | null;
   /** Titles already offered in this session, so "something crazier" brings new ones. A plain ask starts afresh. */
   offered: string[];
+}
+
+/** What Kit is told about build mode on every turn: what is happening, the objects, the designs on show, the wish. */
+export interface KitBuildContext {
+  status: string;
+  twins: Twin[]; surfaces: Surface[];
+  /** Where the camera stood and faced for the last scan: "the can on your left" is said from there. */
+  camera: { position: Vec3; forward: Vec3 } | null;
+  wish: string | null;
+  /** The designs on show, in the order the headset lays them out (left to right). Empty once one is being built. */
+  ideas: { idea_id: string; title: string; why: string; uses: string[]; steps: number }[];
+  /** The idea being built, from its start until the next scan. */
+  started: string | null;
+  /** A roll of tape is on the table, so designs may tape pieces together. */
+  tape: boolean;
 }
 
 /** How long a wish said with "start a scan" waits for that scan. A scan much later is someone else's question. */
@@ -85,7 +100,24 @@ export class BuildSessions {
     await this.queue;
     await Promise.all([...this.background]);
   };
-  ideaTitles = () => this.session?.ideas.map((i) => i.title) ?? [];
+
+  /** Build mode as Kit is told it on every turn. */
+  kitContext(): KitBuildContext {
+    const s = this.session;
+    const status = this.busy === "reading" || this.busy === "naming" ? "scanning: finding and naming the objects"
+      : this.busy === "designing" ? `designing${s?.wish ? ` ${s.wish}` : ""}`
+      : !s || s.scans.length === 0 ? "nothing scanned yet"
+      : s.started ? "a design is being built"
+      : s.ideas.length ? `showing ${s.ideas.length} design${s.ideas.length === 1 ? "" : "s"}` : "no designs on show";
+    return {
+      status, twins: s?.twins ?? [], surfaces: s?.surfaces ?? [],
+      camera: s?.camera && s.forward ? { position: s.camera, forward: s.forward } : null,
+      wish: s?.wish ?? null,
+      ideas: s && !s.started ? s.ideas.map((i) => ({ idea_id: i.idea_id, title: i.title, why: i.why, uses: [...new Set(Object.values(i.twin_of))], steps: i.plan.steps.length - 1 })) : [],
+      started: s?.started ?? null,
+      tape: hasTape(s?.twins ?? []),
+    };
+  }
 
   newSession(): Session {
     this.session = {
@@ -151,14 +183,6 @@ export class BuildSessions {
     const assembly = await store.createAssembly({ plan_id: idea.plan.plan_id, revision, seed: "build_start", name: `Build: ${idea.title}` });
     session.started = idea.idea_id;
     return { assembly_id: assembly.assembly_id, plan_id: idea.plan.plan_id, revision };
-  }
-
-  async startByName(transcript: string): Promise<string | null> {
-    if (!this.session || this.session.started) return null;
-    const idea = pickIdea(transcript, this.session.ideas);
-    if (!idea) return null;
-    await this.startIdea(idea.idea_id);
-    return idea.title;
   }
 
   /** The Director's "add a missed object": its standard size, standing in the middle of the main surface. */

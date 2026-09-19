@@ -10,15 +10,18 @@ import { Truth, carryNames, scoreRecording } from "../build/score.js";
 import { fixSizes } from "../build/sizes.js";
 import { buildTwins, decodeScan } from "../build/twins.js";
 import { models } from "../copilot/models.js";
-import { routeOutcome, routeTurn, type RouteOutcome } from "../copilot/router.js";
-import { aiFor } from "../ai.js";
+import { KIT_SYSTEM, KitTurn, kitContextText } from "../copilot/kit.js";
+import { routeOutcome, routeTurn } from "../copilot/router.js";
+import { aiFor, ready } from "../ai.js";
+import type { KitBuildContext } from "../build/session.js";
 
 /**
  * pnpm build:eval [--live] [--router] [--check]
  *   (no flag)  every recording in data/build/recordings that has a truth.json: its saved names on THIS build's measurements
  *              (so a twin builder that got worse shows up). No key, no network.
  *   --live     name with the vision model and ask the design model too, on the providers KIT_AI picks (ai.ts).
- *   --router   the router test set (needs OPENAI_API_KEY): how often it is right, and how long it takes against its budget.
+ *   --router   the spoken-turn test set on every provider with a key: the router outside build mode, Kit's turn inside it;
+ *              how often each is right, and right within its live budget.
  *   --check    exit 1 when a bar is missed: found 90%, labels 90%, size p90 2 cm, router 97%.
  */
 const args = new Set(process.argv.slice(2));
@@ -30,28 +33,43 @@ const q = (v: number[], p: number) => (v.length ? [...v].sort((a, b) => a - b)[M
 let bad = false;
 
 if (args.has("--router")) {
-  if (!cfg.openaiKey) console.log("router: skipped (OPENAI_API_KEY is not set)");
-  else {
-    const set = JSON.parse(readFileSync(join(REPO_ROOT, "data", "build", "router-eval.json"), "utf8")) as { said: string; mode: string; ideas: string[]; expect: string }[];
-    const real = models(cfg);
-    const patient = { ...real, budgets: { ...real.budgets, route: 5000 } };   // judgement first; the clock is reported beside it
+  const set = JSON.parse(readFileSync(join(REPO_ROOT, "data", "build", "router-eval.json"), "utf8")) as { said: string; mode: string; ideas: string[]; expect: string }[];
+  const providers = (["omni", "openai"] as const).filter((p) => ready(cfg, p));
+  if (!providers.length) console.log("turns: skipped (neither OMNI_API_KEY + OMNI_BASE_URL nor OPENAI_API_KEY is set)");
+  const real = models(cfg);
+  // Judgement first, with patient budgets; each answer's time is checked against the live budget beside it.
+  const patientCfg = { ...cfg, omniRouteMs: 5000 }, patientM = { ...real, budgets: { ...real.budgets, route: 5000 } };
+  for (const provider of providers) {
+    const ai = aiFor(cfg, "turn", provider)!;
     const ms: number[] = [];
     let right = 0, rightInTime = 0;
     for (const c of set) {
       const t0 = Date.now();
-      const r = await routeTurn(cfg, patient, { transcript: c.said, mode: c.mode, ideaTitles: c.ideas });
+      let got: string, budget: number;
+      if (c.mode === "build") {
+        // Build mode: Kit's turn from the words (OpenAI's path), with the set's designs on show and no objects.
+        budget = cfg.kitTurnMs;
+        const context: KitBuildContext = {
+          status: c.ideas.length ? `showing ${c.ideas.length} designs` : "nothing scanned yet", twins: [], surfaces: [], camera: null, wish: null, started: null, tape: false,
+          ideas: c.ideas.map((title, k) => ({ idea_id: `idea_eval${k + 1}`, title, why: "", uses: [], steps: 3 })),
+        };
+        try {
+          const kit = KitTurn.parse(await ai.call(cfg, { name: "kit_turn", model: ai.model, schema: KitTurn, system: KIT_SYSTEM, text: kitContextText(context, null, c.said, []), timeoutMs: 20_000 }));
+          got = kit.intent === "ideas" ? "build_ideas" : kit.intent === "change" ? "modify_design" : kit.intent;
+        } catch (err) { got = `error: ${(err as Error).message.slice(0, 60)}`; }
+      } else {
+        // Outside build mode: the router, scored with the pipeline's own rule (only a sure "build ideas" scans).
+        budget = provider === "omni" ? cfg.omniRouteMs : real.budgets.route;
+        got = routeOutcome(await routeTurn(patientCfg, patientM, { transcript: c.said, mode: c.mode }, ai)) === "scan" ? "build_ideas" : "question";
+      }
       const took = Date.now() - t0;
       ms.push(took);
-      // Scored with the pipeline's own rule, so an unsure answer in build mode counts as the clarifying question it
-      // causes (wrong for every sentence here), not as a harmless "question".
-      const want: RouteOutcome = c.expect === "build_ideas" ? "scan" : c.expect === "modify_design" ? "rethink" : "question";
-      const got = routeOutcome(r, { mode: c.mode, canRethink: c.ideas.length > 0 });
-      // Live, an answer later than the budget is dropped and the turn is answered as a question.
-      const live: RouteOutcome = took > real.budgets.route ? "question" : got;
-      if (got === want) right++; else console.log(`  ✗ "${c.said}" → ${got} (${r?.flow ?? "no answer"} ${r?.confidence ?? "–"}), expected ${want}`);
-      if (live === want) rightInTime++; else if (got === want) console.log(`  ⏱ "${c.said}" was right, but took ${took} ms: live it is a question`);
+      if (got === c.expect) right++; else console.log(`  ✗ [${provider}] "${c.said}" (${c.mode}) → ${got}, expected ${c.expect}`);
+      // Live, a late answer is dropped: outside build mode the turn becomes a question, in build mode "ask me again".
+      const live = took <= budget ? got : c.mode === "build" ? "too slow" : "question";
+      if (live === c.expect) rightInTime++; else if (got === c.expect) console.log(`  ⏱ [${provider}] "${c.said}" was right, but took ${took} ms (budget ${budget} ms)`);
     }
-    console.log(`router (${real.router}): ${right}/${set.length} = ${pct(right, set.length)} right; within its ${real.budgets.route} ms: ${rightInTime}/${set.length} = ${pct(rightInTime, set.length)} (bar 97%); median ${q(ms, 0.5)} ms, p90 ${q(ms, 0.9)} ms`);
+    console.log(`turns on ${provider} (${ai.model}): ${right}/${set.length} = ${pct(right, set.length)} right; within budget: ${rightInTime}/${set.length} = ${pct(rightInTime, set.length)} (bar 97%); median ${q(ms, 0.5)} ms, p90 ${q(ms, 0.9)} ms`);
     if (rightInTime / set.length < 0.97) bad = true;
   }
 }

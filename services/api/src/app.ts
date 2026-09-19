@@ -4,6 +4,7 @@ import multipart from "@fastify/multipart";
 import websocket from "@fastify/websocket";
 import { registerAuth } from "./auth.js";
 import { boot } from "./boot.js";
+import type { KitBuildContext } from "./build/session.js";
 import type { Config } from "./config.js";
 import { ApiError, sendError } from "./errors.js";
 import { coreRoutes } from "./routes/core.js";
@@ -28,8 +29,10 @@ export interface Hooks {
     rethink: (request: string) => Promise<boolean>;
     /** The copilot is about to start a scan: what the builder asked for goes with it (null: a plain ask, forget the last wish). */
     expectScan: (wish: string | null) => void;
-    startByName: (transcript: string) => Promise<string | null>;
-    ideaTitles: () => string[];
+    /** What Kit is told about build mode on every turn (build/session.ts). */
+    kitContext: () => KitBuildContext;
+    /** Start a design on show as a normal run, as the trigger or the Director does. */
+    startIdea: (ideaId: string) => Promise<unknown>;
     /** Resolves once every queued scan has been processed (tests, the eval CLI). */
     idle: () => Promise<void>;
   };

@@ -16,8 +16,8 @@ export const buildRoutes: Plugin = (app: FastifyInstance, ctx: Ctx) => {
   const rules = loadRules(ctx.cfg.repoRoot, vocab);
   const sessions = new BuildSessions(ctx, { vocab, rules, log: app.log, ai: (job) => aiFor(ctx.cfg, job) });
   ctx.hooks.build = {
-    canRethink: () => sessions.canRethink(), rethink: (request) => sessions.rethink(request), expectScan: (wish) => sessions.expectScan(wish), startByName: (transcript) => sessions.startByName(transcript),
-    ideaTitles: () => sessions.ideaTitles(), idle: () => sessions.idle(),
+    canRethink: () => sessions.canRethink(), rethink: (request) => sessions.rethink(request), expectScan: (wish) => sessions.expectScan(wish),
+    kitContext: () => sessions.kitContext(), startIdea: (ideaId) => sessions.startIdea(ideaId), idle: () => sessions.idle(),
   };
 
   app.post("/v1/build/scans", { bodyLimit: 8 * 1024 * 1024 }, async (req, reply) => {
