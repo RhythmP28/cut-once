@@ -1,3 +1,4 @@
+import "../env.js";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadConfig } from "../config.js";

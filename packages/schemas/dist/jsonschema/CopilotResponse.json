@@ -117,6 +117,27 @@
                     "issue_id"
                   ],
                   "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "step_nav"
+                    },
+                    "direction": {
+                      "type": "string",
+                      "enum": [
+                        "next",
+                        "back"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "direction"
+                  ],
+                  "additionalProperties": false
                 }
               ]
             },

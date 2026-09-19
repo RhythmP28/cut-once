@@ -1,4 +1,5 @@
 // Speech check: time to first audio, and whether the PCM plays cleanly (byte order is unverified). Run: pnpm tts:smoke
+import "../env.js";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { streamSpeech } from "../copilot/speech.js";

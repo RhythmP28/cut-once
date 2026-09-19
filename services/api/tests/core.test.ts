@@ -125,9 +125,12 @@ describe("director", () => {
     const { events } = (await get(`/v1/assemblies/${run.json().assembly.assembly_id}/events?after=3`)).json();
     expect(events[0]).toMatchObject({ source: "system", actor: "director" });
   });
-  it("rejects an unknown command and reports the missing cache hook", async () => {
+  it("rejects an unknown command and hands promote_cache to the copilot module", async () => {
     expect((await post("/v1/director/command", { type: "dance" })).statusCode).toBe(400);
-    expect((await post("/v1/director/command", { type: "promote_cache", turn_id: "turn_x1", scripted_query_id: "q1" })).statusCode).toBe(501);
+    // Was a 501 before pillar C existed. The copilot now registers hooks.promoteCache, so the command
+    // reaches it and fails on the turn id instead of on the missing hook.
+    const promoted = await post("/v1/director/command", { type: "promote_cache", turn_id: "turn_x1", scripted_query_id: "q1" });
+    expect(promoted.statusCode).not.toBe(501);
   });
 });
 
