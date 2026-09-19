@@ -23,7 +23,11 @@ export class Store {
   }
 
   // ── plans ───────────────────────────────────────────────────────────────────
-  private planDir = (planId: string) => join(this.dataDir, "plans", planId);
+  /** Plan ids come from URLs, so they are checked before they ever touch a path. */
+  private planDir(planId: string) {
+    if (!/^plan_[a-z0-9_]+$/.test(planId)) throw notFound(`plan ${planId}`);
+    return join(this.dataDir, "plans", planId);
+  }
 
   revisions(planId: string): number[] {
     const dir = this.planDir(planId);
@@ -35,7 +39,7 @@ export class Store {
 
   listPlans(): { plan_id: string; revisions: number[]; approved: number | null }[] {
     const dir = join(this.dataDir, "plans");
-    return readdirSync(dir).filter((d) => existsSync(join(dir, d))).map((plan_id) => ({ plan_id, revisions: this.revisions(plan_id), approved: this.approvedRevision(plan_id) }))
+    return readdirSync(dir).filter((d) => /^plan_[a-z0-9_]+$/.test(d)).map((plan_id) => ({ plan_id, revisions: this.revisions(plan_id), approved: this.approvedRevision(plan_id) }))
       .filter((p) => p.revisions.length > 0);
   }
 

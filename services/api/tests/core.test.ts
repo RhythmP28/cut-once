@@ -130,3 +130,12 @@ describe("director", () => {
     expect((await post("/v1/director/command", { type: "promote_cache", turn_id: "turn_x1", scripted_query_id: "q1" })).statusCode).toBe(501);
   });
 });
+
+describe("ids from URLs never reach the file system unchecked", () => {
+  it("rejects path traversal in every id", async () => {
+    for (const url of ["/v1/plans/..%2F..%2Fsecrets", "/v1/assemblies/..%2F..%2Fx/state", "/v1/jobs/..%2Fx", "/v1/documents/..%2Fx/pages/1.png", "/v1/analytics/..%2Fx"]) {
+      expect((await get(url)).statusCode, url).toBe(404);
+    }
+    expect((await post("/v1/assemblies", { seed: "../../x" })).statusCode).toBe(404);
+  });
+});
