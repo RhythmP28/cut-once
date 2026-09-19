@@ -25,7 +25,7 @@ namespace CutOnce.AR
         float _yaw; bool _yawChosen, _nudged;
 
         public AlignmentState State { get; private set; } = AlignmentState.Restoring;
-        /// <summary>How the current pose was reached: restored | pointed | touch_2pt. Shown on the HUD and useful in the event log.</summary>
+        /// <summary>How the current pose was reached: restored | pointed | touch_2pt | build. Shown on the HUD and useful in the event log.</summary>
         public string Method { get; private set; } = "";
         public string Hint { get; private set; } = "Looking for the saved position…";
         public bool HasSurfaceHit { get; private set; }
@@ -55,6 +55,17 @@ namespace CutOnce.AR
             State = AlignmentState.Placing; _touches.Clear(); _yawChosen = false;
             Hint = (_assembly != null && _assembly.DisplayScale < 1f ? $"Tabletop model at {_assembly.ScaleLabel} · " : "") + "Point at where the build stands · stick turns it · trigger locks";
             Changed?.Invoke();
+        }
+
+        /// <summary>
+        /// Build mode knows where the design goes (the server chose a spot beside the pile, facing the viewer), so it
+        /// locks there directly, with a spatial anchor, like any other lock. Grip + stick nudges still work afterwards.
+        /// </summary>
+        public void LockAt(Pose worldPose, string method)
+        {
+            transform.SetParent(null, true);
+            transform.SetPositionAndRotation(worldPose.position, worldPose.rotation);
+            Lock(method);
         }
 
         void Update()
