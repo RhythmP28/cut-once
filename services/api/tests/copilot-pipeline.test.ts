@@ -502,6 +502,16 @@ describe("build mode: Kit's turn", () => {
     expect(rethink).toHaveBeenCalledWith("a birdhouse", false);
   });
 
+  it("'make me something crazier' said outright changes the designs on show: those shown are not offered again", async () => {
+    onTable();
+    vi.spyOn(build(), "canRethink").mockReturnValue(true);
+    const rethink = vi.spyOn(build(), "rethink").mockResolvedValue(true);
+    kitHears({ heard: "Make me something crazier", intent: "ideas", wish: "something crazier", answer: "" });
+    const body = (await query({ mode: "build" })).json();
+    expect([body.action, body.answer_text]).toEqual([null, "Let me see how to make something crazier from what's here."]);
+    expect(rethink).toHaveBeenCalledWith("something crazier", true);
+  });
+
   it("mid-build, 'something crazier' looks at the table again with that wish (the pieces have moved)", async () => {
     onTable({ started: "idea_a", ideas: [], status: "a design is being built" });
     vi.spyOn(build(), "canRethink").mockReturnValue(false);

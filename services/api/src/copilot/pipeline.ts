@@ -202,11 +202,12 @@ async function respondFast(
 ): Promise<CopilotResponse> {
   const { ctx, speech } = deps;
   if (fast.action?.type === "start_scan" && fast.wish !== undefined && ctx.hooks.build) {
-    // Said outright, a wish is a new ask ("build me a birdhouse"), never a change to the designs on show.
+    // Said outright, a wish is a new ask ("build me a birdhouse") or a change ("make me something crazier").
+    const change = fast.change ?? false;
     if (fast.wish && input.context.mode === "build" && ctx.hooks.build.canRethink()) {
-      await ctx.hooks.build.rethink(fast.wish, false);
+      await ctx.hooks.build.rethink(fast.wish, change);
       fast.action = null;
-    } else ctx.hooks.build.expectScan(fast.wish, false);
+    } else ctx.hooks.build.expectScan(fast.wish, change);
   }
   if (fast.startRun) fast.answer_text = await startRun(ctx, g.plan.plan_id, fast.startRun, fast.answer_text, log);
   if (fast.action) await applyAction(deps, input.assemblyId, fast.action, "operator", { confidence: 1, note: fast.note ?? "spoken command" });
