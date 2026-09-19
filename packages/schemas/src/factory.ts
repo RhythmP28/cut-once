@@ -183,6 +183,8 @@ export function buildSchemas(mode: Mode) {
   const CopilotResponse = o({
     turn_id: TurnId, transcript: z.string(), answer_text: z.string(),
     highlight_parts: z.array(PartId), highlight_style: z.enum(["pulse", "path"]),
+    /** Build mode: the real objects (twin ids) the answer is about, for the headset to light up. Absent elsewhere. */
+    highlight_twins: z.array(z.string().regex(/^o[0-9]+$/)).optional(),
     drawing_refs: z.array(o({ document_id: DocumentId, sheet_id: SheetId.optional(), page: z.number().int().min(1), chunk_id: ChunkId.optional(), title: z.string() })),
     action: CopilotAction.nullable(), confidence: z.number().min(0).max(1), needs_clarification: z.boolean(),
     audio_url: z.string().nullable(), cached: z.boolean(), timings_ms: z.record(z.number()),
@@ -244,6 +246,8 @@ export function buildSchemas(mode: Mode) {
     place: z.string(), orientation: Orientation, on: z.array(z.string()),
     at_cm: o({ x: z.number(), z: z.number() }).nullable(),
     next_to: z.string().nullable(), side: z.enum(["left", "right", "front", "back"]).nullable(), gap_cm: z.number().nullable(),
+    /** Pieces, already placed and touching this one, that it is taped to. Taped pieces are checked as one rigid body. */
+    taped_to: z.array(z.string()).optional(),
   });
   const IdeaDraft = o({
     title: z.string().min(1), uses: z.array(z.string()), steps: z.array(PlaceStep).min(1), why: z.string(), tools: z.array(z.string()),
@@ -253,6 +257,8 @@ export function buildSchemas(mode: Mode) {
     idea_id: IdeaId, session_id: BuildSessionId, source: z.enum(["rule", "ai"]), rule_id: z.string().nullable(),
     title: z.string(), why: z.string(), tools: z.array(z.string()), plan: Plan,
     origin: o({ position: Vec3, rotation_quat: Quat }), twin_of: z.record(z.string()), score: z.number(),
+    /** live: the design model answered in time. cache: saved at an earlier run (rehearsal) for the same objects and wish. rule: a stored design. */
+    made: z.enum(["live", "cache", "rule"]).optional(),
   });
 
   // ── jobs, search, director, stream ──────────────────────────────────────────

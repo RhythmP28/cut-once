@@ -924,6 +924,14 @@
         },
         "score": {
           "type": "number"
+        },
+        "made": {
+          "type": "string",
+          "enum": [
+            "live",
+            "cache",
+            "rule"
+          ]
         }
       },
       "required": [

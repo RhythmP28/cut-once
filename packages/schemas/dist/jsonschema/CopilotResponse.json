@@ -28,6 +28,13 @@
             "path"
           ]
         },
+        "highlight_twins": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^o[0-9]+$"
+          }
+        },
         "drawing_refs": {
           "type": "array",
           "items": {

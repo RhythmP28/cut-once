@@ -11,7 +11,24 @@ export interface Config {
   defaultSeed: string;
   /** off: no copilot route. fake: canned answers, no keys (turns/fake.ts). live: Rhythm's real copilot. */
   copilotMode: "off" | "fake" | "live"; fakeCopilotDelayMs: number;
+  /**
+   * Build mode's models. Each job (the spoken turn, naming objects, designing) runs on OMNI (Qwen3.5-Omni through
+   * yibuapi's OpenAI-compatible API) or OpenAI: KIT_AI for all, KIT_TURN_AI / KIT_LABEL_AI / KIT_IDEAS_AI for one.
+   * A job whose provider has no key uses the other one (ai.ts).
+   */
+  kitAi: Record<AiJob, AiProvider>;
+  omniKey: string; omniBaseUrl: string; omniModel: string; omniIdeasModel: string;
+  /** How a voice clip is sent: a data URL (Alibaba's examples) or bare base64 (OpenAI's shape). `pnpm omni:probe` says which works. */
+  omniAudio: "dataurl" | "base64";
+  /** The spoken turn's model budget; the build designs' live deadline before the rehearsal cache; the router's budget on OMNI. */
+  kitTurnMs: number; buildLiveMs: number; omniRouteMs: number;
 }
+
+export type AiProvider = "omni" | "openai";
+export type AiJob = "turn" | "label" | "ideas";
+
+const provider = (v: string | undefined): AiProvider | undefined => (v === "omni" || v === "openai" ? v : undefined);
+const ms = (v: string | undefined, fallback: number) => (v && Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : fallback);
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(here, "..", "..", "..");
@@ -31,6 +48,15 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     projectId: env.PROJECT_ID || "proj_cutonce_demo", logLevel: env.LOG_LEVEL ?? "info", defaultSeed: env.DEFAULT_SEED || "e7_start",
     copilotMode: env.COPILOT_MODE === "fake" || env.COPILOT_MODE === "live" ? env.COPILOT_MODE : "off",
     fakeCopilotDelayMs: Number(env.FAKE_COPILOT_DELAY_MS ?? 1200),
+    kitAi: {
+      turn: provider(env.KIT_TURN_AI) ?? provider(env.KIT_AI) ?? "omni",
+      label: provider(env.KIT_LABEL_AI) ?? provider(env.KIT_AI) ?? "omni",
+      ideas: provider(env.KIT_IDEAS_AI) ?? provider(env.KIT_AI) ?? "omni",
+    },
+    omniKey: env.OMNI_API_KEY ?? "", omniBaseUrl: (env.OMNI_BASE_URL ?? "").replace(/\/$/, ""),
+    omniModel: env.OMNI_MODEL || "qwen3.5-omni-flash", omniIdeasModel: env.OMNI_IDEAS_MODEL ?? "",
+    omniAudio: env.OMNI_AUDIO === "base64" ? "base64" : "dataurl",
+    kitTurnMs: ms(env.KIT_TURN_MS, 6000), buildLiveMs: ms(env.BUILD_LIVE_MS, 8000), omniRouteMs: ms(env.OMNI_ROUTE_MS, 1500),
     ...overrides,
   };
   if (!env.API_TOKEN && !overrides.apiToken && env.NODE_ENV === "production") throw new Error("API_TOKEN must be set in production");

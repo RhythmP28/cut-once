@@ -73,6 +73,27 @@ describe("build mode contracts", () => {
     expect(S.BuildScanUpload.parse(upload).session_id).toBeUndefined();
   });
 
+  it("lets a step say which pieces it is taped to, and leaves older steps valid without it", () => {
+    const step = { place: "o2", orientation: "flat", on: ["o1"], at_cm: null, next_to: null, side: null, gap_cm: null };
+    expect(Strict.PlaceStep.parse({ ...step, taped_to: ["o1"] }).taped_to).toEqual(["o1"]);
+    expect(Strict.PlaceStep.parse(step).taped_to).toBeUndefined();
+  });
+
+  it("says where an idea came from (live, the rehearsal cache or a rule), and older ideas still parse", () => {
+    const idea = fixture().ideas[0];
+    expect(Strict.BuildIdea.parse({ ...idea, made: "cache" }).made).toBe("cache");
+    expect(Strict.BuildIdea.safeParse({ ...idea, made: "guess" }).success).toBe(false);
+    expect(Strict.BuildIdea.parse(idea).made).toBeUndefined();
+  });
+
+  it("lets an answer name the real objects it is about, by twin id", () => {
+    const response = { turn_id: "turn_01abc", transcript: "t", answer_text: "a", highlight_parts: [], highlight_style: "pulse", drawing_refs: [],
+      action: null, confidence: 1, needs_clarification: false, audio_url: null, cached: false, timings_ms: {} };
+    expect(Strict.CopilotResponse.parse({ ...response, highlight_twins: ["o1", "o12"] }).highlight_twins).toEqual(["o1", "o12"]);
+    expect(Strict.CopilotResponse.safeParse({ ...response, highlight_twins: ["part_leg"] }).success).toBe(false);
+    expect(Strict.CopilotResponse.parse(response).highlight_twins).toBeUndefined();
+  });
+
   it("keeps the AI's placement language free of tuples (strict JSON-schema mode rejects them)", () => {
     const step = Strict.PlaceStep.parse({ place: "o1", orientation: "upright", on: [], at_cm: { x: 0, z: 0 }, next_to: null, side: null, gap_cm: null });
     expect(step.at_cm).toEqual({ x: 0, z: 0 });
