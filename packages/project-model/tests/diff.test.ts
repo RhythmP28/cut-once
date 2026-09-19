@@ -36,6 +36,14 @@ describe("diffPlans", () => {
     expect(changes).toContainEqual(expect.objectContaining({ part_id: "part_rear_crossbar", change: "changed", fields: ["step_id"] }));
   });
 
+  it("matches by id before name, so a new part sharing a name can't steal an existing part", () => {
+    const b = clone(desk());
+    const leg = b.parts.find((p) => p.part_id === "part_left_front_leg")!;
+    b.parts.unshift({ ...clone(leg), part_id: "part_leg_extra" }); // same name, placed first
+    const changes = diffPlans(desk(), b).changes;
+    expect(changes).toEqual([expect.objectContaining({ part_id: "part_leg_extra", change: "added" })]);
+  });
+
   it("matches AI-read parts by name when their IDs differ", () => {
     const b = clone(desk());
     for (const p of b.parts) p.part_id = p.part_id.replace("part_", "part_x_");

@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { ulid } from "ulid";
 import { S, type Assembly, type BuildEvent, type BuildState, type Plan, type Seed, type ValidationIssue } from "@cutonce/schemas";
@@ -38,12 +38,19 @@ export class Store {
   // ── plan assets (mesh files such as e7.glb, kept beside the plan that names them) ──
   private static ASSET_NAME = /^[a-z0-9][a-z0-9_-]*\.(glb|gltf|png|jpg)$/;
 
-  putAssetIfMissing(planId: string, name: string, sourcePath: string): boolean {
+  /**
+   * Copies a plan's mesh file next to it when missing or when the source changed (a regenerated E7 GLB),
+   * so the served model always matches the committed one. Returns whether it wrote anything.
+   */
+  syncAsset(planId: string, name: string, sourcePath: string): boolean {
     if (!Store.ASSET_NAME.test(name) || !existsSync(sourcePath)) return false;
     const target = join(this.planDir(planId), "assets", name);
-    if (existsSync(target)) return false;
+    const source = readFileSync(sourcePath);
+    if (existsSync(target) && readFileSync(target).equals(source)) return false;
     ensureDir(dirname(target));
-    copyFileSync(sourcePath, target);
+    const tmp = `${target}.${process.pid}.tmp`;
+    writeFileSync(tmp, source);
+    renameSync(tmp, target);
     return true;
   }
 

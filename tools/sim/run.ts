@@ -1,5 +1,6 @@
 import { execSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { BASELINE, CURRENT, OUT, ROOT } from "./paths.js";
 import type { RunMeta } from "./types.js";
@@ -32,7 +33,14 @@ let ok = true;
 // Blueprint reading runs first: the sim server imports its output as plan_desk_extracted.
 const drawing = "data/demo/docs/desk-drawings.pdf";
 if (process.env.OPENAI_API_KEY && existsSync(join(ROOT, drawing))) {
-  stage("blueprint reading", `pnpm extract:eval ${drawing} --plan-out sim-out/current/extracted.plan.json`);
+  // A throwaway data folder: extract:eval saves the drawing as a document, and must never write into the
+  // live server's data (DATA_DIR in .env.local). The environment wins over .env.local, so this holds.
+  const scratch = mkdtempSync(join(tmpdir(), "cutonce-extract-"));
+  const read = stage("blueprint reading", `DATA_DIR=${scratch} pnpm extract:eval ${drawing} --plan-out sim-out/current/extracted.plan.json`);
+  rmSync(scratch, { recursive: true, force: true });
+  if (!read || !existsSync(join(CURRENT, "extracted.plan.json"))) {
+    writeFileSync(join(CURRENT, "extraction-skipped.txt"), "the blueprint reading failed; see the run log");
+  }
 } else {
   writeFileSync(join(CURRENT, "extraction-skipped.txt"), process.env.OPENAI_API_KEY ? `no ${drawing} yet` : "no OPENAI_API_KEY");
 }

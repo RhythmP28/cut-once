@@ -25,7 +25,7 @@ export async function boot(store: Store, docs: DocumentStore, cfg: Config, log: 
     if (store.importApproved(parsed.data as Plan)) log.info({ plan_id: parsed.data.plan_id, revision: parsed.data.revision }, "imported plan");
     for (const part of parsed.data.parts) {
       const shape = part.shape as { type: string; uri?: string };
-      if (shape.type === "mesh" && shape.uri) store.putAssetIfMissing(parsed.data.plan_id, shape.uri, join(dirname(file), shape.uri));
+      if (shape.type === "mesh" && shape.uri) store.syncAsset(parsed.data.plan_id, shape.uri, join(dirname(file), shape.uri));
     }
   }
 

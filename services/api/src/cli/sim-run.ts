@@ -8,13 +8,19 @@ import { plugins } from "../plugins.js";
 import { runScenario } from "../sim/scenario.js";
 
 /**
- * pnpm -F @cutonce/api exec tsx src/cli/sim-run.ts --out <file> [--base <url> --token <token>]
+ * pnpm -F @cutonce/api exec tsx src/cli/sim-run.ts --out <file> [--base <url> --token <token> --allow-live]
  * Without --base it starts its own server (temp data, fake copilot). With --base it tests a real one,
  * such as your laptop's. Exits 1 if any step failed.
  */
 const arg = (name: string) => { const i = process.argv.indexOf(name); return i > 0 ? process.argv[i + 1] : undefined; };
 const out = arg("--out");
 let base = arg("--base");
+if (base && !process.argv.includes("--allow-live")) {
+  // The scenario starts a new run and forces a part wrong: on a live server every headset would jump to it.
+  console.error(`Refusing to run against ${base}: the scenario starts a new run and marks the crossbar wrong,\n`
+    + "which every connected headset follows. Never do this during a demo. Add --allow-live if you mean it.");
+  process.exit(2);
+}
 let token = arg("--token") ?? "sim-token";
 let stop = async () => {};
 

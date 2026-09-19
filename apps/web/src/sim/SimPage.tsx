@@ -107,16 +107,30 @@ export function SimPage() {
   }, [setPart]);
 
   useEffect(() => {
+    // The microphone opens asynchronously (the first time behind a permission prompt), so Space can be
+    // released, or pressed again, before it is ready. Track the key itself, and allow one opening at a time.
+    let spaceDown = false;
+    let opening = false;
     const down = async (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       const key = e.key.toLowerCase();
       if (key === " ") {
         e.preventDefault();
-        if (e.repeat || recording.current) return;
+        if (e.repeat || spaceDown) return;
+        spaceDown = true;
+        if (opening || recording.current) return;
+        opening = true;
         try {
-          recording.current = await startRecording();
-          setStatus({ kind: "listening", text: "Listening… release Space to ask" });
+          const rec = await startRecording();
+          if (spaceDown) {
+            recording.current = rec;
+            setStatus({ kind: "listening", text: "Listening… release Space to ask" });
+          } else {
+            await rec.stop(); // released while the mic was opening: nothing was said
+            setStatus({ kind: "info", text: "Hold Space while you speak." });
+          }
         } catch (err) { setStatus({ kind: "error", text: `Microphone: ${describeError(err)}` }); }
+        finally { opening = false; }
       } else if (key === "b") void setPart(live.current.pointed, "built", "manual");
       else if (key === "w") void setPart(live.current.pointed, "wrong", "manual");
       else if (key === "m") void setPart(live.current.pointed, "missing", "manual");
@@ -124,8 +138,10 @@ export function SimPage() {
       else if (key === "f") setFrameSource((f) => (f === "render" ? "webcam" : "render"));
     };
     const up = async (e: KeyboardEvent) => {
-      if (e.key !== " " || !recording.current) return;
+      if (e.key !== " ") return;
       e.preventDefault();
+      spaceDown = false;
+      if (!recording.current) return;
       const rec = recording.current;
       recording.current = null;
       void ask(await rec.stop(), null);

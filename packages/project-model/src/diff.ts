@@ -33,13 +33,27 @@ export function diffPlans(from: Plan, to: Plan, toleranceMm = 0.5): PlanDiff {
   const changes: PartChange[] = [];
   let unchanged = 0;
 
+  // Every id match first, then names for what is left, so a new part that shares a name can't
+  // claim an existing part before the part with that very id is reached.
+  const pairs = new Map<Part, Part | undefined>();
   for (const b of to.parts) {
-    const a = byId.get(b.part_id) ?? byName.get(b.name.toLowerCase());
-    if (!a || matched.has(a.part_id)) {
+    const a = byId.get(b.part_id);
+    if (a) { pairs.set(b, a); matched.add(a.part_id); }
+  }
+  for (const b of to.parts) {
+    if (pairs.has(b)) continue;
+    const a = byName.get(b.name.toLowerCase());
+    const free = a && !matched.has(a.part_id) ? a : undefined;
+    pairs.set(b, free);
+    if (free) matched.add(free.part_id);
+  }
+
+  for (const b of to.parts) {
+    const a = pairs.get(b);
+    if (!a) {
       changes.push({ part_id: b.part_id, name: b.name, change: "added", moved_mm: null, resized_mm: null, fields: [] });
       continue;
     }
-    matched.add(a.part_id);
     const ga = geometry(a), gb = geometry(b);
     const moved = ga && gb ? round(Math.hypot(...[0, 1, 2].map((i) => gb.c[i]! - ga.c[i]!)) * 1000) : null;
     const resized = ga && gb ? round(Math.max(...[0, 1, 2].map((i) => Math.abs(gb.s[i]! - ga.s[i]!))) * 1000) : null;
