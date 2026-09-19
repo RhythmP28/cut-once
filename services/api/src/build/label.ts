@@ -1,8 +1,8 @@
-import { z, type ZodTypeAny } from "zod";
+import { z } from "zod";
 import { S, type Surface, type Twin } from "@cutonce/schemas";
+import type { AiCall, ModelCall } from "../ai.js";
 import type { Config } from "../config.js";
 import { annotateFrame, type Mark } from "../copilot/annotate.js";
-import type { JsonCall } from "../llm.js";
 import { standardShape, type Vocab } from "./data.js";
 import { describeShape, dimsCm, flatSize, heightOf } from "./shape.js";
 import { couldBe } from "./sizes.js";
@@ -19,8 +19,10 @@ export const LabelResult = z.object({ objects: z.array(LabelItem), missed: z.arr
 export type LabelResult = z.infer<typeof LabelResult>;
 
 /** jsonCall's shape without its generic, so tests can pass a plain mock; results are parsed where they are used. */
-export type ModelCall = (cfg: Config, call: JsonCall<ZodTypeAny>) => Promise<unknown>;
+export type { ModelCall } from "../ai.js";
 export interface LabelDeps { cfg: Config; call: ModelCall; model: string; vocab: Vocab; timeoutMs: number }
+/** What nameTwins needs: the naming job's model, or null when no provider has a key. */
+export interface NameDeps { cfg: Config; ai: AiCall | null; vocab: Vocab; timeoutMs: number; log: { warn: (o: object, m: string) => void } }
 
 const ANNOTATED_WIDTH = 1024;   // annotateFrame's output width: the model's pixel boxes are in this image
 /** More numbered boxes than this make the photo unreadable, for a person and for the model. The nearest come first; the rest stay unnamed until a closer scan. */
@@ -163,12 +165,10 @@ export function labelBySize(twins: Twin[], vocab: Vocab): Twin[] {
  * a malformed answer), names from sizes alone, so the rule designs still work. Never throws: labelling must not sink a
  * scan whose outlines are already on show. The server and `pnpm build:eval` both name through here.
  */
-export async function nameTwins(
-  deps: LabelDeps & { log: { warn: (o: object, m: string) => void } }, photo: Buffer, twins: Twin[], surfaces: Surface[], cloud: Cloud,
-): Promise<{ twins: Twin[]; by: "vision" | "size" }> {
-  if (deps.cfg.openaiKey) {
-    try { return { twins: await labelTwins(deps, photo, twins, surfaces, cloud), by: "vision" }; }
-    catch (err) { deps.log.warn({ err: (err as Error).message }, "the vision model could not label the scan; naming by size instead"); }
+export async function nameTwins(deps: NameDeps, photo: Buffer, twins: Twin[], surfaces: Surface[], cloud: Cloud): Promise<{ twins: Twin[]; by: "vision" | "size" }> {
+  if (deps.ai) {
+    try { return { twins: await labelTwins({ cfg: deps.cfg, call: deps.ai.call, model: deps.ai.model, vocab: deps.vocab, timeoutMs: deps.timeoutMs }, photo, twins, surfaces, cloud), by: "vision" }; }
+    catch (err) { deps.log.warn({ err: (err as Error).message, provider: deps.ai.provider }, "the vision model could not label the scan; naming by size instead"); }
   }
   return { twins: labelBySize(twins, deps.vocab), by: "size" };
 }

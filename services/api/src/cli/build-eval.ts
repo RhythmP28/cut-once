@@ -11,13 +11,13 @@ import { fixSizes } from "../build/sizes.js";
 import { buildTwins, decodeScan } from "../build/twins.js";
 import { models } from "../copilot/models.js";
 import { routeOutcome, routeTurn, type RouteOutcome } from "../copilot/router.js";
-import { jsonCall } from "../llm.js";
+import { aiFor } from "../ai.js";
 
 /**
  * pnpm build:eval [--live] [--router] [--check]
  *   (no flag)  every recording in data/build/recordings that has a truth.json: its saved names on THIS build's measurements
  *              (so a twin builder that got worse shows up). No key, no network.
- *   --live     name with the vision model and ask the ideas model too (needs OPENAI_API_KEY).
+ *   --live     name with the vision model and ask the design model too, on the providers KIT_AI picks (ai.ts).
  *   --router   the router test set (needs OPENAI_API_KEY): how often it is right, and how long it takes against its budget.
  *   --check    exit 1 when a bar is missed: found 90%, labels 90%, size p90 2 cm, router 97%.
  */
@@ -59,17 +59,17 @@ if (args.has("--router")) {
 const dir = files.recordingsDir;
 const recs = existsSync(dir) ? readdirSync(dir).filter((d) => /^[a-z0-9_]+$/.test(d) && existsSync(join(dir, d, "truth.json"))) : [];
 const all = { found: 0, truth: 0, labelsRight: 0, labelled: 0, sizeErrCm: [] as number[], rawErrCm: [] as number[] };
-if (args.has("--live") && !cfg.openaiKey) console.log("--live needs OPENAI_API_KEY: naming by size and offering rule designs only");
+if (args.has("--live") && !aiFor(cfg, "label")) console.log("--live needs OMNI_API_KEY + OMNI_BASE_URL or OPENAI_API_KEY: naming by size and offering rule designs only");
 for (const name of recs) {
   const truth = Truth.parse(JSON.parse(readFileSync(join(dir, name, "truth.json"), "utf8")));
   const { scan, photo } = files.readScan(`scan_rec_${name}`);
   const t0 = Date.now(), cloud = decodeScan(scan), built = buildTwins(cloud, scan.scan_id), msTwins = Date.now() - t0;
   const saved = args.has("--live") ? null : files.readLabels(scan.scan_id);
   const named = saved ? { twins: carryNames(built.twins, saved), by: "saved names" }
-    : await nameTwins({ cfg, call: jsonCall, model: process.env.OPENAI_LABEL_MODEL || cfg.openaiModel, vocab, timeoutMs: 20_000, log }, photo, built.twins, built.surfaces, cloud);
+    : await nameTwins({ cfg, ai: aiFor(cfg, "label"), vocab, timeoutMs: 20_000, log }, photo, built.twins, built.surfaces, cloud);
   const twins = fixSizes(named.twins, vocab);
   const ideas = await computeIdeas(
-    { cfg: args.has("--live") ? cfg : { ...cfg, openaiKey: "" }, vocab, rules, call: jsonCall, model: process.env.OPENAI_IDEAS_MODEL || cfg.openaiModel,
+    { cfg, vocab, rules, call: args.has("--live") ? aiFor(cfg, "ideas")?.call ?? null : null, model: aiFor(cfg, "ideas")?.model ?? "none",
       cacheDir: join(files.root, "idea-cache"), timeoutMs: 20_000, log },
     { sessionId: "bsess_eval", twins, surfaces: built.surfaces, camera: scan.camera.position, photo, request: null }, () => {});
   // Two size errors: as measured (the twin builder's own work), and after known objects took their standard size (what

@@ -8,14 +8,17 @@ import { badRequest, notFound } from "../errors.js";
 import { standardShape, type Rule, type Vocab } from "./data.js";
 import { BuildFiles, newId } from "./files.js";
 import { computeIdeas, summary } from "./ideas.js";
-import { nameTwins, type ModelCall } from "./label.js";
+import type { AiCall } from "../ai.js";
+import { nameTwins } from "./label.js";
 import { appendTwin, mergeSurfaces, mergeTwins } from "./merge.js";
 import { flatSize, heightOf } from "./shape.js";
 import { fixSizes } from "./sizes.js";
 import { buildTwins, decodeScan, type Cloud } from "./twins.js";
 
 export interface BuildDeps {
-  vocab: Vocab; rules: Rule[]; call: ModelCall; models: { label: string; ideas: string };
+  vocab: Vocab; rules: Rule[];
+  /** The model for naming or designing, looked up per call (ai.ts), or null when no provider has a key. */
+  ai: (job: "label" | "ideas") => AiCall | null;
   log: { warn: (o: object, m: string) => void; error: (o: object, m: string) => void };
 }
 export interface Session {
@@ -174,7 +177,7 @@ export class BuildSessions {
     if (mode === "saved") { const saved = this.files.readLabels(scan.scan_id); if (saved) return { twins: saved, note: null }; }
     if (incoming.length === 0) return { twins: incoming, note: null };
     const { twins, by } = await nameTwins(
-      { cfg: this.ctx.cfg, call: this.deps.call, model: this.deps.models.label, vocab: this.deps.vocab, timeoutMs: 15_000, log: this.deps.log },
+      { cfg: this.ctx.cfg, ai: this.deps.ai("label"), vocab: this.deps.vocab, timeoutMs: 15_000, log: this.deps.log },
       photo, incoming, surfaces, cloud);
     if (by === "vision") {
       // Saved for replays only: a full disk must not cost this scan its names.
@@ -186,8 +189,9 @@ export class BuildSessions {
   }
 
   private async ideas(session: Session, photo: Buffer | null, request: string | null): Promise<void> {
+    const ai = this.deps.ai("ideas");
     await computeIdeas(
-      { cfg: this.ctx.cfg, vocab: this.deps.vocab, rules: this.deps.rules, call: this.deps.call, model: this.deps.models.ideas,
+      { cfg: this.ctx.cfg, vocab: this.deps.vocab, rules: this.deps.rules, call: ai?.call ?? null, model: ai?.model ?? "none",
         cacheDir: join(this.files.root, "idea-cache"), timeoutMs: 20_000, log: this.deps.log },
       { sessionId: session.session_id, twins: session.twins, surfaces: session.surfaces, camera: session.camera ?? [0, 1.6, 0], photo, request },
       (ideas, final) => {

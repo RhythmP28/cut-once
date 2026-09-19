@@ -17,7 +17,8 @@ import { solve } from "./solver.js";
 import { checkStability } from "./stability.js";
 
 export interface IdeasDeps {
-  cfg: Config; vocab: Vocab; rules: Rule[]; call: ModelCall; model: string; cacheDir: string; timeoutMs: number;
+  /** The designing job's model call, or null when no provider has a key (then: rules only). */
+  cfg: Config; vocab: Vocab; rules: Rule[]; call: ModelCall | null; model: string; cacheDir: string; timeoutMs: number;
   log: { warn: (o: object, m: string) => void };
 }
 export interface IdeasInput { sessionId: string; twins: Twin[]; surfaces: Surface[]; camera: Vec3; photo: Buffer | null; request: string | null }
@@ -109,7 +110,7 @@ export async function computeIdeas(deps: IdeasDeps, input: IdeasInput, emit: (id
     .flatMap((r) => ("idea" in r ? [r.idea] : []));
   if (ruleIdeas.length) emit(top3(ruleIdeas), false);
   let aiIdeas: BuildIdea[] = [];
-  if (deps.cfg.openaiKey) {
+  if (deps.call) {
     try { aiIdeas = await invent(deps, input, usable, byId, surface, ruleIdeas.map((i) => i.title)); }
     catch (err) { deps.log.warn({ err: (err as Error).message }, "AI build ideas failed; offering rule ideas only"); }
   }
@@ -123,7 +124,8 @@ async function invent(deps: IdeasDeps, input: IdeasInput, usable: Twin[], byId: 
   const text = inventoryText(usable, input.surfaces)
     + (offered.length ? `\nAlready offered, do not repeat: ${offered.join(", ")}.` : "")
     + (input.request ? `\nThe builder asked: "${input.request}".` : "");
-  const ask = async (t: string, photo: Buffer | null) => Out.parse(await deps.call(deps.cfg, {
+  const call = deps.call!;
+  const ask = async (t: string, photo: Buffer | null) => Out.parse(await call(deps.cfg, {
     name: "build_ideas", model: deps.model, schema: Out, strictSchema: OutStrict, system: SYSTEM, text: t, timeoutMs: deps.timeoutMs,
     images: photo ? [{ data: photo, mime: "image/jpeg" as const }] : [],
   }));

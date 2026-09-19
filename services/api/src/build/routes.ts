@@ -3,21 +3,18 @@ import { z } from "zod";
 import { S } from "@cutonce/schemas";
 import type { Ctx, Plugin } from "../app.js";
 import { ApiError, badRequest } from "../errors.js";
-import { jsonCall } from "../llm.js";
+import { aiFor } from "../ai.js";
 import { loadRules, loadVocab, standardShape } from "./data.js";
 import { BuildSessions } from "./session.js";
 
-/** Build mode (the Lego Movie). Models: OPENAI_LABEL_MODEL and OPENAI_IDEAS_MODEL, each defaulting to OPENAI_MODEL. */
+/** Build mode (the Lego Movie). Which provider and model name objects and design: ai.ts (KIT_AI and friends). */
 /** A JPEG starts FF D8 FF ("/9j/" in base64). Checked before anything is saved: the labeller cannot read anything else. */
 export const isJpeg = (b64: string) => b64.startsWith("/9j/");
 
 export const buildRoutes: Plugin = (app: FastifyInstance, ctx: Ctx) => {
   const vocab = loadVocab(ctx.cfg.repoRoot);
   const rules = loadRules(ctx.cfg.repoRoot, vocab);
-  const sessions = new BuildSessions(ctx, {
-    vocab, rules, call: jsonCall, log: app.log,
-    models: { label: process.env.OPENAI_LABEL_MODEL || ctx.cfg.openaiModel, ideas: process.env.OPENAI_IDEAS_MODEL || ctx.cfg.openaiModel },
-  });
+  const sessions = new BuildSessions(ctx, { vocab, rules, log: app.log, ai: (job) => aiFor(ctx.cfg, job) });
   ctx.hooks.build = {
     canRethink: () => sessions.canRethink(), rethink: (request) => sessions.rethink(request), startByName: (transcript) => sessions.startByName(transcript),
     ideaTitles: () => sessions.ideaTitles(), idle: () => sessions.idle(),

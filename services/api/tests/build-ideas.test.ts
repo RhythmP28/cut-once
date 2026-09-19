@@ -77,15 +77,13 @@ describe("computeIdeas", () => {
     expect(out.map((i) => i.title)).toEqual(["Laptop riser", "Can tower"]);
   });
 
-  it("offers rule ideas only when there is no key", async () => {
-    const d = deps({ cfg: loadConfig({}, { openaiKey: "" }) });
-    const out = await computeIdeas(d, input, () => {});
-    expect(d.call).not.toHaveBeenCalled();
+  it("offers rule ideas only when no provider has a key", async () => {
+    const out = await computeIdeas(deps({ call: null }), input, () => {});
     expect(out.map((i) => i.source)).toEqual(["rule"]);
   });
 
   it("puts the design where nothing else stands: an unnamed object beside the pile pushes it to the other side", async () => {
-    const d = deps({ cfg: loadConfig({}, { openaiKey: "" }) });
+    const d = deps({ call: null });
     // A tight pile in the middle of the table, so the design fits on either side of it.
     const tight = [std("o1", "tall_can", -0.08), std("o2", "tall_can", 0), std("o3", "tall_can", 0.08), std("o4", "pizza_box", 0)].map((t) => ({ ...t, position: [t.position[0], t.position[1], 0.6] as [number, number, number] }));
     const [free] = await computeIdeas(d, { ...input, twins: tight }, () => {});
