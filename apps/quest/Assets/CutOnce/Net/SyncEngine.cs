@@ -34,6 +34,8 @@ namespace CutOnce.Net
         public event Action RunLoaded;
         public event Action<string, int> PlanReady;
         public event Action<DirectorCommandDto> DirectorCommand;
+        /// <summary>build_inventory and build_ideas, on the main thread. Build mode listens; the sync engine keeps no build state.</summary>
+        public event Action<WsMessageDto> BuildMessage;
 
         public SyncEngine(ApiClient api, BuildStateStore store, Journal journal, Func<string> bundledPlanJson)
         { _api = api; _store = store; _journal = journal; _bundledPlanJson = bundledPlanJson; }
@@ -151,6 +153,8 @@ namespace CutOnce.Net
                     break;
                 case "plan_ready": PlanReady?.Invoke(m.plan_id, m.revision); break;
                 case "director_command": if (m.command != null) DirectorCommand?.Invoke(m.command); break;
+                case "build_inventory":
+                case "build_ideas": BuildMessage?.Invoke(m); break;
             }
         }
     }

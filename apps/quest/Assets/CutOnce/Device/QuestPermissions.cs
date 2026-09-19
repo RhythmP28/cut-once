@@ -15,6 +15,8 @@ namespace CutOnce.Device
     {
         public const string Camera = "horizonos.permission.HEADSET_CAMERA";
         public const string Microphone = "android.permission.RECORD_AUDIO";
+        /// <summary>Spatial data: MRUK's EnvironmentRaycastManager waits for it before any depth ray returns a hit.</summary>
+        public const string Scene = "com.oculus.permission.USE_SCENE";
 
         /// <summary>How many times permissions were asked for (Editor included). The app's PlayMode tests check it.</summary>
         public static int RequestCount { get; private set; }

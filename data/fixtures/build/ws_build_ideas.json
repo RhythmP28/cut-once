@@ -1,0 +1,54 @@
+{
+  "type": "build_ideas",
+  "session_id": "bsess_fixture",
+  "final": true,
+  "audio_url": null,
+  "message": "I found a tall can. You could build a can on a stage.",
+  "ideas": [
+    {
+      "idea_id": "idea_fixture",
+      "session_id": "bsess_fixture",
+      "source": "rule",
+      "rule_id": "rule_fixture",
+      "title": "Can on a stage",
+      "why": "Fixture: one can on the build area.",
+      "tools": [],
+      "origin": { "position": [0.1, 0.74, 0.5], "rotation_quat": [0, 0.3826834, 0, 0.9238795] },
+      "twin_of": { "part_o1": "o1" },
+      "score": 101,
+      "plan": {
+        "plan_id": "plan_build_fixture",
+        "project_id": "proj_cutonce_demo",
+        "name": "Can on a stage",
+        "revision": 1,
+        "status": "draft",
+        "frame": { "handedness": "right", "up": "+Y", "units": "m", "pose": "design", "origin": "centre of the build area, on the table" },
+        "layers": ["build"],
+        "parts": [
+          { "part_id": "part_surface", "name": "Build area", "aliases": ["table", "build area"], "kind": "surface", "layer": "build",
+            "shape": { "type": "box", "size": [0.166, 0.005, 0.166] }, "position": [0, -0.0025, 0],
+            "material_id": "mat_surface", "step_id": "step_01", "rests_on": [], "attaches_to": [],
+            "verify_hint": "the table under the outline is clear", "install_minutes": 0.2, "doc_refs": [] },
+          { "part_id": "part_o1", "name": "tall can", "aliases": ["tall can", "tall can"], "kind": "tall_can", "layer": "build",
+            "shape": { "type": "cylinder", "axis": "y", "diameter": 0.066, "length": 0.157 }, "position": [0, 0.0785, 0],
+            "material_id": "mat_o1", "step_id": "step_02", "rests_on": ["part_surface"], "attaches_to": [],
+            "verify_hint": "tall can upright", "install_minutes": 0.2, "doc_refs": [] }
+        ],
+        "materials": [
+          { "material_id": "mat_surface", "name": "Build area", "spec": "the table under the build", "unit": "area", "quantity": 1, "used_by": ["part_surface"], "doc_refs": [] },
+          { "material_id": "mat_o1", "name": "tall can", "spec": "6.6 × 15.7 cm", "unit": "each", "quantity": 1, "used_by": ["part_o1"], "doc_refs": [] }
+        ],
+        "steps": [
+          { "step_id": "step_01", "index": 1, "title": "Clear the build area", "instruction": "Clear the space where the outline glows.",
+            "part_ids": ["part_surface"], "requires": [], "layer": "build", "est_minutes": 0.2, "materials": [], "doc_refs": [] },
+          { "step_id": "step_02", "index": 2, "title": "Place the tall can", "instruction": "Stand the tall can upright where its outline glows on the table.",
+            "part_ids": ["part_o1"], "requires": ["step_01"], "layer": "build", "est_minutes": 0.2,
+            "materials": [{ "material_id": "mat_o1", "qty": 1 }], "doc_refs": [] }
+        ],
+        "markers": [],
+        "touch_points": [],
+        "provenance": { "source_document_ids": [], "extracted_by": "build mode rule rule_fixture", "assumptions": ["Fixture: one can on the build area."], "validation": [] }
+      }
+    }
+  ]
+}

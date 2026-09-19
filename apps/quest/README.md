@@ -59,6 +59,7 @@ Measured on the M3 Mac, simulator v205, Quest 3 profile:
 | The room behind | A synthetic room | Real passthrough: grain, exposure, your actual desk |
 | Aligning to the desk | Controller touches and hand placement, with the simulated controllers. The rooms have no desk of ours | Your real desk and hand |
 | Copilot photo | The camera's lens geometry (what `PartProjector` uses), but no pixels on macOS. `FixtureFrameSource` supplies a stored photo in the Editor | The real photo |
+| Build-mode scan | No depth, so a scan fails with "no depth here yet". Replay a recorded scan from `/director`: the twins, ideas and fly-together then show as on the headset | The depth rays (`EnvironmentRaycastManager`), the spatial-data permission, how long a scan takes |
 | Controllers and hands | Keyboard, mouse or a gamepad. Meta lists some controller-input limits on macOS | The real feel |
 | Mic and network | The laptop mic; the server on `localhost` | The Quest mic; Wi-Fi to the laptop |
 | Depth occlusion | Windows only | Yes |

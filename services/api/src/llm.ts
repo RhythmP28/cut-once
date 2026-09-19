@@ -30,6 +30,8 @@ export interface JsonCall<S extends ZodTypeAny> {
   jsonSchema?: Record<string, unknown>;
   /** Overrides OPENAI_MODEL for this call, for example the copilot's OPENAI_COPILOT_MODEL. */
   model?: string;
+  /** A voice clip. Only the OMNI helper (omni.ts) sends one; OpenAI's path transcribes first. */
+  audio?: { data: Buffer; format: "wav" | "mp3" };
 }
 
 /** The schema actually sent to the model. */
@@ -38,6 +40,7 @@ export const schemaFor = (call: JsonCall<ZodTypeAny>) => call.jsonSchema ?? toOp
 /** One model call that must return JSON matching `schema`. Throws if the key is missing, the call fails, or the JSON is wrong. */
 export async function jsonCall<S extends ZodTypeAny>(cfg: Config, call: JsonCall<S>): Promise<z.infer<S>> {
   if (!cfg.openaiKey) throw new Error("OPENAI_API_KEY is not set");
+  if (call.audio) throw new Error("jsonCall cannot send a voice clip: transcribe it first");
   const client = new OpenAI({ apiKey: cfg.openaiKey, timeout: call.timeoutMs ?? 120_000, maxRetries: 1 });
   const res = await client.chat.completions.create({
     model: call.model ?? cfg.openaiModel,

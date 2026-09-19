@@ -1,8 +1,8 @@
 import sharp from "sharp";
 
 /** bbox_px is [x, y, w, h] in the camera frame's pixels, top-left origin: the order the context packet uses. */
-export interface Mark { n: number; bbox_px: [number, number, number, number]; state: "missing" | "built" | "wrong" }
-const COLOUR: Record<Mark["state"], string> = { missing: "#00e5ff", built: "#39ff14", wrong: "#ff3b3b" };
+export interface Mark { n: number; bbox_px: [number, number, number, number]; state: "missing" | "built" | "wrong" | "neutral" }
+const COLOUR: Record<Mark["state"], string> = { missing: "#00e5ff", built: "#39ff14", wrong: "#ff3b3b", neutral: "#ffd400" };
 
 /**
  * Draws numbered part boxes on the frame (Set-of-Mark prompting). The number → part_id table goes in the prompt text,

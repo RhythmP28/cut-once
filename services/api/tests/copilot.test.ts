@@ -76,6 +76,66 @@ describe("fast path", () => {
 
   it("'done' with nothing selected falls through to the model", () => expect(matchFastPath("done", input())).toBeNull());
 
+  it("hears \"it's done\" with its apostrophe, the way the transcriber writes it", () => {
+    expect(normalise("It's done.")).toBe("its done");
+    expect(matchFastPath("It's done.", input({ selectedPartId: "part_cable_tray" }))?.action)
+      .toEqual({ type: "mark_state", part_ids: ["part_cable_tray"], new_state: "built", source: "voice" });
+  });
+
+  it("'what can I build' starts a scan without the model", () =>
+    expect(matchFastPath("What can I build with this?", input())?.action).toEqual({ type: "start_scan" }));
+
+  it("a plain 'what can I build?' clears the wish; 'scan again' keeps it", () => {
+    expect(matchFastPath("What can I build?", input())).toMatchObject({ action: { type: "start_scan" }, wish: null });
+    expect(matchFastPath("scan again", input())?.wish).toBeUndefined();
+  });
+
+  it("'build me a birdhouse' and its cousins scan at once and carry the wish, with no model", () => {
+    const wish = (said: string) => matchFastPath(said, input())?.wish;
+    expect(wish("Can you build me a birdhouse?")).toBe("a birdhouse");
+    expect(wish("Hey Kit, make me something crazier.")).toBe("something crazier");
+    expect(wish("I want to build a stand for my phone")).toBe("a stand for my phone");
+    expect(wish("Let's make a robot")).toBe("a robot");
+    expect(wish("could we build a tower with these")).toBe("a tower");
+    expect(matchFastPath("Can you build me a birdhouse?", input())?.answer_text).toBe("Let me see how to make a birdhouse from what's here.");
+  });
+
+  it("leaves everything else to the model: changes, questions, parts and very long wishes", () => {
+    for (const said of ["make it taller", "how do I build a birdhouse", "build the left rear leg", "build me a house for the little bird that lives outside my kitchen window every spring"]) {
+      expect([said, matchFastPath(said, input())]).toEqual([said, null]);
+    }
+  });
+
+  it("'look again' rescans in build mode only: anywhere else it asks the copilot to look at the part again", () => {
+    expect(matchFastPath("look again", input({ mode: "build" }))?.action).toEqual({ type: "start_scan" });
+    expect(matchFastPath("look again", input({ mode: "overlay" }))).toBeNull();
+    expect(matchFastPath("scan the table", input({ mode: "overlay" }))?.action).toEqual({ type: "start_scan" });
+  });
+
+  it("in build mode, 'done' with nothing pointed at marks the current step's parts and reads the next step", () => {
+    const state = t.app.ctx.store.getState(currentId());
+    const design = { ...plan(), plan_id: "plan_build_01k5" };           // a run that build mode started
+    const step = design.steps.find((s) => s.step_id === state.current_step_id)!;
+    const fast = matchFastPath("done", input({ mode: "build", plan: design }));
+    expect(fast?.action).toEqual({ type: "mark_state", part_ids: step.part_ids.filter((id) => state.parts[id]?.state !== "built"), new_state: "built", source: "voice" });
+    expect(fast?.answer_text).toMatch(/^Done\. Next: /);
+  });
+
+  it("while build mode is still scanning or showing ideas, the run is the old one, and 'done' never marks its step", () => {
+    expect(matchFastPath("done", input({ mode: "build" }))).toBeNull();
+    expect(matchFastPath("done", input({ mode: "overlay", plan: { ...plan(), plan_id: "plan_build_01k5" } }))).toBeNull();
+  });
+
+  const E7_RUN = { seed: "e7_start", already: "Engineering 7 is already up. Ask me about any part.", failed: "I couldn't open Engineering 7 on this server." };
+  it("'build E7' and its cousins open Engineering 7, as the Director's New run does", () => {
+    for (const said of ["Build E7.", "show me E-7", "Open Engineering 7", "Kit, bring up E seven", "go to the E7 building"]) {
+      expect([said, matchFastPath(said, input())]).toEqual([said, {
+        action: null, answer_text: "Here's Engineering 7, rebuilt from its 14 published drawings. Ask me about any part.", highlight_parts: [], startRun: E7_RUN,
+      }]);
+    }
+    for (const said of ["what is E7 made of", "how tall is E7", "build a birdhouse"]) expect(matchFastPath(said, input())?.startRun).toBeUndefined();
+  });
+
   it("'next' and 'back' navigate without touching the event log", () => {
     expect(matchFastPath("next", input())?.action).toEqual({ type: "step_nav", direction: "next" });
     expect(matchFastPath("go back", input())?.action).toEqual({ type: "step_nav", direction: "back" });

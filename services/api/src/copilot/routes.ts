@@ -33,6 +33,11 @@ export const copilotRoutes: Plugin = (app: FastifyInstance, ctx: Ctx) => {
     const stream = speech.stream(turnId);
     return stream ? { stream, contentType: speech.contentType } : null;
   };
+  ctx.hooks.say = (text) => {
+    const turnId = turns.newTurnId();
+    speech.start(turnId, text);
+    return { turn_id: turnId, audio_url: `/v1/audio/${turnId}` };
+  };
 
   const requireAssembly = (aid: string) => { ctx.store.getAssembly(aid); return aid; };
 

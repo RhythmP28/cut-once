@@ -121,6 +121,17 @@ namespace CutOnce.Net.Tests
         }
 
         [Test]
+        public void BuildMessagesAreHandedOnAsTheyArrive()
+        {
+            var got = new System.Collections.Generic.List<string>();
+            _sync.BuildMessage += m => got.Add(m.type);
+            _sync.Handle(new WsMessageDto { type = "build_inventory", inventory = new InventoryDto { session_id = "bsess_x" } });
+            _sync.Handle(new WsMessageDto { type = "build_ideas", session_id = "bsess_x" });
+            _sync.Handle(new WsMessageDto { type = "presence" });
+            Assert.That(got, Is.EqualTo(new[] { "build_inventory", "build_ideas" }));
+        }
+
+        [Test]
         public void ACorruptJournalIsTreatedAsNone()
         {
             File.WriteAllText(Path.Combine(_dir, "journal.json"), "{ not json");

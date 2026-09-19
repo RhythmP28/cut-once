@@ -26,7 +26,7 @@ namespace CutOnce.Device
     /// </summary>
     public sealed class CutOnceApp : MonoBehaviour, ICopilotHost
     {
-        const float HighlightSeconds = 6f, RetrySeconds = 5f, WrongHoldSeconds = 0.8f;
+        const float HighlightSeconds = 6f, RetrySeconds = 5f, WrongHoldSeconds = 0.8f, ScanButtonHoldSeconds = 1f;
 
         [Tooltip("Create the copilot (push-to-talk on A) if the scene has none.")]
         public bool createCopilot = true;
@@ -42,6 +42,8 @@ namespace CutOnce.Device
         int _seenConnects; string _lastEventId, _toastRun;
         Action<WsMessageDto> _handleMessage;                          // cached: a method group in Update would allocate a delegate every frame
         bool _waitForMarkRelease;
+        BuildMode _build;
+        readonly PressOrHold _scanButton = new PressOrHold(ScanButtonHoldSeconds);
         readonly ConcurrentQueue<(string permission, bool granted)> _permissionAnswers = new ConcurrentQueue<(string, bool)>();   // filled from Android's thread
 
         // ── start-up ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -65,7 +67,8 @@ namespace CutOnce.Device
             _input = gameObject.AddComponent<QuestInput>();
             _assembly = new GameObject("AssemblyRoot").AddComponent<AssemblyView>();
             _alignment = _assembly.gameObject.AddComponent<AlignmentController>();
-            _alignment.Init(_assembly, _input, gameObject.AddComponent<QuestSurfaceRaycaster>(), gameObject.AddComponent<QuestAnchorStore>());
+            var surface = gameObject.AddComponent<QuestSurfaceRaycaster>();
+            _alignment.Init(_assembly, _input, surface, gameObject.AddComponent<QuestAnchorStore>());
             _alignment.Changed += OnAlignmentChanged;
             _proof = gameObject.AddComponent<ProofOverlay>();
             _proof.Init(_alignment, _input);
@@ -85,6 +88,9 @@ namespace CutOnce.Device
                 _waitForMarkRelease = true;
             };
             _hud.Toast("X: scan the room, measure and draw objects", 12f);
+            // Build mode ("what can I build?"): off until a scan starts it, so E7 and the desk behave exactly as before.
+            _build = gameObject.AddComponent<BuildMode>();
+            _build.Init(_config, _api, _sync, _store, _assembly, _alignment, _input, surface, _hud, _material, _palette);
         }
 
         void Start()
@@ -95,8 +101,11 @@ namespace CutOnce.Device
             // AGENTS rule 3: any copilot, built here or placed in the scene (Rhythm's [Copilot] prefab), needs the camera
             // and microphone. Ask on the headset before first use (the Editor grants at once). The camera waits for its
             // grant by itself; a refusal only costs the copilot its eyes or ears, so the HUD says what still works.
-            if (FindAnyObjectByType<CopilotController>() != null)
-                QuestPermissions.Request(new[] { QuestPermissions.Camera, QuestPermissions.Microphone }, (p, ok) => _permissionAnswers.Enqueue((p, ok)));
+            // Depth rays (build mode, and pointing at a real table to place a build) need spatial data, copilot or not.
+            var wanted = FindAnyObjectByType<CopilotController>() != null
+                ? new[] { QuestPermissions.Camera, QuestPermissions.Microphone, QuestPermissions.Scene }
+                : new[] { QuestPermissions.Scene };
+            QuestPermissions.Request(wanted, (p, ok) => _permissionAnswers.Enqueue((p, ok)));
         }
 
         void OnDestroy()
@@ -149,12 +158,15 @@ namespace CutOnce.Device
             if (skipped.Count > 0) Debug.LogWarning("[CutOnce] Parts with no drawable shape: " + string.Join(", ", skipped));
             _proof.Rebuild(_assembly, _material);
             _dirty = true;
-            if (_alignment.State == AlignmentState.Locked) StandHud();
+            // A build-mode design is locked where the server put it, which stands the HUD behind it (OnAlignmentChanged)
+            // before its pieces fly off to their real objects; standing it again here would measure them mid-flight.
+            if (!_build.OnHologramBuilt(plan) && _alignment.State == AlignmentState.Locked) StandHud();
         }
 
         void OnStateChanged()
         {
             _dirty = true;
+            if (_build != null) _build.OnStateChanged();                 // build mode reads a new step aloud
             var last = Reducer.OrderEvents(_store.Events).LastOrDefault();
             if (_store.AssemblyId != _toastRun)                       // a run was just loaded: its history is not news
             {
@@ -169,7 +181,9 @@ namespace CutOnce.Device
         void OnAlignmentChanged()
         {
             _hud.ShowStatus(_sync.StatusLine, _alignment.Hint);
-            if (_alignment.State == AlignmentState.Locked) { StandHud(); _waitForMarkRelease = true; }   // the B that finished a touch alignment is not a mark
+            // While build mode's pieces fly in from their real objects the hologram's bounds are half the room: the HUD was
+            // stood by the lock itself, with every piece at rest, and stays there.
+            if (_alignment.State == AlignmentState.Locked) { if (_build == null || !_build.PiecesInFlight) StandHud(); _waitForMarkRelease = true; }   // the B that finished a touch alignment is not a mark
             else _hudInFront = false;                                                                  // placing again: bring the panel back to the operator
         }
 
@@ -207,7 +221,7 @@ namespace CutOnce.Device
         {
             _stream.Drain(_handleMessage);
 
-            if (_stream.Connects != _seenConnects) { _seenConnects = _stream.Connects; Run(_sync.CatchUp()); }        // (re)connected: fetch what was missed
+            if (_stream.Connects != _seenConnects) { _seenConnects = _stream.Connects; Run(_sync.CatchUp()); _build.OnStreamReconnected(); }   // (re)connected: fetch what was missed
             else if (!_sync.Online && Time.time > _nextRetry) { _nextRetry = Time.time + RetrySeconds; Run(_sync.CatchUp()); }
 
             if (!_hudInFront && _alignment.State != AlignmentState.Locked && Camera.main != null)
@@ -220,7 +234,12 @@ namespace CutOnce.Device
             while (_permissionAnswers.TryDequeue(out var answer))
                 if (!answer.granted) _hud.Toast(answer.permission == QuestPermissions.Camera
                     ? "Camera not allowed: the copilot answers without seeing the desk. Allow it in Settings > Privacy."
+                    : answer.permission == QuestPermissions.Scene
+                    ? "Spatial data not allowed: build mode can't measure objects. Allow it in Settings > Privacy."
                     : "Microphone not allowed: use the question buttons, or allow it in Settings > Privacy.", 6f);
+            // X on the left controller: a press scans this view (what "what can I build?" does), holding it for a second leaves build mode.
+            var x = _scanButton.Update(OVRInput.GetDown(OVRInput.RawButton.X), OVRInput.Get(OVRInput.RawButton.X), OVRInput.GetUp(OVRInput.RawButton.X), Time.deltaTime);
+            if (x != ButtonGesture.None) _build.OnScanButton(x);
             if (_dirty) Refresh();
         }
 
@@ -235,6 +254,7 @@ namespace CutOnce.Device
                 _markHeldFor += Time.deltaTime;
                 if (_markHeldFor >= WrongHoldSeconds && partId != null) { _markUsed = true; _sync.Mark(partId, "wrong"); }
             }
+            if (_input.MarkUp && !_markUsed && partId == null && _build.MarkCurrentStep()) return;   // build mode: B with nothing pointed at marks the whole step
             if (_input.MarkUp && !_markUsed && partId != null && _store.IsLoaded && _store.Current.parts.TryGetValue(partId, out var status))
                 _sync.Mark(partId, status.state == "built" ? "missing" : "built");
         }
@@ -250,13 +270,14 @@ namespace CutOnce.Device
         public string AssemblyId => _store.AssemblyId;
         public int PlanRevision => _store.Plan?.revision ?? 0;
         public int StateVersion => _store.Current?.version ?? 0;
-        public string Mode => "overlay";
+        public string Mode => _build != null && _build.Active ? "build" : "overlay";
         public string SelectedPartId => _selection.SelectedPartId;
         public string SelectionSource => _selection.SelectedPartId == null ? "none" : "controller_ray";
         public string CurrentStepId => _store.Current?.current_step_id;
 
         public IReadOnlyList<IProjectablePart> PartsForProjection() =>
-            _assembly.Views.Values.Select(v => (IProjectablePart)new ProjectablePart
+            !_assembly.gameObject.activeInHierarchy ? new List<IProjectablePart>()    // build mode is looking at the room: no part of the hidden run is in view
+            : _assembly.Views.Values.Select(v => (IProjectablePart)new ProjectablePart
             { PartId = v.PartId, State = _store.Current.parts.TryGetValue(v.PartId, out var s) ? s.state : "missing", WorldBounds = v.WorldBounds }).ToList();
 
         public void Highlight(string[] partIds, string style)
@@ -276,6 +297,7 @@ namespace CutOnce.Device
 
         public void OnActionApplied(CopilotActionDto action)
         {
+            if (action?.type == "start_scan") { _build.StartScan(); return; }   // "What can I build?": the headset scans, the server does the rest
             // The server already wrote the event; it arrives on the stream. This only tells the operator what happened.
             if (action?.type == "mark_state") _hud.Toast($"Voice: {action.part_ids?.Length ?? 0} part(s) → {action.new_state} · say \"undo\" to revert", 2f);
         }

@@ -4,6 +4,7 @@ import multipart from "@fastify/multipart";
 import websocket from "@fastify/websocket";
 import { registerAuth } from "./auth.js";
 import { boot } from "./boot.js";
+import type { KitBuildContext } from "./build/session.js";
 import type { Config } from "./config.js";
 import { ApiError, sendError } from "./errors.js";
 import { coreRoutes } from "./routes/core.js";
@@ -19,6 +20,22 @@ export interface Hooks {
   promoteCache?: (turnId: string, scriptedQueryId: string) => Promise<void>;
   /** Live PCM for a turn still being spoken; turns/routes.ts asks here before falling back to the finished file. */
   audioStream?: (turnId: string) => { stream: NodeJS.ReadableStream; contentType: string } | null;
+  /** Speaks a sentence in the copilot's voice; the audio is at GET /v1/audio/:turn_id. Set by the copilot. */
+  say?: (text: string) => { turn_id: string; audio_url: string };
+  /** Build mode, for the copilot (set by build/routes.ts). */
+  build?: {
+    /** Is there a design on show that could be changed? (Objects are known and no build is under way.) */
+    canRethink: () => boolean;
+    rethink: (request: string) => Promise<boolean>;
+    /** The copilot is about to start a scan: what the builder asked for goes with it (null: a plain ask, forget the last wish). */
+    expectScan: (wish: string | null) => void;
+    /** What Kit is told about build mode on every turn (build/session.ts). */
+    kitContext: () => KitBuildContext;
+    /** Start a design on show as a normal run, as the trigger or the Director does. */
+    startIdea: (ideaId: string) => Promise<unknown>;
+    /** Resolves once every queued scan has been processed (tests, the eval CLI). */
+    idle: () => Promise<void>;
+  };
 }
 export interface Ctx { cfg: Config; store: Store; docs: DocumentStore; hub: Hub; hooks: Hooks; turns: TurnLog }
 export type Plugin = (app: FastifyInstance, ctx: Ctx) => void | Promise<void>;

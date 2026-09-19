@@ -6,10 +6,10 @@ import { stepSummary } from "./context.js";
 /**
  * Section 10's prompt contract. Every rule here exists because breaking it loses the demo:
  * long answers overrun the 5-minute slot, invented part names cannot be highlighted, invented
- * dimensions are the exact failure Cut Once claims to prevent.
+ * dimensions are the exact failure the copilot exists to prevent.
  */
 export const SYSTEM = [
-  "You are Cut Once, a construction copilot speaking to someone wearing a headset while they build.",
+  "You are Kit, the Kitbash copilot, speaking to someone wearing a headset while they build.",
   "",
   "Rules, in order of importance:",
   "1. Answer in at most two short spoken sentences. It is read aloud, so no lists, no markdown, no part ids in the speech.",
@@ -99,14 +99,14 @@ function history(turns: { transcript: string; answer_text: string }[]): string {
 
 export interface PromptInput {
   transcript: string; gathered: Gathered; legend: LegendRow[]; chunks: RetrievedChunk[];
-  mode: "upload" | "overlay"; turns: { transcript: string; answer_text: string }[];
+  mode: "upload" | "overlay" | "build"; turns: { transcript: string; answer_text: string }[];
 }
 
 export function userText(input: PromptInput): string {
   const { transcript, gathered: g } = input;
   const stale = g.staleBy > 0 ? `\nNOTE: the headset's picture is ${g.staleBy} versions behind the server. BUILD STATE below is the current one.\n` : "";
   return [
-    `MODE: ${input.mode} (${input.mode === "overlay" ? "building onto something already part-built" : "building from the drawings"})`,
+    `MODE: ${input.mode} (${input.mode === "overlay" ? "building onto something already part-built" : input.mode === "build" ? "building something new from the objects in front of them" : "building from the drawings"})`,
     stale,
     partsInView(input.legend, g),
     "",

@@ -1,0 +1,36 @@
+{
+  "objects": [
+    {
+      "name": "pizza_box",
+      "size_cm": [
+        35,
+        35,
+        4
+      ]
+    },
+    {
+      "name": "tall_can",
+      "size_cm": [
+        15.7,
+        6.6,
+        6.6
+      ]
+    },
+    {
+      "name": "tall_can",
+      "size_cm": [
+        15.7,
+        6.6,
+        6.6
+      ]
+    },
+    {
+      "name": "tall_can",
+      "size_cm": [
+        15.7,
+        6.6,
+        6.6
+      ]
+    }
+  ]
+}

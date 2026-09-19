@@ -6,7 +6,9 @@
     "CutOnce.UI",
     "UnityEngine.TestRunner",
     "UnityEditor.TestRunner",
-    "CutOnce.Copilot"
+    "CutOnce.Copilot",
+    "CutOnce.Net",
+    "UnityEngine.UI"
   ],
   "overrideReferences": true,
   "precompiledReferences": [
