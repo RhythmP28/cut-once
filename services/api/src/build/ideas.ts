@@ -66,7 +66,7 @@ export function inventoryText(twins: Twin[], surfaces: Surface[]): string {
 }
 
 /** Is there tape on the table (a roll, or anything Kit named as tape)? Then designs may tape pieces together. */
-export const hasTape = (twins: Twin[]) => twins.some((t) => t.name === "tape_roll" || /\btape\b/.test(normalise(t.label)));
+export const hasTape = (twins: Twin[]) => twins.some((t) => t.name === "tape_roll" || (/\btape\b/.test(normalise(t.label)) && !/\b(tape measure|measuring tape)\b/.test(normalise(t.label))));
 
 /** An object's identity in a cache key: a vocabulary name, or the model's own name for anything else. */
 const kindOf = (t: Twin) => (t.name === "other" ? `other:${normalise(t.label)}` : t.name);

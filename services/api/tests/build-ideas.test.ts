@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { BuildIdea, Surface, Twin } from "@cutonce/schemas";
 import { REPO_ROOT, loadConfig } from "../src/config.js";
 import { loadRules, loadVocab, standardShape } from "../src/build/data.js";
-import { canonical, computeIdeas, describeFound, summary } from "../src/build/ideas.js";
+import { canonical, computeIdeas, describeFound, hasTape, summary } from "../src/build/ideas.js";
 import { twin } from "./build-synth.js";
 
 const vocab = loadVocab(REPO_ROOT), rules = loadRules(REPO_ROOT, vocab);
@@ -154,6 +154,11 @@ describe("computeIdeas: where the design goes", () => {
 });
 
 describe("tape in the design prompt", () => {
+  it("knows tape by name, and a tape measure is not tape", () => {
+    const named = (label: string) => twin({ twin_id: "o9", name: "other", label });
+    expect([named("duct tape"), named("masking tape roll"), named("tape measure"), named("measuring tape")].map((t) => hasTape([t]))).toEqual([true, true, false, false]);
+  });
+
   it("tells the model about tape only when a roll is on the table, and designs may use it", async () => {
     const roll = twin({ twin_id: "o9", name: "tape_roll", label: "tape roll", material: "plastic", confidence: 0.9, snapped: true, shape: { type: "cylinder", axis: "y", diameter: 0.11, length: 0.048 }, position: [0.4, 0.764, 0.5] });
     const d = deps();
