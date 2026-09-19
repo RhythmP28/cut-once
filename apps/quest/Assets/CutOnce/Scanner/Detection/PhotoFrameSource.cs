@@ -61,6 +61,14 @@ namespace CutOnce.Scanner
             return new Ray(cameraPose.position, cameraPose.rotation * direction.normalized);
         }
 
+        public bool IsInView(Vector3 worldPoint, Pose cameraPose)
+        {
+            if (_texture == null || !ScannerView.InFront(worldPoint, cameraPose, out _)) return false;
+            Vector3 local = Quaternion.Inverse(cameraPose.rotation) * (worldPoint - cameraPose.position);
+            float x = local.x / local.z * _k.fx + _k.cx, y = -local.y / local.z * _k.fy + _k.cy;      // image pixels, origin top-left
+            return ScannerView.InsideImage(new Vector2(x / _k.width, 1f - y / _k.height));
+        }
+
         static Intrinsics FromFieldOfView(int width, int height, float verticalDegrees)
         {
             float f = height * 0.5f / Mathf.Tan(verticalDegrees * 0.5f * Mathf.Deg2Rad);

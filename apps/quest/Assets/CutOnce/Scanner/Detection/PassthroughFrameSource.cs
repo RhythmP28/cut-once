@@ -52,6 +52,10 @@ namespace CutOnce.Scanner
 
         public Ray ViewportPointToRay(Vector2 viewportPoint, Pose cameraPose) => _camera.ViewportPointToRay(viewportPoint, cameraPose);
 
+        /// <summary>Meta's WorldToViewportPoint divides by depth with no check, so "in front of the lens" is settled first.</summary>
+        public bool IsInView(Vector3 worldPoint, Pose cameraPose) =>
+            _camera != null && ScannerView.InFront(worldPoint, cameraPose, out _) && ScannerView.InsideImage(_camera.WorldToViewportPoint(worldPoint, cameraPose));
+
         bool FindCamera()
         {
             if (Time.unscaledTime < _nextLook) return false;   // AGENTS rule 10: a Find every frame is a GC spike every frame

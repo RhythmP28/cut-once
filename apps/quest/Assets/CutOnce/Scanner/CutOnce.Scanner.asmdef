@@ -1,6 +1,6 @@
 {
   "name": "CutOnce.Scanner",
   "rootNamespace": "CutOnce.Scanner",
-  "references": ["Unity.InferenceEngine", "meta.xr.mrutilitykit", "Oculus.VR", "CutOnce.AR"],
+  "references": ["Unity.InferenceEngine", "meta.xr.mrutilitykit", "Oculus.VR", "CutOnce.AR", "CutOnce.UI"],
   "autoReferenced": true
 }

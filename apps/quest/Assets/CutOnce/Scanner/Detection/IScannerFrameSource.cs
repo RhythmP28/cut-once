@@ -17,6 +17,30 @@ namespace CutOnce.Scanner
 
         /// <summary>A world ray through a viewport point (0..1, origin bottom-left) of an image taken from cameraPose.</summary>
         Ray ViewportPointToRay(Vector2 viewportPoint, Pose cameraPose);
+
+        /// <summary>
+        /// Could an image taken from cameraPose have shown this point? The tracker only counts a missed detection against
+        /// an object the camera was actually looking at.
+        /// </summary>
+        bool IsInView(Vector3 worldPoint, Pose cameraPose);
+    }
+
+    /// <summary>What "in view" means, shared by both frame sources so the headset and the Editor agree.</summary>
+    public static class ScannerView
+    {
+        /// <summary>An object cut off by the image's edge is often not detected: the outer band does not count as "seen and missed".</summary>
+        public const float EdgeMargin = 0.08f;
+        /// <summary>Past this a small object is a few pixels to a 640-pixel model: not detecting it says nothing.</summary>
+        public const float FarthestMetres = 4f, NearestMetres = 0.15f;
+
+        public static bool InFront(Vector3 worldPoint, Pose cameraPose, out float metresAhead)
+        {
+            metresAhead = Vector3.Dot(worldPoint - cameraPose.position, cameraPose.rotation * Vector3.forward);
+            return metresAhead > NearestMetres && metresAhead < FarthestMetres;
+        }
+
+        public static bool InsideImage(Vector2 viewportPoint) =>
+            viewportPoint.x > EdgeMargin && viewportPoint.x < 1f - EdgeMargin && viewportPoint.y > EdgeMargin && viewportPoint.y < 1f - EdgeMargin;
     }
 
     public readonly struct ScannerFrame

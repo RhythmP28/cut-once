@@ -8,8 +8,8 @@ using UnityEngine;
 namespace CutOnce.Scanner.Editor
 {
     /// <summary>
-    /// Proof that detection runs, with no headset: the real model, the real ObjectDetectionManager loop, on a stored
-    /// photo. It plays an empty scene, installs the scanner, waits for a few inferences, and writes what was found
+    /// Proof that the scanner runs, with no headset: the real model and the real pipeline (detect, locate, track, show)
+    /// on a stored photo, with a flat wall standing in for depth. It plays an empty scene, installs the scanner, waits for a few inferences, and writes what was found
     /// to Logs/scanner-proof.json and the photo with the boxes drawn on it to Logs/scanner-proof.png.
     ///
     ///   Unity -batchmode -projectPath apps/quest -executeMethod CutOnce.Scanner.Editor.ScannerProof.Run
@@ -19,7 +19,7 @@ namespace CutOnce.Scanner.Editor
     /// </summary>
     public static class ScannerProof
     {
-        const int InferencesToWaitFor = 3;
+        const int InferencesToWaitFor = 8;          // enough for objects to be seen three times running and confirmed
         const double GiveUpAfterSeconds = 120;
         static double _deadline;
         static ObjectScanner _scanner;
@@ -58,8 +58,10 @@ namespace CutOnce.Scanner.Editor
             }
             var detector = _scanner.Detector;
             if (detector.Inferences < InferencesToWaitFor && EditorApplication.timeSinceStartup < _deadline) return;
-            Finish(detector.Inferences >= InferencesToWaitFor && detector.Latest.Objects.Count > 0,
-                detector.Inferences == 0 ? "no inference completed: " + (detector.Status ?? "unknown") : null);
+            bool detecting = detector.Inferences >= InferencesToWaitFor && detector.Latest.Objects.Count > 0;
+            bool tracking = _scanner.Tracker.ConfirmedCount > 0 && _scanner.Visualizer.Count == _scanner.Tracker.ConfirmedCount;
+            Finish(detecting && tracking, detector.Inferences == 0 ? "no inference completed: " + (detector.Status ?? "unknown")
+                : !detecting ? "nothing was detected" : !tracking ? $"detections did not become tracked, visible objects ({_scanner.Tracker.ConfirmedCount} confirmed, {_scanner.Visualizer.Count} visuals)" : null);
         }
 
         static void Finish(bool ok, string problem)
@@ -74,10 +76,13 @@ namespace CutOnce.Scanner.Editor
                 report.AppendLine($"backend: {detector.backend} | inferences: {detector.Inferences} | last: {frame.InferenceMs:0} ms | image: {frame.ImageSize.x}x{frame.ImageSize.y} | candidates: {frame.Candidates}");
                 foreach (var found in frame.Objects)
                     report.AppendLine($"Detected: {found.ClassName} {found.Confidence:0.00}   (class {found.ClassId}, centre pixel {found.CenterPixel.x},{found.CenterPixel.y}, viewport box {found.Box.xMin:0.00},{found.Box.yMin:0.00} to {found.Box.xMax:0.00},{found.Box.yMax:0.00})");
+                report.AppendLine($"tracked: {_scanner.Tracker.ConfirmedCount} confirmed of {_scanner.Tracker.Objects.Count} | visuals in the scene: {_scanner.Visualizer.Count} | detections with no depth: {_scanner.Unplaced}");
+                foreach (var tracked in _scanner.Tracker.Objects)
+                    report.AppendLine($"Tracked: #{tracked.Id} {tracked.ClassName.ToUpperInvariant()}  {(tracked.IsConfirmed ? "shown" : "candidate")}  seen {tracked.TotalHits}x  at {tracked.SmoothedWorldPosition.ToString("0.00")}  size {tracked.WorldSize.x:0.00} x {tracked.WorldSize.y:0.00} m");
                 try { WriteArtifacts(frame); report.AppendLine("wrote Logs/scanner-proof.json and Logs/scanner-proof.png"); }
                 catch (Exception e) { report.AppendLine("could not write the artifacts: " + e.Message); }
             }
-            report.AppendLine(ok ? "RESULT: detections are running" : "RESULT: FAILED");
+            report.AppendLine(ok ? "RESULT: detecting, locating, tracking and showing objects" : "RESULT: FAILED");
             report.Append("===== END SCANNER PROOF =====");
             Console.WriteLine(report.ToString());
             Debug.Log(report.ToString());
