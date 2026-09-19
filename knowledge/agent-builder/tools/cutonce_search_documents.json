@@ -1,0 +1,10 @@
+{
+  "id": "cutonce_search_documents",
+  "type": "esql",
+  "description": "Search the Cut Once project's drawings, manual, parts list and site notes. Hybrid: keyword and Jina semantic match, reranked with Jina. Returns passages with their document, page and the part ids they mention.",
+  "tags": ["cutonce", "search"],
+  "configuration": {
+    "query": "FROM cutonce-docs METADATA _score | WHERE MATCH(text, ?query) OR MATCH(text_semantic, ?query) | SORT _score DESC | LIMIT 30 | RERANK ?query ON text WITH { \"inference_id\": \"${JINA_RERANK_ID}\" } | SORT _score DESC | KEEP chunk_id, document_id, page, title, text, part_ids, _score | LIMIT 5",
+    "params": { "query": { "type": "string", "description": "What the user is asking, in plain words" } }
+  }
+}

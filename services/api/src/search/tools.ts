@@ -30,7 +30,7 @@ const REMOTE_SHAPE: Record<ToolName, (rows: unknown, sent: Record<string, unknow
 function remoteArgs(ctx: Ctx, name: ToolName, args: Record<string, unknown>): Record<string, unknown> {
   if (name === "build_history") return { assembly_id: args.assembly_id ?? ctx.store.currentAssembly()?.assembly_id ?? "" };
   if (name === "lookup_material") return { text: args.text ?? args.material_id ?? "" };
-  if (name === "find_parts") return { query: args.query ?? "" };
+  if (name === "find_parts" || name === "search_documents") return { query: args.query ?? "" };
   if (name === "log_issue") return { issue_id: args.issue_id, part_id: args.part_id ?? "", note: args.note ?? "" };
   return args;
 }

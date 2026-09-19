@@ -1,7 +1,8 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadConfig } from "../config.js";
-import { mcpListTools } from "../search/mcp.js";
+import { mcpCall, mcpListTools } from "../search/mcp.js";
+import { renderToolQuery } from "../search/toolQuery.js";
 import { REMOTE_NAME } from "../search/tools.js";
 
 /**
@@ -16,7 +17,8 @@ const base = `${cfg.kibanaUrl}/api/agent_builder/tools`;
 const dir = join(cfg.repoRoot, "knowledge", "agent-builder", "tools");
 
 for (const file of readdirSync(dir).filter((f) => f.endsWith(".json")).sort()) {
-  const tool = JSON.parse(readFileSync(join(dir, file), "utf8")) as { id: string; type: string; description: string; tags: string[]; configuration: object };
+  const tool = JSON.parse(readFileSync(join(dir, file), "utf8")) as { id: string; type: string; description: string; tags: string[]; configuration: { query: string; params?: object } };
+  tool.configuration.query = renderToolQuery(tool.configuration.query, cfg);
   const exists = (await fetch(`${base}/${tool.id}`, { headers })).status === 200;
   const res = exists
     ? await fetch(`${base}/${tool.id}`, { method: "PUT", headers, body: JSON.stringify({ description: tool.description, tags: tool.tags, configuration: tool.configuration }) })
@@ -28,5 +30,17 @@ try {
   const names = await mcpListTools(cfg);
   console.log(`\nMCP endpoint ${cfg.mcpUrl} lists ${names.length} tools.`);
   for (const [ours, remote] of Object.entries(REMOTE_NAME)) console.log(`  ${names.includes(remote) ? "ok     " : "MISSING"} ${remote}  (our ${ours})`);
-  console.log("\nMISSING rows fall back to the direct Elasticsearch twin automatically. search_documents and log_issue are made in the Kibana UI (see knowledge/README.md). If MCP names differ from the ids above, edit REMOTE_NAME in services/api/src/search/tools.ts.");
+  console.log("\nMISSING rows fall back to the direct Elasticsearch twin automatically. log_issue is made in the Kibana UI (see knowledge/README.md). If MCP names differ from the ids above, edit REMOTE_NAME in services/api/src/search/tools.ts.");
+
+  // Evidence, not hope: call each tool once through MCP right after creating it.
+  const SMOKE: Record<string, Record<string, unknown>> = {
+    cutonce_search_documents: { query: "where does the power cable go" }, cutonce_find_parts: { query: "rear leg" },
+    cutonce_lookup_material: { text: "leg" }, cutonce_build_history: { assembly_id: "asm_run_001" },
+  };
+  console.log("");
+  for (const [tool, args] of Object.entries(SMOKE)) {
+    try { const rows = await mcpCall(cfg, tool, args); console.log(`  smoke ok    ${tool}: ${Array.isArray(rows) ? rows.length : "?"} rows`); }
+    catch (err) { console.log(`  smoke FAIL  ${tool}: ${(err as Error).message.slice(0, 160)}`); }
+  }
+  console.log("If cutonce_search_documents fails on RERANK, delete the RERANK stage from its JSON file and run this again.");
 } catch (err) { console.log(`\nCould not reach MCP at ${cfg.mcpUrl}: ${(err as Error).message}`); }
