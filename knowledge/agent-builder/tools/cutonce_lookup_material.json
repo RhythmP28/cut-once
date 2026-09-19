@@ -1,0 +1,10 @@
+{
+  "id": "cutonce_lookup_material",
+  "type": "esql",
+  "description": "Look up a material from the parts list by words from its name or spec. Returns quantity, unit, spec and which parts use it.",
+  "tags": ["cutonce", "materials"],
+  "configuration": {
+    "query": "FROM cutonce-materials METADATA _score | WHERE MATCH(raw_text, ?text) | SORT _score DESC | KEEP material_id, name, spec, unit, quantity, used_by | LIMIT 5",
+    "params": { "text": { "type": "text", "description": "Words from the material's name or spec" } }
+  }
+}

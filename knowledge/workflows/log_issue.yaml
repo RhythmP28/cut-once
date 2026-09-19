@@ -1,0 +1,47 @@
+# Cut Once: log_issue
+# Closes the loop: the copilot hears a problem, this Workflow records it and tells the site lead's screen.
+# Syntax follows Elastic's Workflows cheat sheet (9.4: `inputs` at the top level).
+# Paste into Kibana > Workflows, set the two constants, run it once by hand, then export over this file.
+version: "1"
+name: cutonce-log-issue
+enabled: true
+triggers:
+  - type: manual
+consts:
+  webhook_url: "https://YOUR-DOMAIN/v1/webhooks/issue"
+  auth_headers:
+    Authorization: "Bearer YOUR_API_TOKEN"
+    Content-Type: "application/json"
+inputs:
+  - name: issue_id
+    type: string
+    required: true
+  - name: part_id
+    type: string
+    required: false
+  - name: note
+    type: string
+    required: true
+steps:
+  - name: index_issue
+    type: elasticsearch.index
+    with:
+      index: "cutonce-issues"
+      id: "{{ inputs.issue_id }}"
+      document:
+        issue_id: "{{ inputs.issue_id }}"
+        part_id: "{{ inputs.part_id }}"
+        note: "{{ inputs.note }}"
+        status: "open"
+  - name: notify_cut_once
+    type: http
+    on-failure: { retry: { max-attempts: 3, delay: "2s" }, continue: true }
+    with:
+      url: "{{ consts.webhook_url }}"
+      method: POST
+      headers: "{{ consts.auth_headers }}"
+      body:
+        issue_id: "{{ inputs.issue_id }}"
+        part_id: "{{ inputs.part_id }}"
+        note: "{{ inputs.note }}"
+        indexed: true

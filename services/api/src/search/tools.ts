@@ -16,6 +16,15 @@ export const REMOTE_NAME: Record<ToolName, string> = {
   build_history: "cutonce_build_history", log_issue: "cutonce_log_issue",
 };
 
+/** The Agent Builder tools take exactly the parameters in knowledge/agent-builder/tools/*.json; adapt ours to theirs. */
+function remoteArgs(ctx: Ctx, name: ToolName, args: Record<string, unknown>): Record<string, unknown> {
+  if (name === "build_history") return { assembly_id: args.assembly_id ?? ctx.store.currentAssembly()?.assembly_id ?? "" };
+  if (name === "lookup_material") return { text: args.text ?? args.material_id ?? "" };
+  if (name === "find_parts") return { query: args.query ?? "" };
+  if (name === "log_issue") return { issue_id: `issue_${Date.now().toString(36)}`, part_id: args.part_id ?? "", note: args.note ?? "" };
+  return args;
+}
+
 /**
  * One entry point for the copilot. Tries Agent Builder over MCP for up to 2 s, then the direct twin.
  * Never throws: a broken cluster must cost the copilot a source, not the answer.
@@ -24,7 +33,7 @@ export async function callKnowledgeTool(ctx: Ctx, name: ToolName, args: Record<s
   if (!(name in directTools)) return { ok: false, error: `unknown tool ${name}` };
   const remote: Remote | null = opts.remote ?? (ctx.cfg.mcpUrl && ctx.cfg.esApiKey ? (n, a) => mcpCall(ctx.cfg, n, a) : null);
   if (remote) {
-    try { return { ok: true, data: await timeout(remote(REMOTE_NAME[name], args), opts.timeoutMs ?? 2000), via: "mcp" }; }
+    try { return { ok: true, data: await timeout(remote(REMOTE_NAME[name], remoteArgs(ctx, name, args)), opts.timeoutMs ?? 2000), via: "mcp" }; }
     catch { /* fall through to the direct twin */ }
   }
   try { return { ok: true, data: await directTools[name](ctx, args), via: "direct" }; }

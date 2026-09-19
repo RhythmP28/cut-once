@@ -1,0 +1,12 @@
+[
+  { "id": "q1", "question": "Where does this cable go?", "part_id": "part_power_cable", "expected_chunk_ids": [] },
+  { "id": "q2", "question": "What goes here?", "part_id": "part_left_rear_leg", "expected_chunk_ids": [] },
+  { "id": "q3", "question": "How many screws hold each leg plate?", "part_id": null, "expected_chunk_ids": [] },
+  { "id": "q4", "question": "How long is the rear crossbar?", "part_id": "part_rear_crossbar", "expected_chunk_ids": [] },
+  { "id": "q5", "question": "Which way round does the cable tray go?", "part_id": "part_cable_tray", "expected_chunk_ids": [] },
+  { "id": "q6", "question": "Is this the right screw for the tray?", "part_id": "part_cable_tray", "expected_chunk_ids": [] },
+  { "id": "q7", "question": "What is the tabletop made of?", "part_id": "part_tabletop", "expected_chunk_ids": [] },
+  { "id": "q8", "question": "How far apart should the cable clips be?", "part_id": "part_power_cable", "expected_chunk_ids": [] },
+  { "id": "q9", "question": "How tall is the finished desk?", "part_id": null, "expected_chunk_ids": [] },
+  { "id": "q10", "question": "Which way do the legs screw in?", "part_id": "part_left_rear_leg", "expected_chunk_ids": [] }
+]

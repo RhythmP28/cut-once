@@ -1,0 +1,6 @@
+# Replace the first line with the GoDaddy Registry domain. Caddy fetches and renews the HTTPS certificate by itself.
+# No `log` directive on purpose: Caddy writes no access log by default, and the stream URL carries ?token=.
+cutonce.example {
+	encode gzip
+	reverse_proxy 127.0.0.1:8080
+}
