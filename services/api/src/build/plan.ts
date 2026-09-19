@@ -47,6 +47,13 @@ export function toPlan(input: PlanInput): { plan: Plan; twinOf: Record<string, s
     part_ids: ["part_surface"], requires: [], layer: "build", est_minutes: 0.2, materials: [], doc_refs: [],
   }];
   const twinOf: Record<string, string> = {};
+  const tools = [...new Set([...input.tools, ...(input.placed.some((p) => p.taped_to.length) ? ["tape"] : [])])];
+  // Tape, when the design uses it: one strip per taped joint, listed as a material the taped parts attach through.
+  const joints = input.placed.reduce((n, p) => n + p.taped_to.length, 0);
+  if (joints > 0) {
+    materials.push({ material_id: "mat_tape", name: "Tape", spec: "one strip per joint", unit: "strip", quantity: joints,
+      used_by: input.placed.filter((p) => p.taped_to.length).map((p) => `part_${p.twin_id}`), doc_refs: [] });
+  }
 
   input.placed.forEach((p, i) => {
     const t = input.twins.get(p.twin_id)!, name = label.get(p.twin_id)!, partId = `part_${p.twin_id}`, matId = `mat_${p.twin_id}`, sid = stepId(i + 2);
@@ -54,15 +61,18 @@ export function toPlan(input: PlanInput): { plan: Plan; twinOf: Record<string, s
     parts.push({
       part_id: partId, name, aliases: [t.label, t.name.replace(/_/g, " ")], kind: t.name, layer: "build", shape: p.shape,
       position: [p.position[0] - cx, p.position[1], p.position[2] - cz], material_id: matId, step_id: sid,
-      rests_on: p.rests_on.length ? p.rests_on.map((id) => `part_${id}`) : ["part_surface"], attaches_to: [],
+      rests_on: p.rests_on.length ? p.rests_on.map((id) => `part_${id}`) : ["part_surface"],
+      attaches_to: p.taped_to.map((id) => ({ part_id: `part_${id}`, relation: "on" as const, via_material_id: "mat_tape" })),
       verify_hint: `${name} ${HOW[p.orientation]}`, install_minutes: 0.2, doc_refs: [],
     });
     materials.push({ material_id: matId, name, spec: `${dimsCm(p.shape).join(" × ")} cm`, unit: "each", quantity: 1, used_by: [partId], doc_refs: [] });
     const where = p.rests_on.length ? ` on top of the ${joinWords(p.rests_on.map((id) => label.get(id)!))}` : " where its outline glows on the table";
+    const tape = p.taped_to.length ? ` Tape it to the ${joinWords(p.taped_to.map((id) => label.get(id)!))}.` : "";
     steps.push({
       step_id: sid, index: i + 2, title: `Place the ${name}`,
-      instruction: `${VERB[p.orientation]} the ${name} ${HOW[p.orientation]}${where}.${i === 0 && input.why ? ` ${input.why}` : ""}`,
-      part_ids: [partId], requires: [stepId(i + 1)], layer: "build", est_minutes: 0.2, materials: [{ material_id: matId, qty: 1 }], doc_refs: [],
+      instruction: `${VERB[p.orientation]} the ${name} ${HOW[p.orientation]}${where}.${tape}${i === 0 && input.why ? ` ${input.why}` : ""}`,
+      part_ids: [partId], requires: [stepId(i + 1)], layer: "build", est_minutes: p.taped_to.length ? 0.5 : 0.2,
+      materials: [{ material_id: matId, qty: 1 }, ...(p.taped_to.length ? [{ material_id: "mat_tape", qty: p.taped_to.length }] : [])], doc_refs: [],
     });
   });
 
@@ -72,7 +82,7 @@ export function toPlan(input: PlanInput): { plan: Plan; twinOf: Record<string, s
     layers: ["build"], parts, materials, steps, markers: [], touch_points: [],
     provenance: {
       source_document_ids: [], extracted_by: input.source === "rule" ? `build mode rule ${input.ruleId}` : `build mode, ${input.model}`,
-      assumptions: [input.why, ...(input.tools.length ? [`tools: ${input.tools.join(", ")}`] : [])], validation: [],
+      assumptions: [input.why, ...(tools.length ? [`tools: ${tools.join(", ")}`] : [])], validation: [],
     },
   };
   return { plan, twinOf, size: [w, d] };

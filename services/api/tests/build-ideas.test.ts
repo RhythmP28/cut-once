@@ -153,6 +153,19 @@ describe("computeIdeas: where the design goes", () => {
   });
 });
 
+describe("tape in the design prompt", () => {
+  it("tells the model about tape only when a roll is on the table, and designs may use it", async () => {
+    const roll = twin({ twin_id: "o9", name: "tape_roll", label: "tape roll", material: "plastic", confidence: 0.9, snapped: true, shape: { type: "cylinder", axis: "y", diameter: 0.11, length: 0.048 }, position: [0.4, 0.764, 0.5] });
+    const d = deps();
+    await computeIdeas(d, { ...input, twins: [...pile, roll] }, () => {});
+    await computeIdeas(d, input, () => {});
+    const [withTape, without] = d.call.mock.calls.map((c) => (c[1] as { text: string; system: string }));
+    expect(withTape!.text).toContain("TOOLS: tape (a roll is on the table)");
+    expect(without!.text).toContain("TOOLS: none");
+    expect(withTape!.system).toContain("taped_to");
+  });
+});
+
 describe("canonical: the cache key", () => {
   const box = (id: string, size: [number, number, number]) => twin({ twin_id: id, name: "cardboard_box", label: "cardboard box", snapped: false, shape: { type: "box", size } });
   it("is the same for the same things measured a little differently, and for new ids", () =>

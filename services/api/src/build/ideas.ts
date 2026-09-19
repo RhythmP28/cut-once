@@ -42,7 +42,7 @@ const Out = z.object({ ideas: z.array(S.IdeaDraft) });
 const OutStrict = z.object({ ideas: z.array(Strict.IdeaDraft) });
 
 /** Part of every cache key: a change to SYSTEM below must retire the designs cached under the old words. */
-export const PROMPT_VERSION = "kit-2";
+export const PROMPT_VERSION = "kit-3";
 
 const SYSTEM = [
   "You are Kit, the Kitbash co-pilot. You design small things a person can build right now from the real objects in front of them, like a Master Builder in the Lego Movie.",
@@ -52,6 +52,7 @@ const SYSTEM = [
   "- on: [] for the table, or ids already placed that it rests on. Supports must be able to hold weight and be the SAME height: use identical objects as supports.",
   "- at_cm: {x, z} on the table (x to the right, z toward the viewer, origin the centre of the build), or null.",
   "- next_to, side (left/right/front/back), gap_cm: or put it beside an object already on the table.",
+  "- taped_to: [] or ids already placed that this piece touches and is taped to. Only when TOOLS lists tape. Taped pieces act as one solid piece, so a box taped onto a single can stands. Everything must still rest on the table or on supports, and a tall, narrow taped stack still falls over.",
   "Something resting on supports needs at least 3 supports that are not in a line, or one support at least as wide as it. Keep weight over what holds it.",
   "If THE BUILDER ASKED for something, every design must be that thing or clearly serve it. If these objects cannot make it, give the closest designs you can and say so in why.",
   "Designs listed as already offered must not be repeated unless the builder asks for one again.",
@@ -61,7 +62,7 @@ const SYSTEM = [
 export function inventoryText(twins: Twin[], surfaces: Surface[]): string {
   const s = surfaces.map((x) => `${x.surface_id} ${x.kind} at ${Math.round(x.y * 100)} cm`).join("; ");
   const lines = twins.map((t) => `${t.twin_id} ${t.label}: ${describeShape(t.shape)}; ${t.material}; ${t.load_bearing ? "can hold weight" : "cannot hold weight"}${t.sits_on ? `; on ${t.sits_on}` : ""}`);
-  return `Surfaces: ${s || "none"}.\nObjects:\n${lines.join("\n")}`;
+  return `Surfaces: ${s || "none"}.\nObjects:\n${lines.join("\n")}\nTOOLS: ${hasTape(twins) ? "tape (a roll is on the table)" : "none"}`;
 }
 
 /** Is there tape on the table (a roll, or anything Kit named as tape)? Then designs may tape pieces together. */
@@ -109,7 +110,7 @@ function buildSurface(twins: Twin[], surfaces: Surface[]): Surface | null {
 function check(c: Candidate, byId: Map<string, Twin>, surface: Surface, input: IdeasInput, deps: IdeasDeps): { idea: BuildIdea } | { reason: string } {
   const missing = c.draft.steps.find((s) => !byId.has(s.place));
   if (missing) return { reason: `${missing.place} is not in the inventory` };
-  const solved = solve(c.draft, byId);
+  const solved = solve(c.draft, byId, { tape: hasTape(input.twins) });
   if (!solved.ok) return { reason: solved.reason };
   const stable = checkStability(solved.placed, byId, deps.vocab, c.payload);
   if (!stable.ok) return { reason: stable.reason };

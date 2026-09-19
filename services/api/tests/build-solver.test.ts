@@ -104,3 +104,42 @@ describe("checkStability", () => {
     expect(stand(0.11)).toMatchObject({ ok: false });
   });
 });
+
+describe("tape", () => {
+  const box20 = { ...std("cardboard_box", "o5"), shape: { type: "box" as const, size: [0.2, 0.12, 0.2] as [number, number, number] } };
+  const kitWithBox = new Map([std("tall_can", "o1"), std("tall_can", "o2"), std("tall_can", "o3"), std("tall_can", "o4"), box20].map((t) => [t.twin_id, t]));
+  const post = (tape: string[]) => draft([step({ place: "o1" }), step({ place: "o5", orientation: "flat", on: ["o1"], taped_to: tape })]);
+  const stands = (d: IdeaDraft, things = kitWithBox) => {
+    const r = solve(d, things, { tape: true });
+    if (!r.ok) throw new Error(r.reason);
+    return checkStability(r.placed, things, vocab, null);
+  };
+
+  it("holds a box on one can (a birdhouse on a post); untaped, the same box only balances, and is refused", () => {
+    expect(stands(post(["o1"]))).toEqual({ ok: true });
+    expect(stands(post([]))).toMatchObject({ ok: false, reason: expect.stringMatching(/cardboard box overhangs what holds it up/) });
+  });
+
+  it("does not stop a tall, narrow taped stack from tipping as a whole", () => {
+    const tower = draft(["o1", "o2", "o3", "o4"].map((id, k) => step({ place: id, on: k ? [`o${k}`] : [], taped_to: k ? [`o${k}`] : [] })));
+    const r = stands(tower);
+    expect(r).toMatchObject({ ok: false });
+    expect(!r.ok && r.reason).toMatch(/^the taped tall cans would tip over at a 6° lean; a taped stack needs 7°$/);
+  });
+
+  it("holds a box, not a brick: too much weight on a taped joint is refused", () => {
+    const base = { ...std("cardboard_box", "o6"), shape: { type: "box" as const, size: [0.3, 0.1, 0.3] as [number, number, number] } };
+    const brick = twin({ twin_id: "o7", name: "other", label: "ceramic block", material: "ceramic", load_bearing: true, error_m: 0.003, shape: { type: "box", size: [0.15, 0.15, 0.15] } });
+    const things = new Map([base, brick].map((t) => [t.twin_id, t]));
+    const r = stands(draft([step({ place: "o6", orientation: "flat" }), step({ place: "o7", on: ["o6"], taped_to: ["o6"] })]), things);
+    expect(!r.ok && r.reason).toMatch(/^tape cannot hold the ceramic block in place: it weighs 5\.1 kg, over 1\.5 kg$/);
+  });
+
+  it("needs a roll on the table, a piece placed before, and pieces that touch", () => {
+    expect(solve(post(["o1"]), kitWithBox)).toEqual({ ok: false, reason: "there is no tape on the table to tape the cardboard box with" });
+    expect(solve(draft([step({ place: "o1", taped_to: ["o5"] }), step({ place: "o5", orientation: "flat", on: ["o1"] })]), kitWithBox, { tape: true }))
+      .toEqual({ ok: false, reason: "the tall can is taped to o5, which is not placed before it" });
+    const apart = draft([step({ place: "o1", at_cm: { x: -10, z: 0 } }), step({ place: "o2", at_cm: { x: 10, z: 0 }, taped_to: ["o1"] })]);
+    expect(solve(apart, kitWithBox, { tape: true })).toEqual({ ok: false, reason: "the tall can does not touch the tall can, so tape cannot join them" });
+  });
+});

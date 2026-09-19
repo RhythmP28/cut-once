@@ -25,6 +25,19 @@ const footprint = (p: Placed): P2[] => p.shape.type === "cylinder" && p.shape.ax
  */
 export const PLACEMENT_ERROR = 0.01;
 export const SUPPORT_SPAN = 0.5;
+/**
+ * Taped pieces: tape makes them one rigid body, so the span rule does not apply inside it, but the body as a whole
+ * must still stand. Its weight must land inside what holds it up by the usual margin, and it must lean at least
+ * TIP_MIN_DEG before its weight passes that edge: a tall, narrow taped stack falls at a nudge like an untaped one.
+ * Tape holds pieces in place, it does not carry them: at most TAPE_MAX_KG may rest on other taped pieces.
+ */
+export const TIP_MIN_DEG = 7;
+export const TAPE_MAX_KG = 1.5;
+
+const plural = (labels: string[]) => {
+  const unique = [...new Set(labels)];
+  return unique.length === 1 ? `${unique[0]}s` : `${unique.slice(0, -1).join(", ")} and ${unique.at(-1)}`;
+};
 
 export function checkStability(placed: Placed[], twins: Map<string, Twin>, vocab: Vocab, payload: Payload | null): { ok: true } | { ok: false; reason: string } {
   const byId = new Map(placed.map((p) => [p.twin_id, p]));
@@ -49,7 +62,66 @@ export function checkStability(placed: Placed[], twins: Map<string, Twin>, vocab
     levels.set(p.twin_id, n);
     return n;
   };
+  // Rigid bodies: pieces joined by tape (union-find over taped_to). A body of one piece is checked on its own below.
+  const root = new Map(placed.map((p) => [p.twin_id, p.twin_id]));
+  const find = (id: string): string => { const r = root.get(id)!; if (r === id) return id; const head = find(r); root.set(id, head); return head; };
+  for (const p of placed) for (const q of p.taped_to) root.set(find(p.twin_id), find(q));
+  const bodies = new Map<string, Placed[]>();
+  for (const p of placed) bodies.set(find(p.twin_id), [...(bodies.get(find(p.twin_id)) ?? []), p]);
+  for (const body of bodies.values()) {
+    if (body.length < 2) continue;
+    const verdict = checkTaped(body);
+    if (!verdict.ok) return verdict;
+  }
+
+  function checkTaped(body: Placed[]): { ok: true } | { ok: false; reason: string } {
+    const ids = new Set(body.map((p) => p.twin_id)), names = plural(body.map((p) => p.label));
+    let m = 0, sx = 0, sy = 0, sz = 0;
+    for (const p of body) { const w = mass(p) + (payload && p === top ? payload.kg : 0); m += w; sx += w * p.position[0]; sy += w * p.position[1]; sz += w * p.position[2]; }
+    // What rests on the body from outside it presses where it touches.
+    for (const p of body) for (const q of above.get(p.twin_id) ?? []) {
+      if (ids.has(q.twin_id)) continue;
+      const patch = clip(footprint(q), footprint(p));
+      if (patch.length === 0) continue;
+      const share = carriedBy(q) / q.rests_on.length, c = centroid(patch);
+      sx += share * c[0]; sy += share * (p.position[1] + halfOf(p.shape)[1]); sz += share * c[1]; m += share;
+    }
+    // What holds it up: the footprints of its pieces on the table, and its contact patches with supports outside it.
+    const contact: P2[] = [];
+    let base = Infinity;
+    const outside: string[] = [];
+    for (const p of body) {
+      if (p.rests_on.length === 0) { contact.push(...footprint(p)); base = Math.min(base, p.position[1] - halfOf(p.shape)[1]); }
+      for (const r of p.rests_on) if (!ids.has(r)) {
+        const support = byId.get(r)!;
+        outside.push(r);
+        contact.push(...clip(footprint(p), footprint(support)));
+        base = Math.min(base, support.position[1] + halfOf(support.shape)[1]);
+      }
+    }
+    const region = hull(contact), load: P2 = [sx / m, sz / m];
+    const levels = Math.max(0, ...body.flatMap((p) => (above.get(p.twin_id) ?? []).filter((q) => !ids.has(q.twin_id)).map((q) => 1 + levelsAbove(q))));
+    const need = Math.max(0.01, ...body.map((p) => twins.get(p.twin_id)!.error_m), ...outside.map((id) => twins.get(id)!.error_m)) + PLACEMENT_ERROR * levels;
+    const got = margin(load, region);
+    if (got < need) {
+      return { ok: false, reason: got < 0 || !Number.isFinite(got)
+        ? `the taped ${names} would tip: their weight lands ${Number.isFinite(got) ? cm(-got) : "well"} cm outside what holds them up`
+        : `the taped ${names} are only ${cm(got)} cm from tipping; they need ${cm(need)} cm` };
+    }
+    const lean = (Math.atan2(got, Math.max(1e-6, sy / m - base)) * 180) / Math.PI;
+    if (lean < TIP_MIN_DEG) return { ok: false, reason: `the taped ${names} would tip over at a ${lean.toFixed(0)}° lean; a taped stack needs ${TIP_MIN_DEG}°` };
+    const held = body.filter((p) => p.rests_on.some((r) => ids.has(r)));
+    const heldKg = held.reduce((sum, p) => sum + mass(p), 0);
+    if (heldKg > TAPE_MAX_KG) {
+      const what = held.length === 1 ? held[0]!.label : plural(held.map((p) => p.label));
+      return { ok: false, reason: `tape cannot hold the ${what} in place: ${held.length === 1 ? "it weighs" : "they weigh"} ${heldKg.toFixed(1)} kg, over ${TAPE_MAX_KG} kg` };
+    }
+    return { ok: true };
+  }
+
+  const taped = (p: Placed) => (bodies.get(find(p.twin_id))?.length ?? 1) > 1;
   for (const p of placed) {
+    if (taped(p)) continue;                       // checked as part of its rigid body above
     const t = twins.get(p.twin_id)!;
     let m = mass(p) + (payload && p === top ? payload.kg : 0);
     let sx = m * p.position[0], sz = m * p.position[2];

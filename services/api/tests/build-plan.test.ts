@@ -40,6 +40,25 @@ describe("every rule in data/build/rules.json", () => {
   }
 });
 
+describe("a taped design as a plan", () => {
+  it("says what to tape in the step, joins the parts through a tape material, lists tape as a tool, and passes the plan checker", () => {
+    const can = std("tall_can", 0, 0.5), box = { ...std("cardboard_box", 0, 0.5), shape: { type: "box" as const, size: [0.2, 0.12, 0.2] as [number, number, number] } };
+    const things = new Map([can, box].map((t) => [t.twin_id, t]));
+    const solved = solve({ title: "Birdhouse", why: "A home for birds.", tools: [], uses: [can.twin_id, box.twin_id], steps: [
+      { place: can.twin_id, orientation: "upright", on: [], at_cm: null, next_to: null, side: null, gap_cm: null },
+      { place: box.twin_id, orientation: "flat", on: [can.twin_id], at_cm: null, next_to: null, side: null, gap_cm: null, taped_to: [can.twin_id] },
+    ] }, things, { tape: true });
+    if (!solved.ok) throw new Error(solved.reason);
+    const { plan } = toPlan({ ideaId: "idea_tape", title: "Birdhouse", why: "A home for birds.", tools: [], source: "ai", ruleId: null, model: "m", placed: solved.placed, twins: things, projectId: "proj_cutonce_demo" });
+    expect(plan.steps.at(-1)!.instruction).toBe("Lay the cardboard box flat on top of the tall can. Tape it to the tall can.");
+    expect(plan.parts.find((q) => q.part_id === `part_${box.twin_id}`)!.attaches_to).toEqual([{ part_id: `part_${can.twin_id}`, relation: "on", via_material_id: "mat_tape" }]);
+    expect(plan.materials.find((m) => m.material_id === "mat_tape")).toMatchObject({ name: "Tape", unit: "strip", quantity: 1 });
+    expect(plan.steps.at(-1)!.materials).toContainEqual({ material_id: "mat_tape", qty: 1 });
+    expect(plan.provenance.assumptions).toContain("tools: tape");
+    expect(validatePlan(plan).filter((i) => i.severity === "error")).toEqual([]);
+  });
+});
+
 describe("matchRules", () => {
   it("needs identical cans for a rule that says same_name", () => {
     expect(matchRules(rules, [std("tall_can"), std("drink_can"), std("energy_can"), std("pizza_box")]).map((m) => m.rule.rule_id)).not.toContain("rule_laptop_riser");
