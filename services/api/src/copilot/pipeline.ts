@@ -237,12 +237,30 @@ async function kitTurn(
   const primary = aiFor(ctx.cfg, "turn");
   if (!primary) return null;
   const context = build.kitContext();
+  const fastInput = { plan: g.plan, state: g.state, selectedPartId: input.context.selected_part_id, recentEvents: g.recentEvents, mode: "build" as const };
+
+  // On OpenAI the words come before the model: a voice command said outright ("done", "next") is answered from the
+  // transcript with no model call, as fast as before Kit. OMNI hears the clip itself, so there the commands are found
+  // in what Kit heard, below.
+  let transcript: string | undefined;
+  if (primary.provider === "openai") {
+    const sttStart = Date.now();
+    let failed = false;
+    try { transcript = await transcribe(ctx.cfg, m, input.audio); }
+    catch (err) { failed = true; log.warn({ turn: turnId, err: (err as Error).message }, "transcription failed"); }
+    timings.stt = since(sttStart);
+    timings.kit_openai = 1;
+    if (!transcript) return unheard(deps, turnId, failed, timings, t0, recordTurn);
+    const fast = matchFastPath(transcript, fastInput);
+    if (fast) return respondFast(deps, input, g, fast, transcript, turnId, timings, t0, recordTurn, log);
+  }
+
   const run = (ai: AiCall, timeoutMs: number) => withCap(runKitTurn({
     cfg: ctx.cfg, m, ai, audio: input.audio, frame: input.frame, context, building: buildingNow(g, context.started),
-    turns: deps.turns.history(input.assemblyId, 2), timeoutMs,
+    turns: deps.turns.history(input.assemblyId, 2), timeoutMs, ...(ai.provider === "openai" && transcript !== undefined ? { transcript } : {}),
   }), timeoutMs + 250);
   let result: KitTurnResult | null = null, used = primary;
-  try { result = await run(primary, ctx.cfg.kitTurnMs); }
+  try { result = await run(primary, Math.max(1000, ctx.cfg.kitTurnMs - (timings.stt ?? 0))); }
   catch (err) { log.warn({ turn: turnId, provider: primary.provider, err: (err as Error).message }, "the Kit turn failed"); }
   const left = m.budgets.hardCap - since(t0), backup = primary.provider === "omni" ? aiFor(ctx.cfg, "turn", "openai") : null;
   if (!result && backup?.provider === "openai" && left >= 4000) {
@@ -259,7 +277,6 @@ async function kitTurn(
 
   const known = new Set(context.twins.map((t) => t.twin_id));
   const said = { highlight_twins: kit.objects.filter((id) => known.has(id)), confidence: kit.confidence };
-  const fastInput = { plan: g.plan, state: g.state, selectedPartId: input.context.selected_part_id, recentEvents: g.recentEvents, mode: "build" as const };
   const fast = matchFastPath(kit.heard, fastInput);
   if (fast) return respondFast(deps, input, g, fast, kit.heard, turnId, timings, t0, recordTurn, log, said);
 

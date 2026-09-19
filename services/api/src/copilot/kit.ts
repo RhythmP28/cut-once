@@ -182,7 +182,10 @@ async function smaller(frame: Buffer): Promise<Buffer> {
 export interface KitTurnInput {
   cfg: Config; m: CopilotModels; ai: AiCall; audio: Buffer; frame: Buffer | null;
   context: KitBuildContext; building: KitBuilding | null; turns: KitTurnHistory[]; timeoutMs: number;
+  /** On OpenAI, the words when the caller has transcribed them already (to try the voice commands first). */
+  transcript?: string;
 }
+/** sttMs: null when this call transcribed nothing (OMNI, or a transcript given). */
 export interface KitTurnResult { kit: KitTurn; sttMs: number | null; modelMs: number }
 
 /**
@@ -194,8 +197,8 @@ export async function runKitTurn(input: KitTurnInput): Promise<KitTurnResult> {
   const started = Date.now();
   let said: string | null = null, sttMs: number | null = null;
   if (ai.provider === "openai") {
-    said = await transcribe(cfg, m, input.audio);
-    sttMs = Date.now() - started;
+    said = input.transcript ?? await transcribe(cfg, m, input.audio);
+    if (input.transcript === undefined) sttMs = Date.now() - started;
     if (!said) return { kit: { heard: "", intent: "unclear", wish: null, pick: null, answer: "", objects: [], confidence: 0 }, sttMs, modelMs: 0 };
   }
   const photo = input.frame ? await smaller(input.frame) : null;

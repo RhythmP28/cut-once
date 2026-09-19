@@ -14,7 +14,7 @@ import { auth, makeApp } from "./helpers.js";
 
 type Seen = { path: string; model?: string; schema?: string; tools: number; images: number; toolResults: number; at: number };
 const seen: Seen[] = [];
-const stand = { toolRound: false, flow: "question" };
+const stand = { toolRound: false, flow: "question", heard: "where does the power cable run" };
 /** The answer model's calls. The router's call goes out first on every turn that reaches a model. */
 const answers = () => seen.filter((s) => s.path === "chat" && s.schema !== "route");
 const ANSWER = { answer_text: "Run it through the tray.", highlight_parts: ["part_cable_tray"], highlight_style: "path", chunk_ids: [], action: null, confidence: 0.9, needs_clarification: false };
@@ -26,7 +26,7 @@ async function openai(req: IncomingMessage, res: ServerResponse) {
   const send = (body: unknown) => { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
   if (req.url?.includes("/audio/transcriptions")) {
     seen.push({ path: "transcriptions", model: /name="model"\r\n\r\n([^\r]+)/.exec(raw.toString("latin1"))?.[1], tools: 0, images: 0, toolResults: 0, at: Date.now() });
-    return send({ text: "where does the power cable run" });
+    return send({ text: stand.heard });
   }
   const b = JSON.parse(raw.toString()) as { model: string; tools?: unknown[]; response_format?: { json_schema?: { name?: string } }; messages: { role: string; content: unknown }[] };
   const parts = b.messages.flatMap((m) => (Array.isArray(m.content) ? m.content : [])) as { type: string }[];
@@ -72,7 +72,7 @@ beforeAll(async () => {
   process.env.OPENAI_BASE_URL = oaiUrl;
 });
 afterAll(() => { for (const s of stuckSockets) s.destroy(); stuck.close(); oai.close(); omniServer.close(); delete process.env.OPENAI_BASE_URL; });
-beforeEach(() => { seen.length = 0; omniSeen.length = 0; stand.toolRound = false; stand.flow = "question"; delete process.env.OPENAI_ROUTER_MODEL; process.env.COPILOT_ROUTE_MS = "5000"; process.env.COPILOT_CAP_MS = "30000"; delete process.env.OPENAI_COPILOT_MODEL; });
+beforeEach(() => { seen.length = 0; omniSeen.length = 0; stand.toolRound = false; stand.flow = "question"; stand.heard = "where does the power cable run"; delete process.env.OPENAI_ROUTER_MODEL; process.env.COPILOT_ROUTE_MS = "5000"; process.env.COPILOT_CAP_MS = "30000"; delete process.env.OPENAI_COPILOT_MODEL; });
 afterEach(() => { delete process.env.COPILOT_ROUTE_MS; delete process.env.COPILOT_CAP_MS; delete process.env.OPENAI_COPILOT_MODEL; });
 
 const FIXTURES = join(REPO_ROOT, "data", "fixtures");
@@ -164,6 +164,18 @@ describe("Kit's turn (build mode) over the wire", () => {
       expect(seen.map((x) => [x.path, x.schema ?? null])).toEqual([["transcriptions", null], ["chat", "kit_turn"]]);
       expect(seen[1]).toMatchObject({ tools: 0, images: 1 });
       expect(r.json().timings_ms).toMatchObject({ kit_openai: 1 });
+    } finally { await t.cleanup(); }
+  });
+
+  it("on OpenAI, a voice command said outright is answered from the transcript alone: no Kit call to wait for", async () => {
+    stand.heard = "Next.";
+    const t = await makeApp({ openaiKey: "sk-test", copilotMode: "live" });
+    try {
+      const r = await question(t, { mode: "build" });
+      expect([r.statusCode, r.json().answer_text, r.json().action]).toEqual([200, "Next step.", { type: "step_nav", direction: "next" }]);
+      expect(seen.map((x) => x.path)).toEqual(["transcriptions"]);
+      expect(r.json().timings_ms).toMatchObject({ fast_path: 1, kit_openai: 1 });
+      expect(r.json().timings_ms.kit).toBeUndefined();
     } finally { await t.cleanup(); }
   });
 
