@@ -4,6 +4,7 @@ import { startEventIndexer } from "../src/search/indexEvents.js";
 import { buildSearchBody } from "../src/search/retrieve.js";
 import { callKnowledgeTool, knowledgeToolSpecs } from "../src/search/tools.js";
 import { unwrapAgentBuilder } from "../src/search/mcp.js";
+import { logIssue } from "../src/search/fallbacks.js";
 import { auth, builtEvent, makeApp } from "./helpers.js";
 
 let t: Awaited<ReturnType<typeof makeApp>>;
@@ -101,5 +102,31 @@ describe("Agent Builder result shape", () => {
     const direct = await callKnowledgeTool(t.app.ctx, "find_parts", { query: "rear leg" });
     expect(viaMcp).toMatchObject({ ok: true, via: "mcp" });
     expect(Object.keys((viaMcp as any).data)).toEqual(Object.keys((direct as any).data));
+  });
+});
+
+describe("log_issue is idempotent", () => {
+  it("both paths carry the same issue_id", async () => {
+    let sent: any;
+    const r = await callKnowledgeTool(t.app.ctx, "log_issue", { part_id: "part_left_rear_leg", note: "thread damaged" },
+      { timeoutMs: 50, remote: (_n, a) => { sent = a; return new Promise(() => undefined); } });
+    expect(r).toMatchObject({ ok: true, via: "direct" });
+    expect((r as any).data.issue_id).toBe(sent.issue_id);
+    expect(sent.issue_id).toMatch(/^issue_[a-z0-9]+$/);
+  });
+  it("webhook then direct: one annotation, one toast", async () => {
+    const toasts: unknown[] = [];
+    t.app.ctx.store.bus.on("broadcast", (m) => { if (m.type === "issue_logged") toasts.push(m); });
+    await post("/v1/webhooks/issue", { issue_id: "issue_dup_1", part_id: "part_left_rear_leg", note: "n" });
+    const again = await logIssue(t.app.ctx, { issue_id: "issue_dup_1", part_id: "part_left_rear_leg", note: "n" });
+    expect(again).toMatchObject({ duplicate: true });
+    const aid = t.app.ctx.store.currentAssembly()!.assembly_id;
+    expect(t.app.ctx.store.getEvents(aid).events.filter((e) => e.note?.startsWith("issue_dup_1:"))).toHaveLength(1);
+    expect(toasts).toHaveLength(1);
+  });
+  it("two concurrent calls write once", async () => {
+    await Promise.all([1, 2].map(() => logIssue(t.app.ctx, { issue_id: "issue_dup_2", part_id: null, note: "n" })));
+    const aid = t.app.ctx.store.currentAssembly()!.assembly_id;
+    expect(t.app.ctx.store.getEvents(aid).events.filter((e) => e.note?.startsWith("issue_dup_2:"))).toHaveLength(1);
   });
 });

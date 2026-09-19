@@ -54,12 +54,21 @@ export const directTools: Record<ToolName, (ctx: Ctx, args: Args) => Promise<unk
       return { report: "events", events: events.map((e) => ({ version: e.version, part_id: e.part_id, new_state: e.new_state, source: e.source, timestamp: e.timestamp })) };
     }
   },
-  log_issue: async (ctx, a) => logIssue(ctx, { issue_id: `issue_${ulid().toLowerCase()}`, part_id: str(a.part_id) || null, note: str(a.note) || "Issue logged", photo_ref: str(a.photo_ref) || undefined }),
+  log_issue: async (ctx, a) => logIssue(ctx, { issue_id: str(a.issue_id) || `issue_${ulid().toLowerCase()}`, part_id: str(a.part_id) || null, note: str(a.note) || "Issue logged", photo_ref: str(a.photo_ref) || undefined }),
 };
 
-/** Records an issue: an annotation on the current run, a document in cutonce-issues, and a toast on every screen. */
+const issuesSeen = new Set<string>();
+
+/**
+ * Records an issue: an annotation on the current run, a document in cutonce-issues, and a toast on every screen.
+ * Idempotent on issue_id: the Workflow's HTTP step retries, and the MCP fallback may race it.
+ * The check and the mark are synchronous, so two calls cannot interleave between them.
+ */
 export async function logIssue(ctx: Ctx, issue: { issue_id: string; part_id: string | null; note: string; photo_ref?: string }, alreadyIndexed = false) {
   const current = ctx.store.currentAssembly();
+  const onDisk = current ? ctx.store.getEvents(current.assembly_id).events.some((e) => e.kind === "annotation" && e.note?.startsWith(`${issue.issue_id}:`)) : false;
+  if (issuesSeen.has(issue.issue_id) || onDisk) return { ok: true, issue_id: issue.issue_id, duplicate: true };
+  issuesSeen.add(issue.issue_id);
   const now = new Date().toISOString();
   if (current) {
     await ctx.store.appendEvent(current.assembly_id, {

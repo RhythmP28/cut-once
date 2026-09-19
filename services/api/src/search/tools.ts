@@ -1,3 +1,4 @@
+import { ulid } from "ulid";
 import type { Ctx } from "../app.js";
 import { directTools, type ToolName } from "./fallbacks.js";
 import { mcpCall } from "./mcp.js";
@@ -30,7 +31,7 @@ function remoteArgs(ctx: Ctx, name: ToolName, args: Record<string, unknown>): Re
   if (name === "build_history") return { assembly_id: args.assembly_id ?? ctx.store.currentAssembly()?.assembly_id ?? "" };
   if (name === "lookup_material") return { text: args.text ?? args.material_id ?? "" };
   if (name === "find_parts") return { query: args.query ?? "" };
-  if (name === "log_issue") return { issue_id: `issue_${Date.now().toString(36)}`, part_id: args.part_id ?? "", note: args.note ?? "" };
+  if (name === "log_issue") return { issue_id: args.issue_id, part_id: args.part_id ?? "", note: args.note ?? "" };
   return args;
 }
 
@@ -40,6 +41,8 @@ function remoteArgs(ctx: Ctx, name: ToolName, args: Record<string, unknown>): Re
  */
 export async function callKnowledgeTool(ctx: Ctx, name: ToolName, args: Record<string, unknown>, opts: { timeoutMs?: number; remote?: Remote } = {}): Promise<ToolResult> {
   if (!(name in directTools)) return { ok: false, error: `unknown tool ${name}` };
+  // A mutating tool gets its id once, so the MCP path and the fallback describe the same issue.
+  if (name === "log_issue" && typeof args.issue_id !== "string") args = { ...args, issue_id: `issue_${ulid().toLowerCase()}` };
   const remote: Remote | null = opts.remote ?? (ctx.cfg.mcpUrl && ctx.cfg.esApiKey ? (n, a) => mcpCall(ctx.cfg, n, a) : null);
   if (remote) {
     const sent = remoteArgs(ctx, name, args);
