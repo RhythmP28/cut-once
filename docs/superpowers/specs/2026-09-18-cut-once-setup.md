@@ -90,17 +90,15 @@ Also open QuestCameraKit once in Unity tonight so the import cache is ready.
 | **Python 3.11** | `brew install python@3.11`, then a venv with `pip install numpy opencv-python shapely trimesh pyyaml jsonschema pillow ezdxf` |
 | **PDF and media tools** | `brew install poppler ffmpeg jq` · `brew install --cask inkscape` |
 | **Codex** | `npm install -g @openai/codex`, sign in with ChatGPT |
-| **SSH key** | `ssh-keygen -t ed25519` (for the Vultr server) |
 
 ### Accounts and infrastructure, tonight
 | Item | How | Notes |
 |---|---|---|
 | **GitHub repo** | Create an empty repo `cut-once`, invite Jerry, Henry, Rhythm | First commit after midnight |
-| **Vultr** | Sign up through **mlh.link/vultr** (free credits, and it counts for the prize). Create an **Ubuntu 24.04** server, 2 vCPU / 4 GB, region **Toronto**, add your SSH key | Installing software is allowed tonight |
-| **On the server** | Install Node 22, pnpm, **Caddy**; open ports 22, 80, 443 in the firewall | No project code until midnight |
-| **Domain** | Register through **mlh.link/GoDaddyRegistry** (required for that prize; check which endings qualify). Add a DNS **A record** pointing at the Vultr IP | DNS can take a while to update, so do it tonight |
+| **Hosting** | No VM (Vultr dropped 2026-09-19). The server runs on Michael's laptop behind a Cloudflare tunnel: `brew install cloudflared`, then `infra/README.md` | Quick tunnels need no account |
+| **Domain** | Register through **mlh.link/GoDaddyRegistry** (required for that prize; check which endings qualify). Optional: point it at the laptop with a named Cloudflare tunnel (`infra/README.md`) | Needs the nameservers moved to Cloudflare |
 | **Elastic Cloud** | Get a cluster from the Elastic booth or their Slack channel. **Confirm version 9.4+**, and write down the **Jina embedding and reranker IDs** | If it's lower, plan for keyword search only |
-| **Devpost** | Everyone joins hackthenorth2026.devpost.com. Draft the project page tonight; submit the skeleton at T+1 with all six prizes | Prizes lock at Sat 2:00 PM |
+| **Devpost** | Everyone joins hackthenorth2026.devpost.com. Draft the project page tonight; submit the skeleton at T+1 with all five prizes | Prizes lock at Sat 2:00 PM |
 | **Second Quest** | Ask the HTN hardware desk | Biggest logistics win available |
 
 ### Data, tonight (allowed: gathering public data)
@@ -111,8 +109,8 @@ Also open QuestCameraKit once in Unity tonight so the import cache is ready.
 - [ ] Monorepo created: `pnpm-workspace.yaml`, `packages/schemas`, `services/api`, `apps/web`, `data/fixtures`
 - [ ] Schemas and fixtures committed; **contracts frozen by T+0:45**
 - [ ] Measure the desk with A1
-- [ ] `https://<domain>/health` returns OK from the Vultr server (**G8**)
-- [ ] **Devpost skeleton submitted** with all four badge IDs and six prizes
+- [ ] `<tunnel address>/health` opens in the Quest's browser (**G8**)
+- [ ] **Devpost skeleton submitted** with all four badge IDs and five prizes
 
 ---
 
@@ -166,10 +164,10 @@ Also open QuestCameraKit once in Unity and read its **ImageLLM** sample (voice +
 - [ ] All four people have pushed once to the repo; Git LFS works
 - [ ] Schemas, fixtures and C# interfaces committed and frozen
 - [ ] Our Unity fork builds to the Quest from at least two laptops
-- [ ] `https://<domain>/health` answers from Vultr
+- [ ] `<tunnel address>/health` answers in the Quest's browser
 - [ ] OpenAI takes an image and returns strict JSON; ElevenLabs returns audio
 - [ ] Elastic version confirmed, Jina IDs noted
 - [ ] Desk measured, QR sheets printed and stuck on
-- [ ] Devpost skeleton submitted with team, badge IDs and all six prizes
+- [ ] Devpost skeleton submitted with team, badge IDs and all five prizes
 
 Then the first build gates (G2 to G6 in the blueprint) start.

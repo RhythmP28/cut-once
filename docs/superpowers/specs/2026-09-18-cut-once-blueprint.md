@@ -22,7 +22,7 @@ Supersedes `2026-09-18-cut-once-design.md` (WebXR, framed wall, cut list). Resea
 | 5 | **Assembly pose: the desk is built upside down, as the manufacturer's manual does it.** The tabletop is the datum part. It carries the QR sheets on its underside (facing up) and never moves during the demo. | Legs screw in by hand in about 10 s, the markers face the headset, and nothing that defines the coordinate frame moves. |
 | 6 | **The user's tap or voice is the truth. The camera is a second opinion.** A vision verdict can attach to a part or raise a prompt. It can never change state on its own. | Research shows unreliable part recognition; a wrong silent state change would wreck the demo and the product's trust model. |
 | 7 | **Copilot = prefetch, then one call.** The headset builds a deterministic context packet (selected part, visible parts with image boxes, step, frame). The server retrieves from Elasticsearch first, then makes one multimodal call with structured output. Tools are for actions and follow-ups only. | Removes tool round-trips from the common path. Budget: first audio in 4–6 s. |
-| 8 | **Modular monolith.** One Node 22 + Fastify + TypeScript service on a Vultr VM. Files on disk (JSON, JSONL) are the system of record. Elasticsearch is a rebuildable index plus the retrieval and analytics layer. | An Elastic hiccup can slow the copilot but cannot lose build state or stop the overlay. No microservices. |
+| 8 | **Modular monolith.** One Node 22 + Fastify + TypeScript service on one laptop, online through a Cloudflare tunnel (no VM since 2026-09-19). Files on disk (JSON, JSONL) are the system of record. Elasticsearch is a rebuildable index plus the retrieval and analytics layer. | An Elastic hiccup can slow the copilot but cannot lose build state or stop the overlay. No microservices. |
 | 9 | **E7 is an isolated offline Python pipeline** that emits the same `Plan` schema, a GLB and a planned event stream. The same `TimelinePlayer` replays it. It is time-boxed and owned by one person. | It proves the representation generalises without touching the live demo's critical path. |
 | 10 | **A deterministic `DemoDirector`, a fallback at every layer, and an offline bundle on the headset** (canonical plan, cached answers with audio, saved anchor, local event journal). | The live demo never depends on one network call, one model response or one tracking event. |
 
@@ -88,7 +88,7 @@ Supersedes `2026-09-18-cut-once-design.md` (WebXR, framed wall, cut list). Resea
 └───────────────┬───────────────────────────────────────────────▲─────────────────────┘
       HTTPS     │  events · copilot query · verify              │  WS: event_appended ·
       (bearer)  ▼                                               │  plan_ready · director_command
-┌──────────────────── Vultr VM · Caddy → Node 22 + Fastify (services/api) ─────────────┐
+┌──────────────────── Laptop · Cloudflare tunnel → Node 22 + Fastify (services/api) ───┐
 │ routes/        store/ (truth)            copilot/            reconstruction/          │
 │  REST + WS     plans/*.json              contextBuilder      rasterise → extract →    │
 │  director      assemblies/*.events.jsonl prompts · llm · tts validate → repair →      │
@@ -763,7 +763,7 @@ FROM cutonce-build-events
 
 - Disk layout on the VM: `data/runtime/{plans,documents,assemblies,audio,uploads}`. Event logs are JSONL, appended with `fs.appendFile`, fsync on each event.
 - Elasticsearch indexing is fire-and-forget with a retry queue. `pnpm reindex` rebuilds every index from disk.
-- Caddy terminates HTTPS on the GoDaddy Registry domain. One shared bearer token in the headset config and the web app. That is all the auth we build.
+- The Cloudflare tunnel provides HTTPS (a `trycloudflare.com` address, or the GoDaddy Registry domain through a named tunnel). One shared bearer token in the headset config and the web app. That is all the auth we build.
 - **Laptop fallback:** `pnpm serve:local` runs the same server on a laptop on the hotspot. The headset's operator panel switches between the domain and the laptop's IP. The Android manifest must allow cleartext traffic for that LAN address.
 
 ---
@@ -886,7 +886,7 @@ cut-once/
 │  │                    copilot_response.json  frame_0001.jpg + frame_0001.pose.json
 │  ├─ e7/               raw/ (git-ignored)  stages/  floors/  out/
 │  └─ runtime/          (git-ignored)
-├─ infra/               Caddyfile  deploy.sh  cutonce.service
+├─ infra/               tunnel.sh  ensure-token.sh  README.md
 ├─ docs/                this blueprint · demo-script.md · rehearsal-checklist.md
 ├─ CODEX_LOG.md  SOURCES.md  README.md  .gitattributes  pnpm-workspace.yaml
 ```
@@ -908,7 +908,7 @@ The split is by **vertical slice, not by layer**: C owns the copilot on both the
 | **Owns** | `apps/quest` scene, `[App]`, `Core/` (C# side), `AR/`, `UI/`, `Demo/`, `tools/qr` | `packages/*`, `services/api` core (`routes store ws director reconstruction`), `apps/web`, `infra/`, Devpost, `CODEX_LOG.md` | `Assets/CutOnce/Copilot/`, `[Copilot]` prefab, `services/api/src/{copilot,verification}` | `knowledge/`, `services/api/src/{search,ingest}`, `data/demo/*` (the desk documents and the canonical plan), `tools/e7`, the videos |
 | **Depends on** | `Plan` fixture (B, T+0:30); canonical desk plan (D, T+3) | Nothing to start. Later: D's `retrieve()` only through C | `IPartIndex`, `ISelection`, `IHighlighter`, `IAlignment` stubs (A, T+0:45); `retrieve()` (D); `BuildState` (B) | Part table from the plan (own work); `TimelinePlayer` and the hologram shader for the E7 video (A, by T+20) |
 | **Mocks to start with** | `EditorFixedAlignmentSource`; bundled fixture plan; no server needed | In-memory store; `curl` scripts for events | `FixtureFrameSource` (recorded JPEG + pose); laptop mic in the Editor; `retrieve()` returning fixture chunks; stub `BuildState` | None needed; works against Elastic directly |
-| **P0 deliverables** | G1, G3, G4; plan → parts on the real desk; visual states; select + mark built; HUD progress and step; timeline scrub and replay; anchor save/restore; touch-point fallback; nudge; `DemoDirector` | Monorepo, schemas, fixtures; reducer/steps/validator (with Codex); events API + JSONL + WebSocket; Vultr + Caddy + domain; Director page; Devpost draft by T+13 | G2, G6, G7; context packet; `/copilot/query` end to end; structured answer → highlights; streamed audio; cached answers + offline bundle; timeouts | Measured canonical `desk.plan.json` + A-1/E-1/BOM documents (T+0 to T+3); indices + ingest + part linking; `retrieve()` BM25 then hybrid + rerank; events indexed |
+| **P0 deliverables** | G1, G3, G4; plan → parts on the real desk; visual states; select + mark built; HUD progress and step; timeline scrub and replay; anchor save/restore; touch-point fallback; nudge; `DemoDirector` | Monorepo, schemas, fixtures; reducer/steps/validator (with Codex); events API + JSONL + WebSocket; laptop server + Cloudflare tunnel; Director page; Devpost draft by T+13 | G2, G6, G7; context packet; `/copilot/query` end to end; structured answer → highlights; streamed audio; cached answers + offline bundle; timeouts | Measured canonical `desk.plan.json` + A-1/E-1/BOM documents (T+0 to T+3); indices + ingest + part linking; `retrieve()` BM25 then hybrid + rerank; events indexed |
 | **P1 deliverables** | Print-itself replay; history panel; proof overlay; upload-mode surface placement; label card polish | Upload → extraction → validation → review → approve; hash dedupe; job stages UI; History page; laptop-fallback server | Verification (expected view, crop, verdict, prompts); voice fast-path commands; follow-up context; "what's left?" | Agent Builder tools over MCP with fallbacks; `log_issue` Workflow; ES\|QL panel; E7 pipeline and video (8 h box) |
 | **Integration point** | `IBuildState.Apply` ↔ B's events API (G5) | Same, plus WS to the headset | `IHighlighter` ↔ A's renderer; `retrieve()` ↔ D (T+11) | `retrieve()` signature; `e7.plan.json` loads in A's `PlanLoader` (T+20) |
 
@@ -970,7 +970,7 @@ Priority = demo importance × technical risk. **P0** the demo cannot succeed wit
 |---|---|---|---|---|
 | G0 | T+0:30 | `gpt-5.6-luna` accepts an image and returns strict JSON; Elastic cluster is 9.4+ with Jina inference IDs known | C, D | Use `gpt-5.6-terra`; BM25 only; plain webhook instead of a Workflow |
 | G1 | T+1:00 | The forked project builds to the Quest; passthrough shows; a test cube floats | A | Match QuestCameraKit's exact Unity version; rebuild from its sample scene |
-| G8 | T+1:30 | Headset reaches our domain on venue Wi-Fi | B | Phone hotspot for headset + laptop, from now on |
+| G8 | T+1:30 | Headset reaches the tunnel address on venue Wi-Fi | B | Phone hotspot for headset + laptop, from now on |
 | G2 | T+2:00 | A camera JPEG and a WAV recorded on the headset show up on the Director page | C | Copilot runs **without pixels** (selected part and visible parts still come from geometry); verification is cut |
 | G3 | T+2:30 | MRUK returns poses for two printed codes. Record: update rate, stationary jitter in mm, which local axis is the normal | A | Touch-point alignment becomes the primary method |
 | G7 | T+3:00 | Wired cast shows passthrough + holograms **while** the camera and mic are in use | C, A | Wireless browser cast → scrcpy → open the camera only during a query → hand a judge the headset for the vision beat |
@@ -983,7 +983,7 @@ Priority = demo importance × technical risk. **P0** the demo cannot succeed wit
 | Window | A · Spatial | B · State & Platform | C · Copilot | D · Knowledge & Reconstruction | Exit check |
 |---|---|---|---|---|---|
 | **T+0 → T+0:45** all hands | Fork QuestCameraKit; asmdefs; C# interfaces | `git init`, pnpm workspace, Zod schemas, fixtures | G0 model check; read the ImageLLM sample | G0 Elastic check; tape-measure the desk | Contracts frozen **P0** |
-| **T+0:45 → T+2:30** | G1, then G3. Generate and print QR sheets | Reducer, steps, validator (Codex). Events API, JSONL store. Vultr + Caddy + domain (G8) | G2: `PcaFrameSource`, `MicRecorder`, `POST /debug/frame` | Canonical `desk.plan.json`; stick the QR sheets; start A-1, E-1, BOM | G1 G2 G3 G8 **P0** |
+| **T+0:45 → T+2:30** | G1, then G3. Generate and print QR sheets | Reducer, steps, validator (Codex). Events API, JSONL store. Laptop server + Cloudflare tunnel (G8) | G2: `PcaFrameSource`, `MicRecorder`, `POST /debug/frame` | Canonical `desk.plan.json`; stick the QR sheets; start A-1, E-1, BOM | G1 G2 G3 G8 **P0** |
 | **T+2:30 → T+5** | `PlanLoader` + `ShapeFactory`; `AlignmentSolver`; G4; first hologram shader | WebSocket; `/assemblies`, `/state`; Director page v0 (heartbeat, new run, received frame) | G7, then G6: STT → model with image → PCM TTS → `PcmStreamPlayer` | Finish documents; indices + mappings; ingest; `retrieve()` BM25 | G4 G5 G6 G7 **P0** |
 | **T+5 → T+9:30** | **Sleep.** Anyone whose gate failed fixes it first | | | | |
 | **T+9:30 → T+11** | `VisualStateResolver` + `PartView` states; selection ray; mark built | Outbox/idempotency hardening; seeds; Devpost draft text | Context packet; `PartProjector`; box overlay on the Director page | Part linking at ingest; parts + materials indices; events indexing | **Vertical slice at T+11** **P0** |
@@ -1042,7 +1042,7 @@ Priority = demo importance × technical risk. **P0** the demo cannot succeed wit
 | **Camera frames** | Frame per query | Camera opened only during the query | Copilot from geometry only | n/a |
 | **Verification** | Verdict in 3–6 s | User confirmation only | Switched off in the operator panel | n/a |
 | **Casting** | Wired cast with passthrough | Wireless browser cast | scrcpy | Judges take turns in the headset; laptop shows the Director page |
-| **Network** | Hotspot to the Vultr domain | Laptop-hosted server on the hotspot | Headset offline mode | n/a |
+| **Network** | Tunnel address (venue Wi-Fi or hotspot) | Laptop IP over plain HTTP on the hotspot | Headset offline mode | n/a |
 | **Elasticsearch** | Hybrid + rerank through Agent Builder | Direct queries | BM25 | Answer without citations |
 | **E7** | Pipeline-generated model and video | Exterior + slabs only | Hand-traced massing model | Closing line, no video |
 | **App crash** | Relaunch: plan, anchor and journal restore in < 30 s | New run from seed + force state | Second APK build on the headset (previous known-good) | Show the recorded demo video |
@@ -1249,7 +1249,7 @@ We build none of these now. We only avoid choices that would block them.
 - [ ] Quest: developer mode on, OS updated (needs v74+ for the camera API), paired with the Unity machines
 - [ ] Toolchain check: clone QuestCameraKit and build **its** sample to the headset. This validates the install; it is a public library, not our project. If unsure whether this is fine, ask an organiser
 - [ ] Ask the hardware desk for a **second Quest 3 or 3S**
-- [ ] Accounts and keys: OpenAI, ElevenLabs, Elastic (cluster from the booth or Slack), Vultr credits, the GoDaddy Registry domain
+- [ ] Accounts and keys: OpenAI, ElevenLabs, Elastic (cluster from the booth or Slack), cloudflared on the server laptop, the GoDaddy Registry domain
 - [ ] Node 22, pnpm, Python 3.11, poppler, Inkscape, ffmpeg installed
 - [ ] **Get the desk**: a flat top with four legs that screw in by hand, light enough for one person to carry, plus a power strip, a cable, clips, and something to act as a crossbar and a cable tray
 - [ ] **Find a printer** and matte paper for the QR sheets (generate and print after T+0)

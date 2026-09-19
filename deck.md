@@ -14,12 +14,10 @@ Whether you're a foreman walking a site or a first-timer building a treehouse, C
 - Elastic: Find the Signal, Best Use of Elasticsearch
 - OpenAI: API Prizes
 - MLH: Best Use of ElevenLabs
-- MLH: Best Use of Vultr
 - MLH: Best Domain Name from GoDaddy Registry
 
 ## To qualify
 
 - OpenAI: use Codex as a development teammate and show one concrete way it helped during the demo.
-- Vultr: host the backend on Vultr.
 - GoDaddy Registry: register the Cut Once domain.
 - Every sponsor prize must be selected on Devpost before Saturday 2:00 PM EDT.

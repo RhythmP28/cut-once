@@ -72,7 +72,7 @@
 |---|---|
 | T+0 → 0:45 | Repo, schemas, fixtures. **Freeze the contracts.** Collect all four badge IDs. (A1 and A2 measure the desk; Michael enters the numbers at T+3:45.) Full task list: `docs/superpowers/plans/2026-09-18-platform-knowledge.md` |
 | T+0:45 → 2 | **Devpost skeleton submitted early** (team, all four badge IDs, all six prizes). Only the description can wait; this removes a 2 PM deadline scramble |
-| T+0:45 → 2:30 | Replay logic in TypeScript (state from events, steps, validator) **with Codex**. Events API and storage. Vultr, domain, HTTPS (**G8**) |
+| T+0:45 → 2:30 | Replay logic in TypeScript (state from events, steps, validator) **with Codex**. Events API and storage. Laptop server + Cloudflare tunnel (**G8**) |
 | T+2:30 → 5 | Live updates channel. Director page shell. **Known-good `desk.plan.json`.** Desk documents (drawing, wiring sheet, parts list). Elasticsearch indices and ingest |
 | T+9:30 → 14 | Link each document chunk to its parts. **Search v0 (keyword) ready by T+11 for Rhythm.** Index events. Upload page with duplicate-file detection |
 | T+14 → 20 | **E7 massing model first (T+14 → 15:30): it is in the 3-minute demo and A2 needs it for the video.** Then hybrid search with reranking (Rhythm gets it by T+17). Elastic tools and the `log_issue` Workflow. Thin extraction: AI reads the drawing, code validates, read-only review page with Approve |
@@ -196,7 +196,7 @@ Each person has about 19–20 real build hours before feature freeze (T+0 to T+2
 | Job | Owner |
 |---|---|
 | Repo, schemas, shared test files. Contracts frozen by T+0:45 | B |
-| Vultr server, GoDaddy domain, HTTPS (Vultr and GoDaddy prizes) | B |
+| Laptop server + Cloudflare tunnel; GoDaddy domain (GoDaddy prize) | B |
 | Devpost skeleton at about T+1 (team, badge IDs, six prizes); final by T+32 | B |
 | Codex log for the OpenAI prize (B tracks it; A2 and D add entries) | B |
 | OpenAI and ElevenLabs keys, before T+0 | C |

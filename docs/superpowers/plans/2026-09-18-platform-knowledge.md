@@ -1,10 +1,12 @@
 # Platform & Knowledge (B + D) Implementation Plan
 
+> **Hosting changed (2026-09-19):** no Vultr VM. The server runs on a laptop behind a Cloudflare tunnel; see `infra/README.md`. Steps below that mention the VM, Caddy, `deploy.sh`, `/etc/cutonce.env`, `data/runtime-local` or `sync:from-vm` are history.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build everything the other three depend on (shared schemas, test fixtures, build-history logic, the events API, live updates, the deployed server, the canonical desk plan, search), then finish the rest of Michael's work: the control page, uploads and extraction, the Elastic prize features, and the E7 data.
 
-**Architecture:** One Node 22 + Fastify + TypeScript service on a Vultr VM. Files on disk are the record (plan JSON, event logs in JSONL). Elasticsearch is a rebuildable search index. Shared schemas and pure logic live in two workspace packages that the server, the web app and the fixtures all use. The E7 pipeline is separate, offline Python.
+**Architecture:** One Node 22 + Fastify + TypeScript service on one laptop, online through a Cloudflare tunnel. Files on disk are the record (plan JSON, event logs in JSONL). Elasticsearch is a rebuildable search index. Shared schemas and pure logic live in two workspace packages that the server, the web app and the fixtures all use. The E7 pipeline is separate, offline Python.
 
 **Tech stack:** pnpm workspaces · TypeScript (strict) · Zod + zod-to-json-schema · Vitest · Fastify with @fastify/multipart, @fastify/websocket, @fastify/static · ulid · pino · @elastic/elasticsearch v9 · @modelcontextprotocol/sdk · OpenAI Node SDK (Responses API) · pdf-parse and poppler (`pdftoppm`) · Vite + React + three.js · Caddy + systemd · Python 3.11 with numpy, shapely, trimesh, matplotlib, pyyaml, jsonschema.
 
@@ -20,7 +22,7 @@
 - ID patterns: `proj_` `doc_` `sheet_` `chunk_` `plan_` `asm_` `part_` `mat_` `step_` `job_` `issue_` `turn_` `ver_` `ctx_` `anchor_` followed by `[a-z0-9_]+`. Event IDs are `evt_` + a 26-character ULID.
 - **Disk is truth.** Elasticsearch indexing is fire-and-forget with retry. `pnpm reindex` rebuilds every index from disk.
 - API base path `/v1`. Every route except `GET /health` needs `Authorization: Bearer <API_TOKEN>`; the WebSocket takes `?token=`.
-- **Secrets never enter git.** They live in `/etc/cutonce.env` on the VM and `.env.local` on laptops; `.env.example` lists the names only.
+- **Secrets never enter git.** They live in `.env.local` on the laptop; `.env.example` lists the names only.
 - Models: `gpt-5.6-luna` for vision and structured output, `gpt-5.6-terra` if G0 fails. Elastic **9.4+** with Jina inference IDs recorded at G0.
 - `data/e7/raw/` and `data/runtime/` are git-ignored. Binary files (PNG, JPG, PDF, GLB, WAV, MP4) go through Git LFS.
 - No project code, JSON plan data, drawings or QR sheets before **T+0 = Sat 00:00 EDT**.
@@ -196,7 +198,7 @@
 
 - [ ] Create the project on hackthenorth2026.devpost.com. Add Jerry, Henry and Rhythm as teammates.
 - [ ] Enter all four **badge IDs**, exactly as printed under each badge's QR code.
-- [ ] Select all six prizes: HTN Finalists, Elastic "Find the Signal", OpenAI API Prizes, MLH ElevenLabs, MLH Vultr, MLH GoDaddy Registry.
+- [ ] Select all five prizes: HTN Finalists, Elastic "Find the Signal", OpenAI API Prizes, MLH ElevenLabs, MLH GoDaddy Registry. (MLH Vultr dropped 2026-09-19: no VM.)
 - [ ] Add a valid phone number and email for Sunday.
 - [ ] Add the repo link, a one-line tagline, and "Built with".
 - [ ] **Submit.** It can be edited until T+32; prize choices lock at T+14.
@@ -737,7 +739,7 @@
 
 **Devpost write-up (T+24–27):**
 - **Sections:** inspiration, what it does, how we built it, challenges, accomplishments, what we learned, what's next.
-- **Built with:** Unity, Meta XR SDK, Node, Fastify, Elasticsearch, OpenAI, Codex, ElevenLabs, Vultr, GoDaddy Registry.
+- **Built with:** Unity, Meta XR SDK, Node, Fastify, Elasticsearch, OpenAI, Codex, ElevenLabs, Cloudflare Tunnel, GoDaddy Registry.
 - **Links and video:** the demo video from A2, the repo link.
 - **Codex:** a paragraph for the OpenAI prize, from `CODEX_LOG.md`.
 - **Honesty:** say which features are live, which are precomputed and which are vision, using blueprint Appendix A.

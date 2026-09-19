@@ -31,8 +31,8 @@ pnpm dev                          # API on http://127.0.0.1:8080
 pnpm -F @cutonce/web dev          # web app with a proxy to the API
 pnpm test && pnpm typecheck
 ```
-Useful: `pnpm pm validate <plan.json>`, `pnpm gen:fixtures`, `pnpm sync:fixtures`, `pnpm reindex`, `pnpm search:eval`, `pnpm serve:local`.
-Deploy: `infra/README.md`. Laptop fallback: `infra/local.md`. Elasticsearch: `knowledge/README.md`. E7: `tools/e7/README.md`.
+Useful: `pnpm pm validate <plan.json>`, `pnpm gen:fixtures`, `pnpm sync:fixtures`, `pnpm reindex`, `pnpm search:eval`, `pnpm serve:local` + `pnpm tunnel`, `pnpm backup`.
+Put it online (laptop + Cloudflare tunnel, no VM): `infra/README.md`. Elasticsearch: `knowledge/README.md`. E7: `tools/e7/README.md`.
 
 ## Honest labels
 **Live:** the aligned hologram, part states, the event log and rewind, the copilot, the camera check, search.

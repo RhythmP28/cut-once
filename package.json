@@ -9,7 +9,8 @@
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r --if-present typecheck",
     "dev": "pnpm -F @cutonce/api dev",
-    "serve:local": "pnpm -F @cutonce/web build && HOST=0.0.0.0 DATA_DIR=./data/runtime-local pnpm -F @cutonce/api start",
+    "serve:local": "bash infra/ensure-token.sh && pnpm -F @cutonce/web build && HOST=0.0.0.0 NODE_ENV=production pnpm -F @cutonce/api start",
+    "tunnel": "bash infra/tunnel.sh",
     "pm": "pnpm -F @cutonce/project-model exec tsx src/cli.ts",
     "reindex": "pnpm -F @cutonce/api exec tsx --env-file-if-exists=../../.env.local src/cli/reindex.ts",
     "elastic:indices": "pnpm -F @cutonce/api exec tsx --env-file-if-exists=../../.env.local src/cli/elastic-indices.ts",
@@ -18,8 +19,7 @@
     "extract:eval": "pnpm -F @cutonce/api exec tsx --env-file-if-exists=../../.env.local src/cli/extract-eval.ts",
     "sync:fixtures": "node scripts/sync-fixtures.mjs",
     "gen:fixtures": "pnpm -F @cutonce/project-model exec tsx scripts/gen-fixtures.ts",
-    "sync:from-vm": "sh -c 'rsync -az --delete \"$0:/var/lib/cutonce/\" ./data/runtime-local/'",
-    "backup": "sh -c 'mkdir -p backups && rsync -az \"$0:/var/lib/cutonce/\" \"./backups/$(date +%Y%m%d-%H%M%S)/\"'"
+    "backup": "sh -c 'mkdir -p backups && rsync -a ./data/runtime/ \"./backups/$(date +%Y%m%d-%H%M%S)/\"'"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
