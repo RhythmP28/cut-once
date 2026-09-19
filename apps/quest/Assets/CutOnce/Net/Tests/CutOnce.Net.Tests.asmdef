@@ -1,0 +1,9 @@
+{
+  "name": "CutOnce.Net.Tests",
+  "references": ["CutOnce.Core", "CutOnce.Net", "UnityEngine.TestRunner", "UnityEditor.TestRunner"],
+  "includePlatforms": ["Editor"],
+  "overrideReferences": true,
+  "precompiledReferences": ["nunit.framework.dll", "Newtonsoft.Json.dll"],
+  "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+  "autoReferenced": false
+}

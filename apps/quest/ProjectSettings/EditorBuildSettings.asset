@@ -6,6 +6,9 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/CutOnce/Scenes/Main.unity
+    guid: cefb94835159b4d0a8428b592cb189bd
+  - enabled: 1
     path: Assets/CutOnce/Scenes/QuestBaseline.unity
     guid: 2ea3225cdd4b84f5686f0ab5c1fd7c81
   m_configObjects:

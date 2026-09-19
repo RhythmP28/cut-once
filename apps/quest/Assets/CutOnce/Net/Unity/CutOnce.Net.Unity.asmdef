@@ -1,0 +1,6 @@
+{
+  "name": "CutOnce.Net.Unity",
+  "rootNamespace": "CutOnce.Net",
+  "references": ["CutOnce.Core", "CutOnce.Net"],
+  "autoReferenced": true
+}

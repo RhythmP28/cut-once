@@ -1,0 +1,6 @@
+{
+  "name": "CutOnce.UI",
+  "rootNamespace": "CutOnce.UI",
+  "references": ["CutOnce.Core", "UnityEngine.UI"],
+  "autoReferenced": true
+}

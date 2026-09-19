@@ -41,3 +41,12 @@ apps/quest/Assets/Resources/DevAgentSettings.asset.meta
 
 # Simulation runs (pnpm sim)
 sim-out/
+# dotnet build output of the headset's fast tests
+tools/quest-tests/bin/
+tools/quest-tests/obj/
+# the headset's server address and token (copy apps/quest/cutonce.config.example.json)
+apps/quest/Assets/CutOnce/AR/Resources/CutOnce/config.json
+apps/quest/Assets/CutOnce/AR/Resources/CutOnce/config.json.meta
+
+# A stray default Unity project (1.9 GB of Library). The real one is apps/quest.
+/My project/

@@ -1,0 +1,267 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using CutOnce.AR;
+using CutOnce.Copilot;
+using CutOnce.Copilot.Voice;
+using CutOnce.Core;
+using CutOnce.Net;
+using CutOnce.UI;
+using UnityEngine;
+
+namespace CutOnce.Device
+{
+    /// <summary>
+    /// The whole headset app from one component. Add it to a scene that has an OVRCameraRig and press Play: it
+    /// builds the hologram, the HUD, the pointer, placement and sync at runtime, so there are no prefabs or inspector
+    /// references to keep in step across machines. It is also the copilot's host (what is selected, what to
+    /// highlight, where to show the answer).
+    ///
+    /// Data flows one way: events → BuildStateStore → Reducer.Fold → VisualStateResolver → PartView. Nothing else
+    /// holds build state, and nothing but AlignmentController moves AssemblyRoot.
+    /// </summary>
+    public sealed class CutOnceApp : MonoBehaviour, ICopilotHost
+    {
+        const float HighlightSeconds = 6f, RetrySeconds = 5f, WrongHoldSeconds = 0.8f;
+
+        [Tooltip("Create the copilot (push-to-talk on A) if the scene has none.")]
+        public bool createCopilot = true;
+
+        ServerConfig _config; HologramPalette _palette;
+        BuildStateStore _store; SyncEngine _sync; StreamClient _stream;
+        AssemblyView _assembly; AlignmentController _alignment; ProofOverlay _proof; SelectionController _selection; HudController _hud; QuestInput _input;
+        Material _material;
+        readonly HashSet<string> _highlighted = new HashSet<string>();
+        float _highlightUntil, _nextRetry, _markHeldFor;
+        bool _markUsed, _dirty = true, _hudInFront;
+        int _seenConnects; string _lastEventId, _toastRun;
+        Action<WsMessageDto> _handleMessage;                          // cached: a method group in Update would allocate a delegate every frame
+        bool _waitForMarkRelease;
+
+        // ── start-up ─────────────────────────────────────────────────────────────────────────────────────────────
+        void Awake()
+        {
+            _config = LoadConfig();
+            _palette = HologramPalette.Parse(Resource("CutOnce/hologram-palette"));
+            _material = HologramMaterial.Create();
+
+            _store = new BuildStateStore();
+            _store.Changed += OnStateChanged;
+            var api = new ApiClient(new UnityHttpTransport(), _config);
+            _sync = new SyncEngine(api, _store, new Journal(Path.Combine(Application.persistentDataPath, "cutonce")), () => Resource("CutOnce/desk.plan"));
+            _sync.RunLoaded += OnRunLoaded;
+            _sync.PlanReady += (planId, revision) => _hud.Toast($"New plan ready: {planId} revision {revision}", 4f);
+            _sync.DirectorCommand += OnDirectorCommand;
+            _stream = new StreamClient(() => new NetSocket(), _config);
+            _handleMessage = _sync.Handle;
+
+            _input = gameObject.AddComponent<QuestInput>();
+            _assembly = new GameObject("AssemblyRoot").AddComponent<AssemblyView>();
+            _alignment = _assembly.gameObject.AddComponent<AlignmentController>();
+            _alignment.Init(_assembly, _input, gameObject.AddComponent<QuestSurfaceRaycaster>(), gameObject.AddComponent<QuestAnchorStore>());
+            _alignment.Changed += OnAlignmentChanged;
+            _proof = gameObject.AddComponent<ProofOverlay>();
+            _proof.Init(_alignment, _input);
+            _selection = new GameObject("[Pointer]").AddComponent<SelectionController>();
+            _selection.Init(_input, _assembly, () => _alignment.State == AlignmentState.Locked, _material);
+            _selection.Changed += _ => _dirty = true;
+            _hud = HudController.Create(null);
+            _hud.ShowStatus("Starting…", _alignment.Hint);
+        }
+
+        void Start()
+        {
+            Run(_sync.Start());
+            _stream.Run();
+            if (createCopilot) TryCreateCopilot();
+        }
+
+        void OnDestroy() => _stream?.Dispose();
+
+        static string Resource(string path)
+        {
+            var asset = Resources.Load<TextAsset>(path);
+            if (asset == null) throw new FileNotFoundException($"Resources/{path} is missing from the build");
+            return asset.text;
+        }
+
+        /// <summary>Server address and token: a file pushed to the headset wins, then a local (git-ignored) Resources file, then localhost.</summary>
+        static ServerConfig LoadConfig()
+        {
+            string pushed = Path.Combine(Application.persistentDataPath, "cutonce.config.json");
+            try
+            {
+                if (File.Exists(pushed)) { Debug.Log("[CutOnce] Server settings from " + pushed); return CoreJson.Parse<ServerConfig>(File.ReadAllText(pushed)); }
+                var bundled = Resources.Load<TextAsset>("CutOnce/config");
+                if (bundled != null) { Debug.Log("[CutOnce] Server settings from Resources/CutOnce/config.json"); return CoreJson.Parse<ServerConfig>(bundled.text); }
+            }
+            catch (Exception e) { Debug.LogError("[CutOnce] Could not read the server settings, using localhost: " + e.Message); }
+            Debug.LogWarning("[CutOnce] No server settings found; using http://127.0.0.1:8080 (fine in the Editor, useless on the headset). See apps/quest/Assets/CutOnce/README.md.");
+            return new ServerConfig();
+        }
+
+        /// <summary>Fire-and-forget without losing the exception.</summary>
+        static async void Run(Task task)
+        {
+            try { await task; } catch (Exception e) { Debug.LogException(e); }
+        }
+
+        // ── state → hologram and HUD ─────────────────────────────────────────────────────────────────────────────
+        void OnRunLoaded()
+        {
+            var skipped = _assembly.Build(_store.Plan);
+            if (skipped.Count > 0) Debug.LogWarning("[CutOnce] Parts with no drawable shape: " + string.Join(", ", skipped));
+            _proof.Rebuild(_assembly, _material);
+            _dirty = true;
+            if (_alignment.State == AlignmentState.Locked) StandHud();
+        }
+
+        void OnStateChanged()
+        {
+            _dirty = true;
+            var last = Reducer.OrderEvents(_store.Events).LastOrDefault();
+            if (_store.AssemblyId != _toastRun)                       // a run was just loaded: its history is not news
+            {
+                _toastRun = _store.AssemblyId; _lastEventId = last?.event_id;
+                return;
+            }
+            if (last == null || last.event_id == _lastEventId || _store.Plan == null) return;
+            _lastEventId = last.event_id;
+            _hud.Toast(HudText.EventLine(_store.Plan, last, _store.Current));
+        }
+
+        void OnAlignmentChanged()
+        {
+            _hud.ShowStatus(_sync.StatusLine, _alignment.Hint);
+            if (_alignment.State == AlignmentState.Locked) { StandHud(); _waitForMarkRelease = true; }   // the B that finished a touch alignment is not a mark
+            else _hudInFront = false;                                                                  // placing again: bring the panel back to the operator
+        }
+
+        void OnDirectorCommand(DirectorCommandDto command)
+        {
+            // new_run and force_state reach the headset as assembly_changed / event_appended; nothing to do for them here.
+            if (command.type == "goto") _hud.Toast("Director: " + command.demo_state);
+        }
+
+        void StandHud()
+        {
+            if (_assembly.Views.Count == 0) return;
+            var bounds = new Bounds(); bool any = false;
+            foreach (var view in _assembly.Views.Values) { if (!any) { bounds = view.WorldBounds; any = true; } else bounds.Encapsulate(view.WorldBounds); }
+            var head = Camera.main != null ? Camera.main.transform.position : bounds.center + Vector3.back + Vector3.up * 1.6f;
+            _hud.StandBehind(bounds, head);
+        }
+
+        void Refresh()
+        {
+            _dirty = false;
+            if (!_store.IsLoaded) return;
+            var lit = Time.time < _highlightUntil ? _highlighted : null;
+            _assembly.Show(VisualStateResolver.Resolve(_store.Plan, _store.Current, _selection.SelectedPartId, lit), _palette);
+            _hud.ShowState(_store.Plan, _store.Current, MaterialList.For(_store.Plan, _store.Current), _store.Events);
+            var part = _assembly.ViewOf(_selection.SelectedPartId)?.Part;
+            _hud.ShowPart(part != null && _store.Current.parts.TryGetValue(part.part_id, out var status) ? HudText.PartCard(_store.Plan, part, status, _store.Current) : "");
+            _hud.ShowStatus(_sync.StatusLine, _alignment.State == AlignmentState.Locked ? "" : _alignment.Hint);
+        }
+
+        // ── every frame ──────────────────────────────────────────────────────────────────────────────────────────
+        void Update()
+        {
+            _stream.Drain(_handleMessage);
+
+            if (_stream.Connects != _seenConnects) { _seenConnects = _stream.Connects; Run(_sync.CatchUp()); }        // (re)connected: fetch what was missed
+            else if (!_sync.Online && Time.time > _nextRetry) { _nextRetry = Time.time + RetrySeconds; Run(_sync.CatchUp()); }
+
+            if (!_hudInFront && _alignment.State != AlignmentState.Locked && Camera.main != null)
+            {
+                _hud.StandInFrontOf(Camera.main.transform.position, Camera.main.transform.forward);
+                _hudInFront = true;
+            }
+            if (_highlighted.Count > 0 && Time.time >= _highlightUntil) { _highlighted.Clear(); _dirty = true; }
+            if (_alignment.State == AlignmentState.Locked) ReadMarkButton();
+            if (_dirty) Refresh();
+        }
+
+        /// <summary>B on the pointed part: a press toggles built / missing (so it is also the undo); holding it flags the part wrong.</summary>
+        void ReadMarkButton()
+        {
+            if (_waitForMarkRelease) { if (!_input.MarkHeld && !_input.MarkUp) _waitForMarkRelease = false; return; }
+            string partId = _selection.SelectedPartId;
+            if (_input.MarkDown) { _markHeldFor = 0f; _markUsed = false; }
+            if (_input.MarkHeld && !_markUsed)
+            {
+                _markHeldFor += Time.deltaTime;
+                if (_markHeldFor >= WrongHoldSeconds && partId != null) { _markUsed = true; _sync.Mark(partId, "wrong"); }
+            }
+            if (_input.MarkUp && !_markUsed && partId != null && _store.IsLoaded && _store.Current.parts.TryGetValue(partId, out var status))
+                _sync.Mark(partId, status.state == "built" ? "missing" : "built");
+        }
+
+        // ── copilot host ─────────────────────────────────────────────────────────────────────────────────────────
+        sealed class ProjectablePart : IProjectablePart
+        {
+            public string PartId { get; set; }
+            public string State { get; set; }
+            public Bounds WorldBounds { get; set; }
+        }
+
+        public string AssemblyId => _store.AssemblyId;
+        public int PlanRevision => _store.Plan?.revision ?? 0;
+        public int StateVersion => _store.Current?.version ?? 0;
+        public string Mode => "overlay";
+        public string SelectedPartId => _selection.SelectedPartId;
+        public string SelectionSource => _selection.SelectedPartId == null ? "none" : "controller_ray";
+        public string CurrentStepId => _store.Current?.current_step_id;
+
+        public IReadOnlyList<IProjectablePart> PartsForProjection() =>
+            _assembly.Views.Values.Select(v => (IProjectablePart)new ProjectablePart
+            { PartId = v.PartId, State = _store.Current.parts.TryGetValue(v.PartId, out var s) ? s.state : "missing", WorldBounds = v.WorldBounds }).ToList();
+
+        public void Highlight(string[] partIds, string style)
+        {
+            _highlighted.Clear();
+            foreach (var id in partIds ?? Array.Empty<string>()) _highlighted.Add(id);
+            _highlightUntil = Time.time + HighlightSeconds;
+            _dirty = true;
+        }
+
+        public void ShowAnswer(CopilotResponseDto response) => _hud.ShowAnswer(response?.answer_text);
+
+        public void OnActionApplied(CopilotActionDto action)
+        {
+            // The server already wrote the event; it arrives on the stream. This only tells the operator what happened.
+            if (action?.type == "mark_state") _hud.Toast($"Voice: {action.part_ids?.Length ?? 0} part(s) → {action.new_state} · say \"undo\" to revert", 2f);
+        }
+
+        public void StepNav(string direction)
+        {
+            if (!_store.IsLoaded) return;
+            var steps = _store.Plan.steps.OrderBy(s => s.index).ToList();
+            int i = steps.FindIndex(s => s.step_id == _store.Current.current_step_id);
+            var target = steps.ElementAtOrDefault(i + (direction == "back" ? -1 : 1));
+            if (target != null) _hud.Toast($"Step {target.index}: {target.title}", 4f);
+        }
+
+        void TryCreateCopilot()
+        {
+            if (FindAnyObjectByType<CopilotController>() != null) return;
+            try
+            {
+                var go = new GameObject("[Copilot]");
+                go.SetActive(false);                                   // fields must be set before CopilotController.Awake reads them
+                go.AddComponent<AudioSource>();
+                var frames = go.AddComponent<PcaFrameSource>();
+                frames.cameraAccess = go.AddComponent<Meta.XR.PassthroughCameraAccess>();
+                var controller = go.AddComponent<CopilotController>();
+                controller.baseUrl = _config.BaseUrl; controller.apiToken = _config.api_token;
+                controller.frameSourceBehaviour = frames; controller.hostBehaviour = this;
+                controller.pushToTalkBehaviour = go.AddComponent<QuestPushToTalk>();
+                controller.mic = go.AddComponent<MicRecorder>(); controller.speaker = go.AddComponent<PcmStreamPlayer>();
+                go.SetActive(true);
+            }
+            catch (Exception e) { Debug.LogWarning("[CutOnce] The copilot could not be created; the build guide still works: " + e.Message); }
+        }
+    }
+}

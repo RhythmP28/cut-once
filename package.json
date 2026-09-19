@@ -25,6 +25,8 @@
     "llm:smoke": "pnpm -F @cutonce/api exec tsx src/cli/llm-smoke.ts",
     "tts:smoke": "pnpm -F @cutonce/api exec tsx src/cli/tts-smoke.ts",
     "sim": "tsx tools/sim/run.ts",
+    "quest:core-test": "bash tools/quest-tests/run.sh",
+    "quest:bundle": "bash tools/quest-tests/bundle.sh",
     "quest:setup": "tsx tools/quest/unity.ts setup",
     "quest:check": "tsx tools/quest/unity.ts check",
     "quest:sim": "tsx tools/quest/unity.ts sim",
