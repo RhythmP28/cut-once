@@ -1,0 +1,6 @@
+{
+  "name": "CutOnce.RoomSense",
+  "rootNamespace": "CutOnce.RoomSense",
+  "references": ["meta.xr.mrutilitykit", "Unity.InputSystem"],
+  "autoReferenced": true
+}

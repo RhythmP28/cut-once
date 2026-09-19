@@ -1,0 +1,7 @@
+{
+  "name": "CutOnce.RoomSense.Editor",
+  "rootNamespace": "CutOnce.RoomSense.Editor",
+  "references": ["CutOnce.RoomSense", "meta.xr.mrutilitykit"],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": true
+}

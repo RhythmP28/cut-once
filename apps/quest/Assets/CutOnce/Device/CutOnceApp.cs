@@ -35,6 +35,7 @@ namespace CutOnce.Device
         BuildStateStore _store; SyncEngine _sync; StreamClient _stream;
         AssemblyView _assembly; AlignmentController _alignment; ProofOverlay _proof; SelectionController _selection; HudController _hud; QuestInput _input;
         Material _material;
+        CutOnce.Room.RoomWorkspace _roomWorkspace;
         readonly HashSet<string> _highlighted = new HashSet<string>();
         float _highlightUntil, _nextRetry, _markHeldFor;
         bool _markUsed, _dirty = true, _hudInFront;
@@ -76,6 +77,17 @@ namespace CutOnce.Device
             _selection.Changed += _ => _dirty = true;
             _hud = HudController.Create(null);
             _hud.ShowStatus("Starting…", _alignment.Hint);
+            _roomWorkspace = gameObject.AddComponent<CutOnce.Room.RoomWorkspace>();
+            _roomWorkspace.ActiveChanged += active =>
+            {
+                _input.InputEnabled = !active;
+                _alignment.enabled = !active;
+                _selection.gameObject.SetActive(!active);
+                _assembly.gameObject.SetActive(!active);
+                _hud.gameObject.SetActive(!active);
+                _waitForMarkRelease = true;
+            };
+            _hud.Toast("X: scan the room, measure and draw objects", 12f);
             // Build mode ("what can I build?"): off until a scan starts it, so E7 and the desk behave exactly as before.
             _build = gameObject.AddComponent<BuildMode>();
             _build.Init(_config, _api, _sync, _store, _assembly, _alignment, _input, surface, _hud, _material, _palette);

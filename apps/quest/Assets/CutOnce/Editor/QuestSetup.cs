@@ -200,6 +200,7 @@ namespace CutOnce.QuestTools
             // so pnpm quest:setup (Meta's fixes, then ours) and this file agree.
             config.sceneSupport = OVRProjectConfig.FeatureSupport.Required;
             config.anchorSupport = OVRProjectConfig.AnchorSupport.Enabled; // the aligned desk is kept with a spatial anchor
+            config.sceneSupport = OVRProjectConfig.FeatureSupport.Required; // room mapping and scene mesh queries
             config.handTrackingSupport = OVRProjectConfig.HandTrackingSupport.ControllersAndHands;
             OVRProjectConfig.CommitProjectConfig(config);
         }

@@ -15,6 +15,7 @@ namespace CutOnce.Device
         public Vector3 tipOffset = new Vector3(0f, -0.01f, 0.05f);
 
         Transform _trackingSpace;
+        public bool InputEnabled { get; set; } = true;
 
         void Awake()
         {
@@ -32,17 +33,17 @@ namespace CutOnce.Device
         {
             var pose = ControllerWorld();
             ray = new Ray(pose.position, pose.rotation * Vector3.forward);
-            return OVRInput.IsControllerConnected(Hand) && OVRInput.GetControllerPositionTracked(Hand);
+            return InputEnabled && OVRInput.IsControllerConnected(Hand) && OVRInput.GetControllerPositionTracked(Hand);
         }
 
         public Vector3 TipWorld { get { var pose = ControllerWorld(); return pose.position + pose.rotation * tipOffset; } }
-        public Vector2 Stick => OVRInput.Get(OVRInput.RawAxis2D.RThumbstick);
-        public bool TriggerDown => OVRInput.GetDown(OVRInput.RawButton.RIndexTrigger);
-        public bool TriggerHeld => OVRInput.Get(OVRInput.RawButton.RIndexTrigger);
-        public bool GripHeld => OVRInput.Get(OVRInput.RawButton.RHandTrigger);
-        public bool MarkDown => OVRInput.GetDown(OVRInput.RawButton.B);
-        public bool MarkHeld => OVRInput.Get(OVRInput.RawButton.B);
-        public bool MarkUp => OVRInput.GetUp(OVRInput.RawButton.B);
-        public bool StickClickHeld => OVRInput.Get(OVRInput.RawButton.RThumbstick);
+        public Vector2 Stick => InputEnabled ? OVRInput.Get(OVRInput.RawAxis2D.RThumbstick) : Vector2.zero;
+        public bool TriggerDown => InputEnabled && OVRInput.GetDown(OVRInput.RawButton.RIndexTrigger);
+        public bool TriggerHeld => InputEnabled && OVRInput.Get(OVRInput.RawButton.RIndexTrigger);
+        public bool GripHeld => InputEnabled && OVRInput.Get(OVRInput.RawButton.RHandTrigger);
+        public bool MarkDown => InputEnabled && OVRInput.GetDown(OVRInput.RawButton.B);
+        public bool MarkHeld => InputEnabled && OVRInput.Get(OVRInput.RawButton.B);
+        public bool MarkUp => InputEnabled && OVRInput.GetUp(OVRInput.RawButton.B);
+        public bool StickClickHeld => InputEnabled && OVRInput.Get(OVRInput.RawButton.RThumbstick);
     }
 }
