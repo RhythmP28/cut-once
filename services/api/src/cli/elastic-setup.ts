@@ -32,15 +32,20 @@ try {
   for (const [ours, remote] of Object.entries(REMOTE_NAME)) console.log(`  ${names.includes(remote) ? "ok     " : "MISSING"} ${remote}  (our ${ours})`);
   console.log("\nMISSING rows fall back to the direct Elasticsearch twin automatically. log_issue is made in the Kibana UI (see knowledge/README.md). If MCP names differ from the ids above, edit REMOTE_NAME in services/api/src/search/tools.ts.");
 
-  // Evidence, not hope: call each tool once through MCP right after creating it.
+  // Evidence, not hope: call each tool once through MCP right after creating it. A hung tool must not hang setup.
+  const SMOKE_TIMEOUT_MS = Number(process.env.SMOKE_TIMEOUT_MS ?? 15_000);
   const SMOKE: Record<string, Record<string, unknown>> = {
     cutonce_search_documents: { query: "where does the power cable go" }, cutonce_find_parts: { query: "rear leg" },
     cutonce_lookup_material: { text: "leg" }, cutonce_build_history: { assembly_id: "asm_run_001" },
   };
   console.log("");
   for (const [tool, args] of Object.entries(SMOKE)) {
-    try { const rows = await mcpCall(cfg, tool, args); console.log(`  smoke ok    ${tool}: ${Array.isArray(rows) ? rows.length : "?"} rows`); }
+    try {
+      const rows = await Promise.race([mcpCall(cfg, tool, args), new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`no answer after ${SMOKE_TIMEOUT_MS} ms`)), SMOKE_TIMEOUT_MS).unref())]);
+      console.log(`  smoke ok    ${tool}: ${Array.isArray(rows) ? rows.length : "?"} rows`);
+    }
     catch (err) { console.log(`  smoke FAIL  ${tool}: ${(err as Error).message.slice(0, 160)}`); }
   }
   console.log("If cutonce_search_documents fails on RERANK, delete the RERANK stage from its JSON file and run this again.");
 } catch (err) { console.log(`\nCould not reach MCP at ${cfg.mcpUrl}: ${(err as Error).message}`); }
+process.exit(0); // the MCP client keeps a socket open; setup is a one-shot command
