@@ -25,6 +25,10 @@ describe("search request", () => {
     expect([rr.inference_id, rr.field, rr.retriever.rrf.retrievers.length]).toEqual(["jina-rerank", "text", 2]);
     expect(rr.retriever.rrf.retrievers[1].standard.query.bool.must[0].semantic.field).toBe("text_semantic");
   });
+  it("hybrid: both branches filter by project and document type", () => {
+    const body = buildSearchBody(loadConfig({ JINA_EMBED_ID: "e" }), { ...q, docTypes: ["electrical"] }, "hybrid") as any;
+    for (const r of body.retriever.rrf.retrievers) expect(r.standard.query.bool.filter).toContainEqual({ terms: { doc_type: ["electrical"] } });
+  });
   it("hybrid without Jina ids degrades to BM25", () => expect(buildSearchBody(loadConfig({}), q, "hybrid")).toHaveProperty("query"));
   it("search route answers with no cluster configured", async () => {
     const r = await t.app.inject({ method: "GET", url: "/v1/projects/proj_cutonce_demo/search?q=cable", headers: auth });

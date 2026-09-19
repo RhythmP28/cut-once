@@ -9,13 +9,16 @@ type Logger = { warn: (o: object, m: string) => void };
 const TIMEOUT_MS = 800;
 const PART_BOOST = 3;
 
+/** One filter for both branches, so "drawings only" means drawings only in hybrid mode too. */
+const filters = (q: RetrieveQuery) => [{ term: { project_id: q.projectId } }, ...(q.docTypes?.length ? [{ terms: { doc_type: q.docTypes } }] : [])];
+
 function bm25(q: RetrieveQuery) {
   return {
     bool: {
       must: [{ multi_match: { query: q.query, fields: ["title^2", "text"] } }],
       // A boost, not a filter: chunks about the part you point at rise, but general answers can still surface.
       should: q.partId ? [{ term: { part_ids: { value: q.partId, boost: PART_BOOST } } }] : [],
-      filter: [{ term: { project_id: q.projectId } }, ...(q.docTypes?.length ? [{ terms: { doc_type: q.docTypes } }] : [])],
+      filter: filters(q),
     },
   };
 }
@@ -23,10 +26,9 @@ function bm25(q: RetrieveQuery) {
 export function buildSearchBody(cfg: Config, q: RetrieveQuery, mode: Mode): Record<string, unknown> {
   const size = q.k ?? 5;
   if (mode === "bm25" || !cfg.jinaEmbedId) return { size, query: bm25(q) };
-  const filter = [{ term: { project_id: q.projectId } }];
   const rrf = { rrf: { rank_window_size: 30, retrievers: [
     { standard: { query: bm25(q) } },
-    { standard: { query: { bool: { must: [{ semantic: { field: "text_semantic", query: q.query } }], filter } } } },
+    { standard: { query: { bool: { must: [{ semantic: { field: "text_semantic", query: q.query } }], filter: filters(q) } } } },
   ] } };
   if (!cfg.jinaRerankId) return { size, retriever: rrf };
   return { size, retriever: { text_similarity_reranker: { retriever: rrf, field: "text", inference_id: cfg.jinaRerankId, inference_text: q.query, rank_window_size: 30 } } };
