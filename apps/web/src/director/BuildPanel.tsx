@@ -8,11 +8,14 @@ import { shapeSize } from "../format";
 import { useStream } from "../ws";
 
 const SCANS_SHOWN = 12;
+/** Where a design came from, in the words the presenter needs: only "live" may be called live on stage. */
+const MADE: Record<string, string> = { live: "live", cache: "from rehearsal", rule: "offline rule" };
 
 /** Build mode from the laptop: every live fallback in the demo (replay, add a missed object, pick an idea) is one click. */
 export function BuildPanel() {
   const [twins, setTwins] = useState<Twin[]>([]);
   const [ideas, setIdeas] = useState<BuildIdea[]>([]);
+  const [wish, setWish] = useState<string | null>(null);
   const [scans, setScans] = useState<BuildScanRow[]>([]);
   const [vocab, setVocab] = useState<BuildVocabItem[]>([]);
   const [pick, setPick] = useState("");
@@ -24,7 +27,7 @@ export function BuildPanel() {
     try {
       const [cur, list, v] = await Promise.all([getBuildCurrent(), listBuildScans(), getBuildVocabulary()]);
       const addable = v.items.filter((i) => i.standard);        // an object with no standard size cannot be placed by hand
-      setTwins(cur.twins); setIdeas(cur.ideas); setScans(list.scans); setVocab(addable);
+      setTwins(cur.twins); setIdeas(cur.ideas); setWish(cur.wish ?? null); setScans(list.scans); setVocab(addable);
       setPick((p) => p || addable[0]?.name || "");
       setError(null);
     } catch (e) { setError(describeError(e)); }
@@ -34,7 +37,12 @@ export function BuildPanel() {
   // The server streams every step of a scan, so the panel follows the headset (or a replay) live.
   useStream((msg) => {
     if (msg.type === "build_inventory") { setTwins(msg.inventory.twins); if (msg.inventory.message) setStatus(msg.inventory.message); }
-    if (msg.type === "build_ideas") { setIdeas(msg.ideas); if (msg.message) setStatus(msg.message); }
+    if (msg.type === "build_ideas") {
+      setIdeas(msg.ideas);
+      if (msg.message) setStatus(msg.message);
+      // The wish is not on the stream: ask for it when a list is final (a rethink or a spoken wish may have changed it).
+      if (msg.final) getBuildCurrent().then((cur) => setWish(cur.wish ?? null), () => {});
+    }
   });
 
   const run = (label: string, work: () => Promise<unknown>) => async () => {
@@ -46,7 +54,7 @@ export function BuildPanel() {
 
   return (
     <BuildPanelView
-      twins={twins} ideas={ideas} scans={scans} vocab={vocab} pick={pick} busy={busy} status={status} error={error}
+      twins={twins} ideas={ideas} wish={wish} scans={scans} vocab={vocab} pick={pick} busy={busy} status={status} error={error}
       onPick={setPick}
       onStart={(i) => void run(`start ${i.title}`, () => startBuildIdea(i.idea_id))()}
       onAdd={() => void run("add object", () => addBuildObject(pick))()}
@@ -57,13 +65,13 @@ export function BuildPanel() {
 }
 
 export interface BuildPanelViewProps {
-  twins: Twin[]; ideas: BuildIdea[]; scans: BuildScanRow[]; vocab: BuildVocabItem[]; pick: string; busy: boolean; status: string; error: string | null;
+  twins: Twin[]; ideas: BuildIdea[]; wish: string | null; scans: BuildScanRow[]; vocab: BuildVocabItem[]; pick: string; busy: boolean; status: string; error: string | null;
   onPick: (name: string) => void; onStart: (idea: BuildIdea) => void; onAdd: () => void;
   onReplay: (scanId: string, labels: "saved" | "live") => void; onNewSession: () => void;
 }
 
 /** What the panel shows, with no state of its own: the test renders it with a session's data. */
-export function BuildPanelView({ twins, ideas, scans, vocab, pick, busy, status, error, onPick, onStart, onAdd, onReplay, onNewSession }: BuildPanelViewProps) {
+export function BuildPanelView({ twins, ideas, wish, scans, vocab, pick, busy, status, error, onPick, onStart, onAdd, onReplay, onNewSession }: BuildPanelViewProps) {
   return (
     <section className="card">
       <h2>Build mode</h2>
@@ -81,11 +89,12 @@ export function BuildPanelView({ twins, ideas, scans, vocab, pick, busy, status,
       </ul>
 
       <h3>Ideas</h3>
+      {wish && <p className="muted small">Asked for: {wish}</p>}
       {ideas.length === 0 && <p className="muted small">No ideas yet.</p>}
       <ul className="client-list">
         {ideas.map((i) => (
           <li key={i.idea_id} title={i.why}>
-            <span className="client-kind">{i.source}</span>
+            <span className="client-kind">{(i.made && MADE[i.made]) || i.source}</span>
             <span>{i.title}</span>
             <span className="muted small">{i.plan.steps.length - 1} pieces</span>
             <button type="button" className="small" disabled={busy} onClick={() => onStart(i)}>Start</button>

@@ -310,7 +310,7 @@ export async function fetchLastFrame(signal?: AbortSignal): Promise<string | nul
 }
 
 // ── build mode ───────────────────────────────────────────────────────────────
-export interface BuildCurrent { session: { session_id: string; created_at: string; scans: string[] } | null; twins: Twin[]; ideas: BuildIdea[] }
+export interface BuildCurrent { session: { session_id: string; created_at: string; scans: string[] } | null; wish: string | null; twins: Twin[]; ideas: BuildIdea[] }
 export interface BuildScanRow { scan_id: string; session_id: string | null; captured_at: string | null; recording: boolean }
 /** `standard`: the object has a standard size, so it can be added by hand. */
 export interface BuildVocabItem { name: string; label: string; standard: boolean }

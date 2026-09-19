@@ -13,7 +13,7 @@ const ideas = message.ideas.map((i) => Strict.BuildIdea.parse(i) as BuildIdea);
 
 const nothing = () => {};
 const props = (over: Partial<BuildPanelViewProps> = {}): BuildPanelViewProps => ({
-  twins: [], ideas: [], scans: [], vocab: [], pick: "", busy: false, status: "", error: null,
+  twins: [], ideas: [], scans: [], vocab: [], pick: "", busy: false, status: "", error: null, wish: null,
   onPick: nothing, onStart: nothing, onAdd: nothing, onReplay: nothing, onNewSession: nothing, ...over,
 });
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
@@ -43,6 +43,17 @@ describe("the Director's Build panel", () => {
     expect(seen).toContain("recording");
     expect([html.includes(">Replay</button>"), html.includes(">New names</button>")]).toEqual([true, true]);
     expect(seen).toContain("You could build a laptop riser.");
+  });
+
+  it("says what the builder asked for, and where each design came from, so the presenter knows whether to say 'live'", () => {
+    const three: BuildIdea[] = [{ ...ideas[0]!, idea_id: "idea_l", title: "Birdhouse", made: "live" }, { ...ideas[0]!, idea_id: "idea_c", title: "Robot", made: "cache" },
+      { ...ideas[0]!, idea_id: "idea_r", title: "Laptop riser", made: "rule", source: "rule" }];
+    const seen = text(renderToStaticMarkup(<BuildPanelView {...props({ ideas: three, wish: "a birdhouse" })} />));
+    expect(seen).toContain("Asked for: a birdhouse");
+    expect(seen).toMatch(/live Birdhouse/);
+    expect(seen).toMatch(/from rehearsal Robot/);
+    expect(seen).toMatch(/offline rule Laptop riser/);
+    expect(text(renderToStaticMarkup(<BuildPanelView {...props({ ideas: [{ ...ideas[0]!, made: undefined, source: "ai" }] })} />))).toMatch(/ ai /);
   });
 
   it("shows an error instead of the status, and holds every button while a request is in flight", () => {
