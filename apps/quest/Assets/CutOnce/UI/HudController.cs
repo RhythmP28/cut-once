@@ -115,7 +115,8 @@ namespace CutOnce.UI
             var rect = (RectTransform)transform;
             rect.pivot = new Vector2(0.5f, 0f);
             transform.position = new Vector3(build.center.x, build.max.y + 0.12f, build.center.z) + away * reach;
-            transform.rotation = Quaternion.LookRotation(away, Vector3.up) * Quaternion.Euler(-12f, 0f, 0f);
+            // A canvas is read from its -Z side. Pitching its forward (+Z) down by 12 degrees turns its face up toward standing eyes.
+            transform.rotation = Quaternion.LookRotation(away, Vector3.up) * Quaternion.Euler(12f, 0f, 0f);
         }
     }
 }

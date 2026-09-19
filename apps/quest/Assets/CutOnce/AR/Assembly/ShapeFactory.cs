@@ -39,8 +39,9 @@ namespace CutOnce.AR
                 case "polyline":
                     var points = new List<Vector3>();
                     foreach (var p in s.points) points.Add(ModelSpace.Point(p));
-                    // Polyline points are absolute model coordinates (the cable route), so the object sits at the model origin.
-                    return new Built { Mesh = Tube(points, (float)s.diameter * 0.5f, TubeSides), LocalPosition = Vector3.zero, HalfSize = Vector3.one, EdgeMode = EdgeNone };
+                    // Route points are relative to the part's position, the same convention as the web viewer (buildPart.ts) and
+                    // the validator's bounds (geometry.ts). A mirrored offset is still an offset, so Point() serves for both.
+                    return new Built { Mesh = Tube(points, (float)s.diameter * 0.5f, TubeSides), LocalPosition = ModelSpace.Point(part.position), LocalRotation = rotation, HalfSize = Vector3.one, EdgeMode = EdgeNone };
                 case "mesh":
                     // A GLB-backed part (E7). Until the model loader lands, its declared bounds stand in for it.
                     if (s.bounds?.min == null || s.bounds.max == null) return null;

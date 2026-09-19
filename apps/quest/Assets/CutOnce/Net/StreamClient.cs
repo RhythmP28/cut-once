@@ -23,7 +23,10 @@ namespace CutOnce.Net
         volatile bool _connected;
 
         public bool IsConnected => _connected;
-        /// <summary>Goes up by one on every successful connect. A change means "catch up on events you may have missed".</summary>
+        /// <summary>
+        /// Goes up by one each time a connection proves itself by delivering a message (the server greets every client with
+        /// `presence`). A change means "catch up on events you may have missed".
+        /// </summary>
         public int Connects => Volatile.Read(ref _connects);
 
         public StreamClient(Func<ISocket> newSocket, ServerConfig config, Func<double, CancellationToken, Task> delay = null)
@@ -44,9 +47,11 @@ namespace CutOnce.Net
                     using (var socket = _newSocket())
                     {
                         await socket.ConnectAsync(_config.StreamUri, _stop.Token);
-                        _connected = true; failures = 0; Interlocked.Increment(ref _connects);
                         for (string text; (text = await socket.ReceiveAsync(_stop.Token)) != null;)
                         {
+                            // Connecting is not enough: a wrong token connects and is closed at once (4401). Only a delivered
+                            // message resets the back-off, so that case waits longer each time instead of hammering the server.
+                            if (!_connected) { _connected = true; failures = 0; Interlocked.Increment(ref _connects); }
                             WsMessageDto message = null;
                             try { message = CoreJson.Parse<WsMessageDto>(text); } catch (Newtonsoft.Json.JsonException) { /* one bad frame must not drop the stream */ }
                             if (message?.type != null) _inbox.Enqueue(message);

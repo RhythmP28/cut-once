@@ -36,7 +36,8 @@ namespace CutOnce.Device
         readonly HashSet<string> _highlighted = new HashSet<string>();
         float _highlightUntil, _nextRetry, _markHeldFor;
         bool _markUsed, _dirty = true, _hudInFront;
-        int _seenConnects; string _lastEventId;
+        int _seenConnects; string _lastEventId, _toastRun;
+        bool _waitForMarkRelease;
 
         // ── start-up ─────────────────────────────────────────────────────────────────────────────────────────────
         void Awake()
@@ -111,7 +112,6 @@ namespace CutOnce.Device
             var skipped = _assembly.Build(_store.Plan);
             if (skipped.Count > 0) Debug.LogWarning("[CutOnce] Parts with no drawable shape: " + string.Join(", ", skipped));
             _proof.Rebuild(_assembly, _material);
-            _lastEventId = Reducer.OrderEvents(_store.Events).LastOrDefault()?.event_id;
             _dirty = true;
             if (_alignment.State == AlignmentState.Locked) StandHud();
         }
@@ -120,6 +120,11 @@ namespace CutOnce.Device
         {
             _dirty = true;
             var last = Reducer.OrderEvents(_store.Events).LastOrDefault();
+            if (_store.AssemblyId != _toastRun)                       // a run was just loaded: its history is not news
+            {
+                _toastRun = _store.AssemblyId; _lastEventId = last?.event_id;
+                return;
+            }
             if (last == null || last.event_id == _lastEventId || _store.Plan == null) return;
             _lastEventId = last.event_id;
             _hud.Toast(HudText.EventLine(_store.Plan, last, _store.Current));
@@ -128,7 +133,8 @@ namespace CutOnce.Device
         void OnAlignmentChanged()
         {
             _hud.ShowStatus(_sync.StatusLine, _alignment.Hint);
-            if (_alignment.State == AlignmentState.Locked) StandHud(); else _hudInFront = false;   // placing again: bring the panel back to the operator
+            if (_alignment.State == AlignmentState.Locked) { StandHud(); _waitForMarkRelease = true; }   // the B that finished a touch alignment is not a mark
+            else _hudInFront = false;                                                                  // placing again: bring the panel back to the operator
         }
 
         void OnDirectorCommand(DirectorCommandDto command)
@@ -179,6 +185,7 @@ namespace CutOnce.Device
         /// <summary>B on the pointed part: a press toggles built / missing (so it is also the undo); holding it flags the part wrong.</summary>
         void ReadMarkButton()
         {
+            if (_waitForMarkRelease) { if (!_input.MarkHeld && !_input.MarkUp) _waitForMarkRelease = false; return; }
             string partId = _selection.SelectedPartId;
             if (_input.MarkDown) { _markHeldFor = 0f; _markUsed = false; }
             if (_input.MarkHeld && !_markUsed)
@@ -237,7 +244,7 @@ namespace CutOnce.Device
 
         void TryCreateCopilot()
         {
-            if (FindFirstObjectByType<CopilotController>() != null) return;
+            if (FindAnyObjectByType<CopilotController>() != null) return;
             try
             {
                 var go = new GameObject("[Copilot]");

@@ -11,6 +11,7 @@ app, and makes it the first scene in the build. There are no prefabs and no insp
    instead push a file, which wins over the bundled one:
    `adb push cutonce.config.json /sdcard/Android/data/<package>/files/cutonce.config.json`.
    With neither, the app uses `http://127.0.0.1:8080`: fine in the Editor next to `pnpm dev`, useless on a headset.
+   Use the `https://` tunnel address on the headset: Android blocks plain `http://` unless the app allows cleartext.
 2. **Cut Once > Rebuild main scene**, then Play (Meta XR Simulator on a laptop, or build to the Quest).
 3. With no server at all the app still runs: it loads the last run from its journal, or the bundled desk plan.
 
@@ -83,8 +84,12 @@ Decisions worth knowing before you change something:
 
 | Command | Runs | Needs |
 |---|---|---|
-| `pnpm quest:core-test` | Core + Net, 40 tests, under a second | Unity installed (uses its bundled .NET) or a system `dotnet` |
-| Unity Test Runner, EditMode | The same tests plus geometry, placement and hologram tests | The Unity project |
+| `pnpm quest:core-test` | Core + Net (state replay against the shared fixtures, sync against a fake server, HUD wording), under a second; also a CI job | Unity installed (uses its bundled .NET) or a system `dotnet` |
+| Unity Test Runner, EditMode (or `pnpm quest:check`) | The same tests plus geometry, placement, and the shader compiled for Vulkan, GLES3 and Metal in mono and stereo | The Unity project |
+| Unity Test Runner, PlayMode | `AppSmokeTests`: starts the whole app with no server and no headset; fails on any logged error | The Unity project |
+
+None of this has run on a physical headset yet. First things to look at there: the hologram over passthrough (alpha), the
+depth raycast while placing, the anchor coming back after a restart, and the pointer's direction.
 
 ## Not done here
 

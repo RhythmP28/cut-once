@@ -29,7 +29,7 @@ namespace CutOnce.Device.PlayTests
             AssemblyView assembly = null;
             for (float waited = 0f; waited < 15f; waited += Time.unscaledDeltaTime)
             {
-                assembly = UnityEngine.Object.FindFirstObjectByType<AssemblyView>();
+                assembly = UnityEngine.Object.FindAnyObjectByType<AssemblyView>();
                 if (assembly != null && assembly.Views.Count > 0) break;
                 yield return null;
             }
@@ -38,8 +38,8 @@ namespace CutOnce.Device.PlayTests
             Assert.That(assembly.Views.Count, Is.GreaterThan(0), "no plan was loaded within 15 s (server, journal and bundled plan all failed)");
             Assert.That(assembly.Views.Count, Is.EqualTo(assembly.Plan.parts.Count), "every part of the desk plan has a drawable shape");
             foreach (var view in assembly.Views.Values) Assert.That(view.Style, Is.Not.Null, $"{view.PartId} was never given a look");
-            Assert.That(UnityEngine.Object.FindFirstObjectByType<HudController>(), Is.Not.Null);
-            Assert.That(UnityEngine.Object.FindFirstObjectByType<AlignmentController>().State, Is.EqualTo(AlignmentState.Placing), "with no saved anchor the app asks to be placed");
+            Assert.That(UnityEngine.Object.FindAnyObjectByType<HudController>(), Is.Not.Null);
+            Assert.That(UnityEngine.Object.FindAnyObjectByType<AlignmentController>().State, Is.EqualTo(AlignmentState.Placing), "with no saved anchor the app asks to be placed");
 
             yield return null;
             UnityEngine.Object.Destroy(go);

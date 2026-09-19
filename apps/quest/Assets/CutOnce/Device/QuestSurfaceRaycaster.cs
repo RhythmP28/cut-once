@@ -16,7 +16,7 @@ namespace CutOnce.Device
         void Awake()
         {
             if (!EnvironmentRaycastManager.IsSupported) return;
-            _manager = FindFirstObjectByType<EnvironmentRaycastManager>();
+            _manager = FindAnyObjectByType<EnvironmentRaycastManager>();
             if (_manager == null) _manager = gameObject.AddComponent<EnvironmentRaycastManager>();
         }
 

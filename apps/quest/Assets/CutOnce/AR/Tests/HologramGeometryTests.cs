@@ -104,6 +104,14 @@ namespace CutOnce.AR.Tests
             AreClose(new Vector3(-20f, 2.25f, 45f), stand.LocalPosition);
             AreClose(new Vector3(40f, 4.5f, 90f), stand.Mesh.bounds.size, 1e-2f);
 
+            // A cable route: its points are offsets from the part's position, as in the web viewer and the validator.
+            var cable = new PartDto { part_id = "part_cable", name = "Cable", position = new double[] { 0.6, 0.0, 0.1 },
+                shape = new ShapeDto { type = "polyline", diameter = 0.008, points = new List<double[]> { new double[] { 0, 0.03, 0 }, new double[] { 0.3, 0.03, 0 } } } };
+            var route = ShapeFactory.Build(cable);
+            AreClose(new Vector3(-0.6f, 0f, 0.1f), route.LocalPosition);
+            Assert.That(route.Mesh.bounds.min.x, Is.EqualTo(-0.3f).Within(1e-3f), "the run heads toward -X after the mirror");
+            Assert.That(route.Mesh.bounds.max.x, Is.EqualTo(0f).Within(1e-3f));
+
             Assert.That(ShapeFactory.Build(new PartDto { part_id = "part_x", shape = new ShapeDto { type = "hologram" } }), Is.Null);
         }
 

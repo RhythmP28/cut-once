@@ -18,7 +18,7 @@ namespace CutOnce.Device
 
         void Awake()
         {
-            var rig = FindFirstObjectByType<OVRCameraRig>();
+            var rig = FindAnyObjectByType<OVRCameraRig>();
             _trackingSpace = rig != null ? rig.trackingSpace : null;
         }
 
