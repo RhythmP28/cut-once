@@ -49,9 +49,28 @@ The Quest 3 already knows the room. Space Setup produces **labelled geometry** (
 that is instant, deterministic and free — the right base for a live demo. Machine learning only
 adds *names for loose objects* (a drill, a screw box) and comes with frame-rate and flakiness costs.
 
-If someone wants that layer later: **QuestCameraKit's "Object Detection" sample (Unity Sentis +
-YOLO ONNX)** runs on-device on passthrough frames. Raycast each 2D box against the scene mesh to
-place a label in 3D. It is a P2 flourish; this folder does not depend on it.
+If someone wants that layer later, the route is **Meta's own Unity-PassthroughCameraApiSamples
+`MultiObjectDetection`** (`com.unity.ai.inference`, namespace `Unity.InferenceEngine` — `Unity.Sentis`
+no longer exists). This repo already has the camera half: `Device/PcaFrameSource.cs` wraps
+`Meta.XR.PassthroughCameraAccess`, whose `GetTexture()` hands back a GPU RenderTexture with no CPU
+readback — feed that to the model rather than the blocking `GetColors()` + `EncodeToJPG` path, which
+exists for the cloud copilot.
+
+**Placing a detection in 3D — do NOT raycast the scene mesh.** An earlier version of this file said
+to, and it is wrong: `MRUKRoom.Raycast` loops `Anchors` and tests only `PlaneRect`/`VolumeBounds`
+boxes (`MRUKRoom.cs`), so a ray through a drill on a desk returns *the desk or the wall behind it*.
+Loose objects are invisible to it — which is the exact opposite of what detection needs. Use
+`Meta.XR.EnvironmentRaycastManager.Raycast` instead; `Device/QuestSurfaceRaycaster.cs` already wraps
+it behind `ISurfaceRaycaster`, honouring `EnvironmentRaycastHitStatus.Hit`. Two things that bite:
+
+- Cache `GetCameraPose()` *before* inference and build the ray from that cached pose with
+  `ViewportPointToRay(new Vector2(x / W, 1f - y / H), pose)`. The **y-flip is mandatory** — viewport
+  origin is bottom-left, detector boxes are top-left — and it fails silently, mirrored, not obviously.
+- Sample a small grid over the inner part of the box, keep only `status == Hit`, and take a
+  lower-biased median: a bounding box always contains background, which is farther away, so a plain
+  mean or a single centre pixel drifts behind the object.
+
+It is a P2 flourish; this folder does not depend on it.
 
 ## It installs itself
 
