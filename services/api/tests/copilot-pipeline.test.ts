@@ -371,25 +371,26 @@ describe("the wish, from the first ask", () => {
     const body = (await query()).json();
     expect(body.action).toEqual({ type: "start_scan" });
     expect(body.answer_text).toBe("Let me see how to make a birdhouse from what's here.");
-    expect(expect_).toHaveBeenCalledWith("a birdhouse");
+    expect(expect_).toHaveBeenCalledWith("a birdhouse", false);
     expect([routeTurn.mock.calls.length, ask.mock.calls.length]).toEqual([0, 0]);
   });
   it("a plain 'what can I build?' clears the wish, and 'scan again' leaves it alone", async () => {
     const expect_ = vi.spyOn(t.app.ctx.hooks.build!, "expectScan");
     transcribe.mockResolvedValue("what can I build");
     await query();
-    expect(expect_).toHaveBeenLastCalledWith(null);
+    expect(expect_).toHaveBeenLastCalledWith(null, false);
     expect_.mockClear();
     transcribe.mockResolvedValue("scan again");
     await query();
     expect(expect_).not.toHaveBeenCalled();
   });
-  it("the router's 'build ideas' carries its wish", async () => {
+  it("the router's 'build ideas' carries its wish, a new ask, and says what it will look for", async () => {
     transcribe.mockResolvedValue("could you come up with something to hold my phone");
-    routeTurn.mockResolvedValue({ flow: "build_ideas", confidence: 0.9, wish: "something to hold my phone" });
+    routeTurn.mockResolvedValue({ flow: "build_ideas", confidence: 0.9, wish: "something to hold my phone." });
     const expect_ = vi.spyOn(t.app.ctx.hooks.build!, "expectScan");
-    expect((await query()).json().action).toEqual({ type: "start_scan" });
-    expect(expect_).toHaveBeenCalledWith("something to hold my phone");
+    const body = (await query()).json();
+    expect([body.action, body.answer_text]).toEqual([{ type: "start_scan" }, "Let me see how to make something to hold my phone from what's here."]);
+    expect(expect_).toHaveBeenCalledWith("something to hold my phone", false);
   });
 });
 
@@ -488,7 +489,7 @@ describe("build mode: Kit's turn", () => {
     kitHears({ heard: "I would love something birds could live in", intent: "ideas", wish: "a birdhouse", answer: "" });
     const body = (await query({ mode: "build" })).json();
     expect([body.action, body.answer_text]).toEqual([{ type: "start_scan" }, "Let me see how to make a birdhouse from what's here."]);
-    expect(expect_).toHaveBeenCalledWith("a birdhouse");
+    expect(expect_).toHaveBeenCalledWith("a birdhouse", false);
   });
 
   it("a wish with the objects already known rethinks them, with no new scan to wait for", async () => {
@@ -498,7 +499,7 @@ describe("build mode: Kit's turn", () => {
     kitHears({ heard: "what about a little house for birds", intent: "ideas", wish: "a birdhouse", answer: "Ooh, a birdhouse. Let me think." });
     const body = (await query({ mode: "build" })).json();
     expect([body.action, body.answer_text]).toEqual([null, "Ooh, a birdhouse. Let me think."]);
-    expect(rethink).toHaveBeenCalledWith("a birdhouse");
+    expect(rethink).toHaveBeenCalledWith("a birdhouse", false);
   });
 
   it("mid-build, 'something crazier' looks at the table again with that wish (the pieces have moved)", async () => {
@@ -508,7 +509,7 @@ describe("build mode: Kit's turn", () => {
     kitHears({ heard: "now something crazier", intent: "change", wish: "something crazier", answer: "" });
     const body = (await query({ mode: "build" })).json();
     expect([body.action, body.answer_text]).toEqual([{ type: "start_scan" }, "Let me look again with that in mind."]);
-    expect(expect_).toHaveBeenCalledWith("something crazier");
+    expect(expect_).toHaveBeenCalledWith("something crazier", true);
   });
 
   it("picks a design on show by where it stands, as the trigger would", async () => {
@@ -533,7 +534,7 @@ describe("build mode: Kit's turn", () => {
     kitHears({ heard: "What can I build?", intent: "question", answer: "Lots of things!" });
     const body = (await query({ mode: "build" })).json();
     expect([body.action, body.answer_text]).toEqual([{ type: "start_scan" }, "Let me see what you've got."]);
-    expect(expect_).toHaveBeenCalledWith(null);
+    expect(expect_).toHaveBeenCalledWith(null, false);
   });
 
   it("'done' is the step command; with no build under way there is no step, and Kit says so", async () => {

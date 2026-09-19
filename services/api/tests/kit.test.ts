@@ -19,15 +19,15 @@ describe("decideKit", () => {
   });
 
   it("rethinks the objects already on the table for a wish, and scans for a plain ask or when nothing is known yet", () => {
-    expect(decideKit(turn({ intent: "ideas", wish: "a birdhouse", answer: "" }), at())).toEqual({ kind: "rethink", wish: "a birdhouse", text: "Let me see how to make a birdhouse from what's here." });
-    expect(decideKit(turn({ intent: "ideas", wish: null, answer: "" }), at())).toEqual({ kind: "scan", wish: null, text: "Let me see what you've got." });
-    expect(decideKit(turn({ intent: "ideas", wish: "a birdhouse", answer: "On it!" }), at({ canRethink: false }))).toEqual({ kind: "scan", wish: "a birdhouse", text: "On it!" });
+    expect(decideKit(turn({ intent: "ideas", wish: "a birdhouse", answer: "" }), at())).toEqual({ kind: "rethink", wish: "a birdhouse", text: "Let me see how to make a birdhouse from what's here.", change: false });
+    expect(decideKit(turn({ intent: "ideas", wish: null, answer: "" }), at())).toEqual({ kind: "scan", wish: null, text: "Let me see what you've got.", change: false });
+    expect(decideKit(turn({ intent: "ideas", wish: "a birdhouse", answer: "On it!" }), at({ canRethink: false }))).toEqual({ kind: "scan", wish: "a birdhouse", text: "On it!", change: false });
   });
 
   it("mid-build, a change looks again with the change as the wish (the objects have moved)", () => {
     expect(decideKit(turn({ intent: "change", wish: "something crazier", answer: "" }), at({ canRethink: false, building: true })))
-      .toEqual({ kind: "scan", wish: "something crazier", text: "Let me look again with that in mind." });
-    expect(decideKit(turn({ intent: "change", wish: null, heard: "make it taller" }), at())).toMatchObject({ kind: "rethink", wish: "make it taller" });
+      .toEqual({ kind: "scan", wish: "something crazier", text: "Let me look again with that in mind.", change: true });
+    expect(decideKit(turn({ intent: "change", wish: null, heard: "make it taller" }), at())).toMatchObject({ kind: "rethink", wish: "make it taller", change: true });
   });
 
   it("picks a design by the model's id, by its name, or by where it stands", () => {

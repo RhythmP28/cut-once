@@ -109,8 +109,9 @@ export function pickByPosition<T>(said: string, ideas: T[]): T | null {
 export type KitDecision =
   | { kind: "say"; text: string; clarify: boolean }
   | { kind: "command"; phrase: "done" | "next" | "back" | "undo" | "build e7" }
-  | { kind: "scan"; wish: string | null; text: string }
-  | { kind: "rethink"; wish: string; text: string }
+  /** change: a change to the designs on show ("something crazier"), so those are not offered again; else a new ask. */
+  | { kind: "scan"; wish: string | null; text: string; change: boolean }
+  | { kind: "rethink"; wish: string; text: string; change: boolean }
   | { kind: "start"; ideaId: string; title: string };
 
 export interface KitAt {
@@ -149,10 +150,11 @@ export function decideKit(kit: KitTurn, at: KitAt): KitDecision {
     case "question": return say(kit.answer.trim() || "I don't have an answer for that. Try asking another way.", kit.confidence < 0.5);
     case "ideas": case "change": {
       if (!sure) return askBack(kit.intent);
-      const wish = kit.wish?.trim() || (kit.intent === "change" ? kit.heard.trim() : "") || null;
-      if (wish && at.canRethink) return { kind: "rethink", wish, text: kit.answer.trim() || `Let me see how to make ${wish} from what's here.` };
-      const text = kit.answer.trim() || (kit.intent === "change" ? "Let me look again with that in mind." : wish ? `Let me see how to make ${wish} from what's here.` : "Let me see what you've got.");
-      return { kind: "scan", wish, text };
+      const change = kit.intent === "change";
+      const wish = kit.wish?.trim() || (change ? kit.heard.trim() : "") || null;
+      if (wish && at.canRethink) return { kind: "rethink", wish, text: kit.answer.trim() || `Let me see how to make ${wish} from what's here.`, change };
+      const text = kit.answer.trim() || (change ? "Let me look again with that in mind." : wish ? `Let me see how to make ${wish} from what's here.` : "Let me see what you've got.");
+      return { kind: "scan", wish, text, change };
     }
     case "pick": {
       if (at.building) return say("You're building one already. Say what you'd like instead, and I'll look again.", true);

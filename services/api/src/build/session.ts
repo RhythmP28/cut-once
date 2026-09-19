@@ -30,7 +30,7 @@ export interface Session {
   started: string | null;
   /** What the builder asked for ("a birdhouse"), for every design asked for in this session until a new wish or a plain ask. */
   wish: string | null;
-  /** Titles already offered in this session, so "something crazier" brings new ones. A plain ask starts afresh. */
+  /** Titles already offered in this session, so "something crazier" brings new ones. A new or plain ask starts afresh. */
   offered: string[];
 }
 
@@ -86,7 +86,7 @@ export class BuildSessions {
   private session: Session | null = null;
   private queue: Promise<void> = Promise.resolve();
   /** A wish the copilot sent with a scan it asked the headset for, until that scan arrives. */
-  private expected: { wish: string | null; at: number } | null = null;
+  private expected: { wish: string | null; change: boolean; at: number } | null = null;
   /** What the queue is doing right now: reading a scan, naming its objects, or designing. */
   private busy: "reading" | "naming" | "designing" | null = null;
   /** Work that outlives its queue step: a late live design answer refreshing the cache. */
@@ -132,7 +132,7 @@ export class BuildSessions {
     session.started = null;                                          // scanning again puts the headset back to picking
     const said = this.expected;
     this.expected = null;
-    if (said && Date.now() - said.at <= WISH_TTL_MS) this.setWish(session, said.wish);
+    if (said && Date.now() - said.at <= WISH_TTL_MS) this.setWish(session, said.wish, said.change);
     const scan = this.files.saveScan(upload, session.session_id);
     const photo = Buffer.from(upload.photo_b64, "base64");
     this.enqueue(() => this.process(session, scan, photo, "live"));
@@ -153,20 +153,24 @@ export class BuildSessions {
    * The wish goes with the next scan to arrive, or straight to the scan being read or named now: its designs have
    * not been asked for yet.
    */
-  expectScan(wish: string | null): void {
-    this.expected = { wish: cleanWish(wish), at: Date.now() };
-    if (this.session && (this.busy === "reading" || this.busy === "naming")) this.setWish(this.session, this.expected.wish);
+  expectScan(wish: string | null, change: boolean): void {
+    this.expected = { wish: cleanWish(wish), change, at: Date.now() };
+    if (this.session && (this.busy === "reading" || this.busy === "naming")) this.setWish(this.session, this.expected.wish, change);
   }
 
-  private setWish(session: Session, wish: string | null): void {
+  /**
+   * A change ("something crazier") keeps what was offered out of the next designs. A new ask, or a plain one, starts
+   * afresh: "build me a birdhouse" after "what can I build?" may well be answered by the birdhouse already shown.
+   */
+  private setWish(session: Session, wish: string | null, change: boolean): void {
     session.wish = wish;
-    if (wish === null) session.offered = [];                          // a plain ask: anything may be offered again
+    if (!change) session.offered = [];
   }
 
-  rethink(request: string): Promise<boolean> {
+  rethink(request: string, change: boolean): Promise<boolean> {
     const s = this.session;
     if (!s || !this.canRethink()) return Promise.resolve(false);
-    s.wish = cleanWish(request) ?? s.wish;
+    this.setWish(s, cleanWish(request) ?? s.wish, change);
     const photo = s.photo && existsSync(s.photo) ? readFileSync(s.photo) : null;
     this.enqueue(() => { this.broadcastInventory(s, s.twins, null, true, s.wish ? `Designing ${s.wish}…` : "Thinking again…"); return this.ideas(s, photo); });
     return Promise.resolve(true);

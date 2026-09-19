@@ -3,7 +3,7 @@ import type { CopilotAction, CopilotContext, CopilotResponse, RetrievedChunk } f
 import { aiFor, type AiCall } from "../ai.js";
 import type { Ctx } from "../app.js";
 import { isBuildPlan } from "../build/plan.js";
-import { pickIdea } from "../build/session.js";
+import { cleanWish, pickIdea } from "../build/session.js";
 import { retrieve } from "../search/retrieve.js";
 import { annotateFrame } from "./annotate.js";
 import { ask, ground } from "./answer.js";
@@ -132,8 +132,10 @@ export async function answerQuery(deps: Deps, input: QueryInput, log: Log): Prom
   const routed = await routeTurn(ctx.cfg, m, { transcript, mode: input.context.mode }, aiFor(ctx.cfg, "turn"));
   timings.route = since(routeStart);
   if (routeOutcome(routed) === "scan") {
-    ctx.hooks.build?.expectScan(routed?.wish ?? null);
-    return quick(deps, turnId, transcript, "Let me see what you've got.", { type: "start_scan" }, timings, t0, recordTurn);
+    const wish = cleanWish(routed?.wish ?? null);
+    ctx.hooks.build?.expectScan(wish, false);
+    const text = wish ? `Let me see how to make ${wish} from what's here.` : "Let me see what you've got.";
+    return quick(deps, turnId, transcript, text, { type: "start_scan" }, timings, t0, recordTurn);
   }
   const [chunks, annotated] = await Promise.all([retrieving, annotating]);
 
@@ -200,10 +202,11 @@ async function respondFast(
 ): Promise<CopilotResponse> {
   const { ctx, speech } = deps;
   if (fast.action?.type === "start_scan" && fast.wish !== undefined && ctx.hooks.build) {
+    // Said outright, a wish is a new ask ("build me a birdhouse"), never a change to the designs on show.
     if (fast.wish && input.context.mode === "build" && ctx.hooks.build.canRethink()) {
-      await ctx.hooks.build.rethink(fast.wish);
+      await ctx.hooks.build.rethink(fast.wish, false);
       fast.action = null;
-    } else ctx.hooks.build.expectScan(fast.wish);
+    } else ctx.hooks.build.expectScan(fast.wish, false);
   }
   if (fast.startRun) fast.answer_text = await startRun(ctx, g.plan.plan_id, fast.startRun, fast.answer_text, log);
   if (fast.action) await applyAction(deps, input.assemblyId, fast.action, "operator", { confidence: 1, note: fast.note ?? "spoken command" });
@@ -292,10 +295,10 @@ async function kitTurn(
       return quick(deps, turnId, kit.heard, "There's no step to do that to yet.", null, timings, t0, recordTurn, true, said);
     }
     case "scan":
-      build.expectScan(decision.wish);
+      build.expectScan(decision.wish, decision.change);
       return quick(deps, turnId, kit.heard, decision.text, { type: "start_scan" }, timings, t0, recordTurn, false, said);
     case "rethink":
-      await build.rethink(decision.wish);
+      await build.rethink(decision.wish, decision.change);
       return quick(deps, turnId, kit.heard, decision.text, null, timings, t0, recordTurn, false, said);
     case "start":
       try {

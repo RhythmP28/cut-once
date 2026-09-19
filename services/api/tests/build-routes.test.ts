@@ -82,7 +82,7 @@ describe("a scan of the kit", () => {
     const [idea] = build.kitContext().ideas;
     await build.startIdea(idea!.idea_id);
     expect(build.kitContext()).toMatchObject({ status: "a design is being built", ideas: [], started: idea!.idea_id });
-    expect([build.canRethink(), await build.rethink("make it taller")]).toEqual([false, false]);
+    expect([build.canRethink(), await build.rethink("make it taller", true)]).toEqual([false, false]);
     const { session_id } = (await t.app.inject({ method: "GET", url: "/v1/build/sessions/current", headers: auth })).json();
     await post("/v1/build/scans", { ...kitUpload(), session_id });
     await build.idle();
@@ -178,7 +178,7 @@ describe("the wish", () => {
 
   it("said before a scan reaches that scan's designs, stays through another view (X), and a plain ask clears it", async () => {
     const build = t.app.ctx.hooks.build!;
-    build.expectScan("a birdhouse");
+    build.expectScan("a birdhouse", false);
     const { session_id } = (await post("/v1/build/scans", kitUpload())).json();
     await build.idle();
     expect(asked().at(-1)).toContain('The builder asked: "a birdhouse"');
@@ -188,7 +188,7 @@ describe("the wish", () => {
     await build.idle();
     expect(asked().at(-1)).toContain('The builder asked: "a birdhouse"');
 
-    build.expectScan(null);                                                   // "what can I build?"
+    build.expectScan(null, false);                                                 // "what can I build?"
     await post("/v1/build/scans", { ...kitUpload(), session_id });
     await build.idle();
     expect(asked().at(-1)).not.toContain("The builder asked");
@@ -197,7 +197,7 @@ describe("the wish", () => {
 
   it("is dropped when no scan follows within a minute: it belongs to that question, not a later one", async () => {
     const build = t.app.ctx.hooks.build!;
-    build.expectScan("a robot");
+    build.expectScan("a robot", false);
     const later = Date.now() + 61_000;
     vi.spyOn(Date, "now").mockReturnValue(later);
     await post("/v1/build/scans", kitUpload());
@@ -211,17 +211,39 @@ describe("the wish", () => {
     nameTwins.mockImplementationOnce(async (d: unknown, ph: unknown, twins: Twin[]) => { await new Promise<void>((r) => { release = r; }); return byShape(d, ph, twins); });
     await post("/v1/build/scans", kitUpload());
     await vi.waitFor(() => expect(nameTwins).toHaveBeenCalled());
-    t.app.ctx.hooks.build!.expectScan("a robot");
+    t.app.ctx.hooks.build!.expectScan("a robot", false);
     release();
     await t.app.ctx.hooks.build!.idle();
     expect(asked().at(-1)).toContain('The builder asked: "a robot"');
+  });
+
+  it("a change keeps what was offered out ('something crazier' brings new ones); a new ask may show it again", async () => {
+    const build = t.app.ctx.hooks.build!;
+    const { session_id } = (await post("/v1/build/scans", kitUpload())).json();
+    await build.idle();
+    const shown = (await current()).ideas.map((i: { title: string }) => i.title);
+    expect(shown.length).toBeGreaterThan(0);
+    await build.rethink("something crazier", true);
+    await build.idle();
+    expect(asked().at(-1)).toContain(`Already offered, do not repeat: ${shown.join(", ")}.`);
+    build.expectScan("something crazier", true);                             // mid-build: the rescan carries the change
+    await post("/v1/build/scans", { ...kitUpload(), session_id });
+    await build.idle();
+    expect(asked().at(-1)).toContain(`Already offered, do not repeat: ${shown.join(", ")}`);
+    await build.rethink("a birdhouse", false);                               // a new ask: the birdhouse shown before may be the answer
+    await build.idle();
+    expect(asked().at(-1)).not.toContain("Already offered");
+    build.expectScan("a robot", false);
+    await post("/v1/build/scans", { ...kitUpload(), session_id });
+    await build.idle();
+    expect(asked().at(-1)).not.toContain("Already offered");
   });
 
   it("is replaced by a rethink's request, and tidied (spaces, trailing punctuation)", async () => {
     const build = t.app.ctx.hooks.build!;
     await post("/v1/build/scans", kitUpload());
     await build.idle();
-    expect(await build.rethink("  something   for my phone!! ")).toBe(true);
+    expect(await build.rethink("  something   for my phone!! ", false)).toBe(true);
     await build.idle();
     expect((await current()).wish).toBe("something for my phone");
     expect(asked().at(-1)).toContain('The builder asked: "something for my phone"');
