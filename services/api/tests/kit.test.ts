@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Vec3 } from "@cutonce/schemas";
-import type { KitBuildContext } from "../src/build/session.js";
+import { pickIdea, type KitBuildContext } from "../src/build/session.js";
 import { decideKit, kitContextText, pickByPosition, whereFrom, type KitTurn } from "../src/copilot/kit.js";
 import { twin } from "./build-synth.js";
 
@@ -8,7 +8,7 @@ const turn = (over: Partial<KitTurn> = {}): KitTurn => ({ heard: "something", in
 const ideas = [{ idea_id: "idea_a", title: "Birdhouse" }, { idea_id: "idea_b", title: "Robot" }, { idea_id: "idea_c", title: "Can tower" }];
 const at = (over: object = {}) => ({
   canRethink: true, building: false, ideas,
-  byName: (said: string) => ideas.find((i) => said.toLowerCase().includes(i.title.toLowerCase())) ?? null, ...over,
+  byName: (said: string) => pickIdea(said, ideas), ...over,
 });
 
 describe("decideKit", () => {
@@ -35,6 +35,11 @@ describe("decideKit", () => {
     expect(decideKit(turn({ intent: "pick", pick: "idea_zzz", heard: "the can tower please" }), at())).toMatchObject({ kind: "start", ideaId: "idea_c" });
     expect(decideKit(turn({ intent: "pick", pick: null, heard: "the one on the left" }), at())).toMatchObject({ kind: "start", ideaId: "idea_a" });
     expect(decideKit(turn({ intent: "pick", pick: null, heard: "that one" }), at())).toMatchObject({ kind: "say", clarify: true });
+  });
+
+  it("takes the model's pick by title as well as by id, before any position word", () => {
+    expect(decideKit(turn({ intent: "pick", pick: "Birdhouse", heard: "That's right, the birdhouse" }), at())).toMatchObject({ kind: "start", ideaId: "idea_a" });
+    expect(decideKit(turn({ intent: "pick", pick: "the robot", heard: "yeah the robot, right?" }), at())).toMatchObject({ kind: "start", ideaId: "idea_b" });
   });
 
   it("never picks while a build is under way", () =>
@@ -90,6 +95,11 @@ describe("pickByPosition", () => {
   it("has no middle of two, and nothing to pick from none", () => {
     expect(pickByPosition("the middle one", ideas.slice(0, 2))).toBeNull();
     expect(pickByPosition("the left one", [])).toBeNull();
+  });
+  it("reads a position only where it says which design: 'that's right' and 'I left it' are not positions", () => {
+    expect(["that's right, the birdhouse", "yeah the robot, right?", "right, let's go", "I left it there"].map((s) => pickByPosition(s, ideas))).toEqual([null, null, null, null]);
+    expect(pickByPosition("the one on the right", ideas)?.idea_id).toBe("idea_c");
+    expect(pickByPosition("not the left one, the right one", ideas)).toBeNull();   // two positions: ask which
   });
 });
 

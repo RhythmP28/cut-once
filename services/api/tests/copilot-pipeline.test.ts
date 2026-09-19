@@ -508,9 +508,9 @@ describe("build mode: Kit's turn", () => {
     const expect_ = vi.spyOn(build(), "expectScan").mockReturnValue(true);
     kitHears({ heard: "I'd love a birdhouse", intent: "ideas", wish: "a birdhouse", answer: "" });
     expect((await query({ mode: "build" })).json()).toMatchObject({ action: null, answer_text: "Let me see how to make a birdhouse from what's here." });
-    kitHears({ heard: "Build me a robot" });
-    expect((await query({ mode: "build" })).json()).toMatchObject({ action: null, answer_text: "Let me see how to make a robot from what's here." });
-    expect(expect_.mock.calls).toEqual([["a birdhouse", false], ["a robot", false]]);
+    kitHears({ heard: "Build me a boat" });
+    expect((await query({ mode: "build" })).json()).toMatchObject({ action: null, answer_text: "Let me see how to make a boat from what's here." });
+    expect(expect_.mock.calls).toEqual([["a birdhouse", false], ["a boat", false]]);
   });
 
   it("'make me something crazier' said outright changes the designs on show: those shown are not offered again", async () => {
@@ -539,6 +539,27 @@ describe("build mode: Kit's turn", () => {
     kitHears({ heard: "the one on the right", intent: "pick", pick: null });
     expect((await query({ mode: "build" })).json().answer_text).toBe("Building the can tower. Watch the pieces.");
     expect(start).toHaveBeenCalledWith("idea_c");
+  });
+
+  it("a design on show named outright is picked, even in the words of a wish ('let's build a birdhouse'), with no model call", async () => {
+    onTable();
+    const start = vi.spyOn(build(), "startIdea").mockResolvedValue({});
+    const rethink = vi.spyOn(build(), "rethink");
+    kitHears({ heard: "Let's build a birdhouse", intent: "ideas", wish: "a birdhouse" });
+    expect((await query({ mode: "build" })).json().answer_text).toBe("Building the birdhouse. Watch the pieces.");
+    expect([start.mock.calls, rethink.mock.calls.length, runKitTurn.mock.calls.length]).toEqual([[["idea_a"]], 0, 0]);
+  });
+
+  it("on OMNI too, a design on show named in the words of a wish is picked, not designed again", async () => {
+    const old = t;
+    t = await makeApp({ elevenKey: "", openaiKey: "", omniKey: "q", omniBaseUrl: "http://127.0.0.1:9/v1", copilotMode: "live" });
+    try {
+      onTable();
+      const start = vi.spyOn(build(), "startIdea").mockResolvedValue({});
+      runKitTurn.mockResolvedValue({ kit: { heard: "Build me a robot", intent: "ideas", wish: "a robot", pick: null, answer: "", objects: [], confidence: 0.9 }, sttMs: null, modelMs: 40 });
+      expect((await query({ mode: "build" })).json().answer_text).toBe("Building the robot. Watch the pieces.");
+      expect(start).toHaveBeenCalledWith("idea_b");
+    } finally { await t.cleanup(); t = old; }
   });
 
   it("a picked build that cannot be started is said out loud, not a failed turn", async () => {

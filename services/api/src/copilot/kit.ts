@@ -94,16 +94,23 @@ export function kitContextText(ctx: KitBuildContext, building: KitBuilding | nul
   ].join("\n");
 }
 
+/**
+ * Where a sentence says which design: "the left one", "the one on the right", "the second design", or an ordinal that
+ * ends it ("the third"). A position word anywhere else is not one: "that's right", "I left it there".
+ */
+const POSITION = /\b(first|second|third|last|left|leftmost|right|rightmost|middle|centre|center) (?:one|design|option|idea)\b|\bon the (left|right)\b|\b(first|second|third|last)$/g;
+
 /** "The left one", "the second one": a design on show by where it stands (the headset lays them out left to right). */
 export function pickByPosition<T>(said: string, ideas: T[]): T | null {
-  const t = ` ${normalise(said)} `, n = ideas.length;
-  if (n === 0) return null;
-  if (/ (first|left|leftmost) /.test(t)) return ideas[0]!;
-  if (/ (middle|centre|center) /.test(t)) return n === 3 ? ideas[1]! : null;
-  if (/ second /.test(t)) return ideas[1] ?? null;
-  if (/ third /.test(t)) return ideas[2] ?? null;
-  if (/ (right|rightmost|last) /.test(t)) return ideas[n - 1]!;
-  return null;
+  const n = ideas.length;
+  const where = new Set([...normalise(said).matchAll(POSITION)].map((m) => m[1] ?? m[2] ?? m[3]));
+  if (n === 0 || where.size !== 1) return null;                     // none, or "not the left one, the right one": ask
+  const w = [...where][0]!;
+  if (w === "first" || w === "left" || w === "leftmost") return ideas[0]!;
+  if (w === "middle" || w === "centre" || w === "center") return n === 3 ? ideas[1]! : null;
+  if (w === "second") return ideas[1] ?? null;
+  if (w === "third") return ideas[2] ?? null;
+  return ideas[n - 1]!;                                             // right, rightmost, last
 }
 
 export type KitDecision =
@@ -159,7 +166,8 @@ export function decideKit(kit: KitTurn, at: KitAt): KitDecision {
     case "pick": {
       if (at.building) return say("You're building one already. Say what you'd like instead, and I'll look again.", true);
       if (at.ideas.length === 0) return say("There's nothing on show to pick yet. Ask me what you can build.", true);
-      const idea = at.ideas.find((i) => i.idea_id === kit.pick) ?? at.byName(kit.heard) ?? pickByPosition(kit.heard, at.ideas);
+      // The model's pick by id, or by name (it may give the title), then the name said, then where it stands.
+      const idea = at.ideas.find((i) => i.idea_id === kit.pick) ?? (kit.pick ? at.byName(kit.pick) : null) ?? at.byName(kit.heard) ?? pickByPosition(kit.heard, at.ideas);
       if (!idea) return say("Which one? Say its name, or the left, middle or right one.", true);
       return sure ? { kind: "start", ideaId: idea.idea_id, title: idea.title } : say(`Do you want the ${idea.title.toLowerCase()}? Say its name to start it.`, true);
     }

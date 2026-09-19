@@ -242,6 +242,19 @@ async function kitTurn(
   if (!primary) return null;
   const context = build.kitContext();
   const fastInput = { plan: g.plan, state: g.state, selectedPartId: input.context.selected_part_id, recentEvents: g.recentEvents, mode: "build" as const };
+  // A design on show named outright ("let's build the robot", even "build me a robot" with a Robot on show) is that
+  // design, before a wish phrase can take it for a new ask. Only the name and picking words: a question is a question.
+  const byName = (words: string) => (context.started ? null : pickIdea(words, context.ideas));
+  const start = async (idea: { idea_id: string; title: string }, heard: string, extra: Partial<CopilotResponse> = {}): Promise<CopilotResponse> => {
+    try {
+      await build.startIdea(idea.idea_id);
+      return quick(deps, turnId, heard, `Building the ${idea.title.toLowerCase()}. Watch the pieces.`, null, timings, t0, recordTurn, false, extra);
+    } catch (err) {
+      // The idea was picked but its run could not be made (a full disk, say). In front of judges a reply beats an error.
+      log.warn({ turn: turnId, idea: idea.idea_id, err: (err as Error).message }, "could not start the picked build idea");
+      return quick(deps, turnId, heard, "I couldn't start that build. Try again.", null, timings, t0, recordTurn, true, extra);
+    }
+  };
 
   // On OpenAI the words come before the model: a voice command said outright ("done", "next") is answered from the
   // transcript with no model call, as fast as before Kit. OMNI hears the clip itself, so there the commands are found
@@ -255,6 +268,8 @@ async function kitTurn(
     timings.stt = since(sttStart);
     timings.kit_openai = 1;
     if (!transcript) return unheard(deps, turnId, failed, timings, t0, recordTurn);
+    const named = byName(transcript);
+    if (named) return start(named, transcript);
     const fast = matchFastPath(transcript, fastInput);
     if (fast) return respondFast(deps, input, g, fast, transcript, turnId, timings, t0, recordTurn, log);
   }
@@ -281,6 +296,8 @@ async function kitTurn(
 
   const known = new Set(context.twins.map((t) => t.twin_id));
   const said = { highlight_twins: kit.objects.filter((id) => known.has(id)), confidence: kit.confidence };
+  const named = byName(kit.heard);
+  if (named) return start(named, kit.heard, said);
   const fast = matchFastPath(kit.heard, fastInput);
   if (fast) return respondFast(deps, input, g, fast, kit.heard, turnId, timings, t0, recordTurn, log, said);
 
@@ -303,14 +320,7 @@ async function kitTurn(
       await build.rethink(decision.wish, decision.change);
       return quick(deps, turnId, kit.heard, decision.text, null, timings, t0, recordTurn, false, said);
     case "start":
-      try {
-        await build.startIdea(decision.ideaId);
-        return quick(deps, turnId, kit.heard, `Building the ${decision.title.toLowerCase()}. Watch the pieces.`, null, timings, t0, recordTurn, false, said);
-      } catch (err) {
-        // The idea was picked but its run could not be made (a full disk, say). In front of judges a reply beats an error.
-        log.warn({ turn: turnId, idea: decision.ideaId, err: (err as Error).message }, "could not start the picked build idea");
-        return quick(deps, turnId, kit.heard, "I couldn't start that build. Try again.", null, timings, t0, recordTurn, true, said);
-      }
+      return start({ idea_id: decision.ideaId, title: decision.title }, kit.heard, said);
   }
 }
 
