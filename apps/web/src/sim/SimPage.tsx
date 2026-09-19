@@ -120,6 +120,8 @@ export function SimPage() {
         spaceDown = true;
         if (opening || recording.current) return;
         opening = true;
+        // The first use shows a permission prompt, so say what is happening while the mic opens.
+        setStatus({ kind: "listening", text: "Opening the microphone… keep holding Space" });
         try {
           const rec = await startRecording();
           if (spaceDown) {
