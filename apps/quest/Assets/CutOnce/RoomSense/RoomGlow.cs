@@ -129,15 +129,17 @@ namespace CutOnce.RoomSense
         private void GlowGlobalMesh(MRUKRoom room)
         {
             var anchor = room.GlobalMeshAnchor;
-            var source = anchor != null ? anchor.GetComponentInChildren<MeshFilter>() : null;
-            if (source == null || source.sharedMesh == null)
+            // MRUK hands the scan back as a Mesh on the anchor itself (lazily built on first access),
+            // NOT as a child MeshFilter — there is no renderer to find, so we make our own.
+            var mesh = anchor != null ? anchor.GlobalMesh : null;
+            if (mesh == null)
             {
                 Debug.LogWarning("[RoomGlow] no global mesh. Enable 'Load Global Mesh' in the MRUK Scene Settings and rescan.");
                 return;
             }
             var go = new GameObject("[RoomGlow] scene mesh");
-            go.transform.SetParent(source.transform, false); // same pose as the scanned mesh, exactly
-            go.AddComponent<MeshFilter>().sharedMesh = source.sharedMesh;
+            go.transform.SetParent(anchor.transform, false); // mesh vertices are in anchor space
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
             var r = go.AddComponent<MeshRenderer>();
             r.sharedMaterial = glowMaterial;
             r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
