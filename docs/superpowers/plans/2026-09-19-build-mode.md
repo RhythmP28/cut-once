@@ -2312,7 +2312,7 @@ beforeEach(async () => {
   seen = [];
   t.app.ctx.store.bus.on("broadcast", (m) => seen.push(m));
 });
-afterEach(async () => { await t.cleanup(); });
+afterEach(async () => { await t.app.ctx.hooks.build!.idle(); await t.cleanup(); });   // no scan may still be writing when the folder goes
 
 const kitUpload = () => {
   const scan = synthScan(KIT, CAMERA.cam, CAMERA.lookAt);
@@ -2631,14 +2631,20 @@ export const buildRoutes: Plugin = (app: FastifyInstance, ctx: Ctx) => {
 };
 ```
 
-- [ ] **Step 7: Run the tests.** Run `pnpm -F @cutonce/api test build-routes build-intake`. Expected: PASS. S2's session test ("keeps the session when the headset sends it back") still holds, because `accept` reuses the current session when the ids match.
+- [ ] **Step 7: Let the intake test wait for the queue.** Scans are now processed after the 202. In `services/api/tests/build-intake.test.ts`, change `afterEach` to:
 
-- [ ] **Step 8: Run everything.** Run `pnpm -F @cutonce/api test && pnpm typecheck`. Expected: PASS (the existing copilot tests don't touch build mode).
+```ts
+afterEach(async () => { await t.app.ctx.hooks.build!.idle(); await t.cleanup(); });
+```
 
-- [ ] **Step 9: Commit.**
+- [ ] **Step 8: Run the tests.** Run `pnpm -F @cutonce/api test build-routes build-intake`. Expected: PASS. S2's session test ("keeps the session when the headset sends it back") still holds, because `accept` reuses the current session when the ids match.
+
+- [ ] **Step 9: Run everything.** Run `pnpm -F @cutonce/api test && pnpm typecheck`. Expected: PASS (the existing copilot tests don't touch build mode).
+
+- [ ] **Step 10: Commit.**
 
 ```bash
-git add services/api/src/app.ts services/api/src/copilot/routes.ts services/api/src/build/session.ts services/api/src/build/routes.ts services/api/tests/build-routes.test.ts
+git add services/api/src/app.ts services/api/src/copilot/routes.ts services/api/src/build/session.ts services/api/src/build/routes.ts services/api/tests/build-routes.test.ts services/api/tests/build-intake.test.ts
 git commit -m "feat(build): sessions and routes: scans stream outlines, names and ideas; start an idea as a normal run; replay; say"
 ```
 
