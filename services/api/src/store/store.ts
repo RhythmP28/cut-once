@@ -1,5 +1,5 @@
-import { existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { copyFileSync, existsSync, readdirSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { ulid } from "ulid";
 import { S, type Assembly, type BuildEvent, type BuildState, type Plan, type Seed, type ValidationIssue } from "@cutonce/schemas";
 import { fold, hasErrors, validatePlan } from "@cutonce/project-model";
@@ -33,6 +33,24 @@ export class Store {
     const dir = this.planDir(planId);
     if (!existsSync(dir)) return [];
     return readdirSync(dir).map((f) => /^rev-(\d+)\.json$/.exec(f)?.[1]).filter((n): n is string => !!n).map(Number).sort((a, b) => a - b);
+  }
+
+  // ── plan assets (mesh files such as e7.glb, kept beside the plan that names them) ──
+  private static ASSET_NAME = /^[a-z0-9][a-z0-9_-]*\.(glb|gltf|png|jpg)$/;
+
+  putAssetIfMissing(planId: string, name: string, sourcePath: string): boolean {
+    if (!Store.ASSET_NAME.test(name) || !existsSync(sourcePath)) return false;
+    const target = join(this.planDir(planId), "assets", name);
+    if (existsSync(target)) return false;
+    ensureDir(dirname(target));
+    copyFileSync(sourcePath, target);
+    return true;
+  }
+
+  assetPath(planId: string, name: string): string | null {
+    if (!Store.ASSET_NAME.test(name)) return null;
+    const p = join(this.planDir(planId), "assets", name);
+    return existsSync(p) ? p : null;
   }
 
   approvedRevision = (planId: string): number | null => readJson<{ revision: number }>(join(this.planDir(planId), "approved.json"))?.revision ?? null;

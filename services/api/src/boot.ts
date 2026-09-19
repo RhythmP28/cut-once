@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { S, type Plan } from "@cutonce/schemas";
 import type { FastifyBaseLogger } from "fastify";
 import type { Config } from "./config.js";
@@ -23,6 +23,10 @@ export async function boot(store: Store, docs: DocumentStore, cfg: Config, log: 
     const parsed = S.Plan.safeParse(json(file));
     if (!parsed.success) { log.warn({ file }, "skipped a plan file that does not match the schema"); continue; }
     if (store.importApproved(parsed.data as Plan)) log.info({ plan_id: parsed.data.plan_id, revision: parsed.data.revision }, "imported plan");
+    for (const part of parsed.data.parts) {
+      const shape = part.shape as { type: string; uri?: string };
+      if (shape.type === "mesh" && shape.uri) store.putAssetIfMissing(parsed.data.plan_id, shape.uri, join(dirname(file), shape.uri));
+    }
   }
 
   const seeds = join(demo, "seeds");
