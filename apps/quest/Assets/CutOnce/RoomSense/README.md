@@ -72,24 +72,23 @@ it behind `ISurfaceRaycaster`, honouring `EnvironmentRaycastHitStatus.Hit`. Two 
 
 It is a P2 flourish; this folder does not depend on it.
 
-## It installs itself
+## It is background polish now, and it is opt-in
 
-`RoomSenseBootstrap` installs the scan, the glow and the gaze inspector at app start via
-`[RuntimeInitializeOnLoadMethod]`, so **nothing needs wiring into `Main.unity`** — which also means
-no merge conflict on a scene several people edit. It no-ops if a `RoomGlow` is already present.
-Define `ROOMSENSE_NO_AUTOBOOT` to switch it off and call `RoomSenseBootstrap.Install()` yourself.
+The main act is `CutOnce/Scanner/`: YOLO on the passthrough camera names real objects and boxes them in blue. RoomSense
+is the ambient layer behind that, so it no longer starts by itself (a whole-room transparent mesh is a lot of fill rate
+to spend while a model is running) and it no longer names anything: `GazeInspector`'s size-based names would be a
+second label system arguing with YOLO's.
 
-The material lives in `Resources/` on purpose: a shader reached only through `Shader.Find` can be
-stripped from a player build, and a stripped shader is a pink room on device that looked perfect
-in the Editor.
+- Start it with the app: define `ROOMSENSE_AUTOBOOT` (Player Settings > Scripting Define Symbols).
+- Or start it from code: `RoomSenseBootstrap.Install()` — still no `Main.unity` wiring, still a no-op if a `RoomGlow`
+  is already there. `Install(withGazeInspector: true)` brings the gaze labels back for a scene without the scanner.
 
-Verified on an empty scene — which is what `Main.unity` is today: MRUK auto-created with
-`DataSource.Device`, RoomGlow auto-created with the SheikahGlow material bound, GazeInspector
-auto-created.
+The material lives in `Resources/` on purpose: a shader reached only via `Shader.Find` can be stripped from a player
+build, and a stripped shader is a pink room on device that looks fine in the Editor.
 
-This folder has its own `CutOnce.RoomSense.asmdef` (referencing `meta.xr.mrutilitykit` and
-`Unity.InputSystem`) matching the per-folder assembly layout here, and the editor rig lives under
-`Editor/` behind `CutOnce.RoomSense.Editor.asmdef`.
+`SheikahGlow.shader` follows AGENTS rules 4 and 5: single-pass-instanced stereo macros in both passes (without them the
+Quest draws it in one eye only) and `One / OneMinusSrcAlpha` on the alpha channel (with joint additive factors a 0.35
+glow's alpha is squared to 0.12 over passthrough: bright in the Game view, nearly invisible in the headset).
 
 ## Manual setup (only needed if you turn the bootstrap off)
 

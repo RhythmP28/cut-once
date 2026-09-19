@@ -13,19 +13,20 @@ namespace CutOnce.RoomSense
     /// The material is loaded from Resources on purpose: a shader referenced only through
     /// Shader.Find can be stripped from a player build, and a stripped shader means a pink room.
     ///
-    /// To switch the auto-install off, define ROOMSENSE_NO_AUTOBOOT and call Install() yourself.
+    /// It is background polish, not the main act, so it does NOT start by itself: a whole-room transparent mesh is a lot of
+    /// fill rate to spend while YOLO is running. Define ROOMSENSE_AUTOBOOT to start it with the app, or call Install().
     /// </summary>
     public static class RoomSenseBootstrap
     {
         public const string MaterialResource = "SheikahGlow";
 
-#if !ROOMSENSE_NO_AUTOBOOT
+#if ROOMSENSE_AUTOBOOT
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void AutoBoot() => Install();
 #endif
 
         /// <summary>Install the overlay. Safe to call twice; the second call is a no-op.</summary>
-        public static GameObject Install()
+        public static GameObject Install(bool withGazeInspector = false)
         {
             if (Object.FindFirstObjectByType<RoomGlow>() != null) return null;
 
@@ -48,10 +49,12 @@ namespace CutOnce.RoomSense
             glow.glowMaterial = Resources.Load<Material>(MaterialResource);
             if (glow.glowMaterial == null)
                 Debug.LogError($"[RoomSense] Resources/{MaterialResource}.mat is missing — nothing will render.");
-            go.AddComponent<GazeInspector>();
+            // No GazeInspector by default: it names things by measuring them, and the object scanner (CutOnce.Scanner, YOLO on
+            // the passthrough camera) now names things by seeing them. Two label systems on one desk is one too many.
+            if (withGazeInspector) go.AddComponent<GazeInspector>();
             Object.DontDestroyOnLoad(go);
 
-            Debug.Log("[RoomSense] installed: room glow + gaze inspector.");
+            Debug.Log("[RoomSense] installed: room glow" + (withGazeInspector ? " + gaze inspector." : "."));
             return go;
         }
     }

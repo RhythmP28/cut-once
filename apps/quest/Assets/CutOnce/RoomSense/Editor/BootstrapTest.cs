@@ -30,7 +30,7 @@ public static class BootstrapTest
 
     static void Tick()
     {
-        if (EditorApplication.isPlaying) _sawPlaying = true;
+        if (EditorApplication.isPlaying && !_sawPlaying) { _sawPlaying = true; RoomSenseBootstrap.Install(); }   // opt-in now: nothing starts by itself
         var glow = Object.FindFirstObjectByType<RoomGlow>();
         if (!_sawPlaying || (glow == null && EditorApplication.timeSinceStartup < _deadline)) return;
 
@@ -41,14 +41,14 @@ public static class BootstrapTest
 
         System.Console.WriteLine("===== BOOTSTRAP TEST (empty scene) =====");
         System.Console.WriteLine("play mode: " + (_sawPlaying ? "entered" : "NEVER ENTERED"));
-        System.Console.WriteLine("MRUK auto-created: " + (mruk != null));
+        System.Console.WriteLine("MRUK created: " + (mruk != null));
         if (mruk != null) System.Console.WriteLine("  data source: " + mruk.SceneSettings.DataSource);
-        System.Console.WriteLine("RoomGlow auto-created: " + (glow != null));
+        System.Console.WriteLine("RoomGlow created: " + (glow != null));
         System.Console.WriteLine("  material: " + (glow != null && glow.glowMaterial != null ? glow.glowMaterial.shader.name : "NULL"));
-        System.Console.WriteLine("GazeInspector auto-created: " + (gaze != null));
+        System.Console.WriteLine("GazeInspector left out (YOLO names things now): " + (gaze == null));
         System.Console.WriteLine("===== END BOOTSTRAP TEST =====");
 
-        var ok = _sawPlaying && mruk != null && glow != null && glow.glowMaterial != null && gaze != null;
+        var ok = _sawPlaying && mruk != null && glow != null && glow.glowMaterial != null && gaze == null;
         EditorApplication.Exit(ok ? 0 : 1);
     }
 }
