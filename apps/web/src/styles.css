@@ -231,3 +231,16 @@ a.link-card:hover { border-color: var(--accent); }
 .preview-legend { list-style: none; padding: 8px 0 0; margin: 8px 0 0; border-top: 1px solid rgba(255, 255, 255, 0.1); display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; font-size: 0.75rem; color: #c3ccd6; }
 .preview-legend i { display: inline-block; width: 10px; height: 10px; border: 2px solid; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ── /sim: the pretend headset ─────────────────────────────────────────────── */
+.sim-keys { position: absolute; top: 16px; right: 16px; width: 250px; padding: 10px 14px; border-radius: 10px; background: rgba(11, 15, 20, 0.82); border: 1px solid rgba(255, 255, 255, 0.12); color: #c3ccd6; font-size: 0.78rem; pointer-events: none; }
+.sim-keys p { margin: 0 0 4px; }
+.sim-keys kbd { display: inline-block; min-width: 18px; padding: 0 5px; margin-right: 6px; border-radius: 4px; background: rgba(255, 255, 255, 0.12); color: #e6edf5; font: 600 0.72rem ui-monospace, monospace; text-align: center; }
+.sim-status { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); padding: 6px 14px; border-radius: 999px; background: rgba(11, 15, 20, 0.85); border: 1px solid rgba(255, 255, 255, 0.12); color: #e6edf5; font-size: 0.85rem; pointer-events: none; }
+.sim-status.listening { border-color: #22d3ee; color: #67e8f9; }
+.sim-status.error { border-color: #ff5252; color: #ff8a8a; }
+.sim-answer { position: absolute; bottom: 60px; left: 16px; width: 380px; padding: 10px 14px; border-radius: 10px; background: rgba(11, 15, 20, 0.88); border: 1px solid rgba(255, 216, 77, 0.45); color: #e6edf5; font-size: 0.88rem; pointer-events: none; }
+.sim-answer p { margin: 0 0 6px; }
+.sim-answer .sim-transcript { color: #9aa7b5; font-size: 0.78rem; }
+.sim-answer .sim-source { display: inline-block; margin: 0 6px 0 0; padding: 1px 8px; border-radius: 6px; background: rgba(34, 211, 238, 0.15); color: #67e8f9; font-size: 0.75rem; }
+.sim-pointing { color: #e6edf5; font-weight: 600; }

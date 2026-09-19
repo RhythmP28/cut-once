@@ -1,6 +1,7 @@
 import {
   AssemblySchema, BuildStateSchema, JobSchema, PlanSchema, S,
-  type Assembly, type BuildEvent, type BuildState, type DirectorCommand, type Job, type Plan, type RetrievedChunk,
+  type Assembly, type BuildEvent, type BuildState, type CopilotContext, type CopilotResponse, type DirectorCommand, type Job, type Plan,
+  type RetrievedChunk,
 } from "@cutonce/schemas";
 import type { ZodTypeAny } from "zod";
 import { clearToken, getToken } from "./auth";
@@ -255,3 +256,32 @@ export async function searchProject(projectId: string, q: string, partId?: strin
 
 export const postIssueWebhook = (body: { issue_id: string; part_id: string | null; note: string }) =>
   request<Record<string, unknown>>("POST", "/v1/webhooks/issue", { body });
+
+// ── the pretend headset (/sim) ───────────────────────────────────────────────
+/** Appends one build event, exactly as the headset does. 201 on success; 409 no_op when the part already has that state. */
+export const postEvent = (assemblyId: string, event: Record<string, unknown>) =>
+  request<{ version: number; head: number }>("POST", `/v1/assemblies/${enc(assemblyId)}/events`, { body: event });
+
+/** One copilot question: the context packet, the recorded question and one camera frame (blueprint §10). */
+export async function askCopilot(assemblyId: string, context: CopilotContext, audio: Blob, frame: Blob): Promise<CopilotResponse> {
+  const form = new FormData();
+  form.append("context", JSON.stringify(context));
+  form.append("audio", audio, "question.wav");
+  form.append("frame", frame, "frame.jpg");
+  let res: Response;
+  try {
+    res = await fetch(`/v1/assemblies/${enc(assemblyId)}/copilot/query`, { method: "POST", headers: authHeaders(), body: form });
+  } catch (e) {
+    throw new ApiError(0, "network", e instanceof Error ? e.message : "Network error");
+  }
+  const data = await readBody(res);
+  if (!res.ok) throw toApiError(res.status, data, "the copilot request failed");
+  return data as CopilotResponse;
+}
+
+/** The answer's audio as a playable WAV object URL (the headset gets raw PCM; a browser needs WAV). */
+export async function fetchAnswerAudio(audioUrl: string): Promise<string> {
+  const res = await fetch(`${audioUrl}${audioUrl.includes("?") ? "&" : "?"}format=wav`, { headers: authHeaders() });
+  if (!res.ok) throw new ApiError(res.status, "audio", `audio ${res.status}`);
+  return URL.createObjectURL(await res.blob());
+}

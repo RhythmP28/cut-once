@@ -5,6 +5,7 @@ import { clearToken, setToken, tokenWasRejected, useToken } from "./auth";
 import { DirectorPage } from "./director/DirectorPage";
 import { HistoryPage } from "./history/HistoryPage";
 import { PreviewPage } from "./preview/PreviewPage";
+import { SimPage } from "./sim/SimPage";
 import { ReviewPage } from "./review/ReviewPage";
 import { UploadPage } from "./upload/UploadPage";
 
@@ -115,7 +116,7 @@ function NotFound() {
 }
 
 /** Pages that fill the whole window, like the headset's view: no top bar. */
-const BARE_PAGES = new Set(["/preview"]);
+const BARE_PAGES = new Set(["/preview", "/sim"]);
 
 export function App() {
   const token = useToken();
@@ -124,6 +125,7 @@ export function App() {
     return (
       <Routes>
         <Route path="/preview" element={<PreviewPage />} />
+        <Route path="/sim" element={<SimPage />} />
       </Routes>
     );
   }
@@ -136,6 +138,7 @@ export function App() {
           <NavLink to="/upload">Upload</NavLink>
           <NavLink to="/history">History</NavLink>
           <NavLink to="/preview">Preview</NavLink>
+          <NavLink to="/sim">Sim</NavLink>
         </nav>
         {token && <button type="button" className="ghost small" onClick={() => clearToken()}>Forget token</button>}
       </header>
