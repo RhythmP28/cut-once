@@ -9,6 +9,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Strict, type BuildEvent, type DocRef, type Part, type Plan } from "@cutonce/schemas";
 import { fold } from "../src/fold.js";
+import { HOLOGRAM_PALETTE } from "../src/visual.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "data", "fixtures");
 mkdirSync(join(root, "events_to_state"), { recursive: true });
@@ -164,4 +165,5 @@ for (const c of cases) {
   const expected = Strict.BuildState.parse(fold(desk, ASM, c.events, c.up_to));
   write(`events_to_state/${c.file}.json`, { note: c.note, plan: "plan_desk_archetype.json", assembly_id: ASM, events: c.events, up_to: c.up_to, expected });
 }
+write("hologram-palette.json", HOLOGRAM_PALETTE);
 console.log(`wrote 2 plans and ${cases.length} state cases to ${root}`);

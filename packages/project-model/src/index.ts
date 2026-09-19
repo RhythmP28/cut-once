@@ -4,3 +4,4 @@ export { validatePlan, hasErrors } from "./validate.js";
 export { partAabb, aabbGap, aabbOverlapDepth, union, volume, isSolid, type Aabb } from "./geometry.js";
 export { toPartId, toMaterialId } from "./ids.js";
 export { plannedEvents } from "./planned.js";
+export { HOLOGRAM_PALETTE, resolveVisuals, styleFor, stateForBuilt, type BaseVisual, type Modifier, type PartVisual, type VisualStyle } from "./visual.js";
