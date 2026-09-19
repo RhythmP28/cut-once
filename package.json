@@ -24,7 +24,9 @@
     "backup": "sh -c 'mkdir -p backups && rsync -a ./data/runtime/ \"./backups/$(date +%Y%m%d-%H%M%S)/\"'",
     "llm:smoke": "pnpm -F @cutonce/api exec tsx src/cli/llm-smoke.ts",
     "tts:smoke": "pnpm -F @cutonce/api exec tsx src/cli/tts-smoke.ts",
-    "sim": "tsx tools/sim/run.ts"
+    "sim": "tsx tools/sim/run.ts",
+    "quest:core-test": "bash tools/quest-tests/run.sh",
+    "quest:bundle": "bash tools/quest-tests/bundle.sh"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

@@ -1,0 +1,77 @@
+{
+  "bases": {
+    "BUILT_LIVE": {
+      "fill": "#3DDC84",
+      "fillAlpha": 0,
+      "edge": "#3DDC84",
+      "edgeAlpha": 0.6,
+      "edgeWidthPx": 1.5,
+      "pulseHz": 0,
+      "brackets": true,
+      "grid": false
+    },
+    "BUILT_REPLAY": {
+      "fill": "#4DA3FF",
+      "fillAlpha": 0.55,
+      "edge": "#8CC4FF",
+      "edgeAlpha": 1,
+      "edgeWidthPx": 1.5,
+      "pulseHz": 0,
+      "brackets": false,
+      "grid": false
+    },
+    "CURRENT_STEP": {
+      "fill": "#22D3EE",
+      "fillAlpha": 0.35,
+      "edge": "#67E8F9",
+      "edgeAlpha": 1,
+      "edgeWidthPx": 3,
+      "pulseHz": 1.2,
+      "brackets": false,
+      "grid": true
+    },
+    "MISSING": {
+      "fill": "#22D3EE",
+      "fillAlpha": 0.18,
+      "edge": "#22D3EE",
+      "edgeAlpha": 0.9,
+      "edgeWidthPx": 1.5,
+      "pulseHz": 0,
+      "brackets": false,
+      "grid": false
+    },
+    "FUTURE": {
+      "fill": "#4DA3FF",
+      "fillAlpha": 0.05,
+      "edge": "#4DA3FF",
+      "edgeAlpha": 0.35,
+      "edgeWidthPx": 1,
+      "pulseHz": 0,
+      "brackets": false,
+      "grid": false
+    },
+    "WRONG": {
+      "fill": "#FF5252",
+      "fillAlpha": 0.3,
+      "edge": "#FF5252",
+      "edgeAlpha": 1,
+      "edgeWidthPx": 2.5,
+      "pulseHz": 2,
+      "brackets": false,
+      "grid": false
+    }
+  },
+  "modifiers": {
+    "SELECTED": {
+      "edge": "#FFFFFF",
+      "edgeAlpha": 1,
+      "edgeWidthPx": 2.5
+    },
+    "HIGHLIGHTED": {
+      "edge": "#FFD84D",
+      "edgeAlpha": 1,
+      "edgeWidthPx": 3,
+      "fillAlphaAdd": 0.15
+    }
+  }
+}

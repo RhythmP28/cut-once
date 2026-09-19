@@ -1,0 +1,193 @@
+using System;
+using System.Collections.Generic;
+using CutOnce.Core;
+using UnityEngine;
+
+namespace CutOnce.AR
+{
+    public enum AlignmentState { Restoring, Placing, Locked }
+
+    /// <summary>
+    /// The only writer of AssemblyRoot's pose. No markers and no calibration: point where the build should stand,
+    /// turn it with the stick, pull the trigger. The pose is then pinned with a spatial anchor and comes back on
+    /// the next launch. Afterwards, hold the grip to nudge. Touching the plan's two touch points with the
+    /// controller is offered as a second way in, for overlaying onto something that already exists.
+    /// </summary>
+    public sealed class AlignmentController : MonoBehaviour
+    {
+        public const float PointerReach = 6f, NudgeMetresPerSecond = 0.05f, LiftMetresPerSecond = 0.03f, YawDegreesPerSecond = 20f, PlacingYawDegreesPerSecond = 90f;
+        /// <summary>Two touched points must be as far apart as the plan says, within this. A larger gap means the wrong corners were touched.</summary>
+        public const float TouchBaselineTolerance = 0.03f;
+        const string NudgeKey = "cutonce.alignment.nudge";
+
+        IOperatorInput _input; ISurfaceRaycaster _surface; IAnchorStore _anchors; AssemblyView _assembly;
+        readonly List<Vector3> _touches = new List<Vector3>();
+        float _yaw; bool _yawChosen, _nudged;
+
+        public AlignmentState State { get; private set; } = AlignmentState.Restoring;
+        /// <summary>How the current pose was reached: restored | pointed | touch_2pt. Shown on the HUD and useful in the event log.</summary>
+        public string Method { get; private set; } = "";
+        public string Hint { get; private set; } = "Looking for the saved position…";
+        public bool HasSurfaceHit { get; private set; }
+        public int TouchesRecorded => _touches.Count;
+        public event Action Changed;
+
+        public void Init(AssemblyView assembly, IOperatorInput input, ISurfaceRaycaster surface, IAnchorStore anchors)
+        { _assembly = assembly; _input = input; _surface = surface; _anchors = anchors; }
+
+        async void Start()
+        {
+            Transform anchor = null;
+            try { anchor = _anchors == null ? null : await _anchors.Restore(); }
+            catch (Exception e) { Debug.LogWarning("[CutOnce] Could not restore the saved anchor: " + e.Message); }
+            if (this == null) return;                                   // destroyed while waiting
+            if (anchor != null && State == AlignmentState.Restoring)
+            {
+                transform.SetParent(anchor, false);
+                RestoreNudge();
+                Finish("restored");
+            }
+            else if (State == AlignmentState.Restoring) BeginPlacing();
+        }
+
+        public void BeginPlacing()
+        {
+            State = AlignmentState.Placing; _touches.Clear(); _yawChosen = false;
+            Hint = "Point at where the build stands · stick turns it · trigger locks";
+            Changed?.Invoke();
+        }
+
+        void Update()
+        {
+            if (_input == null || _assembly == null || _assembly.Plan == null) return;
+            if (State == AlignmentState.Placing) Place();
+            else if (State == AlignmentState.Locked) NudgeOrReplace();
+        }
+
+        // ── placing ─────────────────────────────────────────────────────────────────────────────────────────────
+        void Place()
+        {
+            if (_input.MarkDown) { RecordTouch(); return; }
+            if (!_input.TryGetPointer(out var ray)) { HasSurfaceHit = false; return; }
+
+            // The real surface under the pointer when depth sensing has one; otherwise the floor (tracking origin is floor level).
+            Vector3 point = default;
+            HasSurfaceHit = (_surface != null && _surface.Raycast(ray, out point)) || PlacementMath.HitHorizontalPlane(ray, 0f, PointerReach, out point);
+            if (!HasSurfaceHit) return;
+
+            if (!_yawChosen) { _yaw = PlacementMath.YawToward(point, ray.origin); _yawChosen = true; }     // first frame: face the operator
+            _yaw += _input.Stick.x * PlacingYawDegreesPerSecond * Time.deltaTime;
+
+            var pose = PlacementMath.StandOn(point, _yaw, LocalBounds());
+            transform.SetParent(null, true);
+            transform.SetPositionAndRotation(pose.position, pose.rotation);
+            if (_input.TriggerDown) Lock("pointed");
+        }
+
+        void RecordTouch()
+        {
+            var points = _assembly.Plan.touch_points;
+            if (points == null || points.Count < 2) { Hint = "This plan has no touch points · point and pull the trigger instead"; Changed?.Invoke(); return; }
+
+            _touches.Add(_input.TipWorld);
+            if (_touches.Count == 1) { Hint = $"Now touch: {points[1].name}"; Changed?.Invoke(); return; }
+
+            Vector3 a1 = ModelSpace.Point(points[0].position), a2 = ModelSpace.Point(points[1].position);
+            var pose = AlignmentSolver.SolveTwoPoint(a1, a2, _touches[0], _touches[1], out float baseline, out _);
+            _touches.Clear();
+            if (baseline > TouchBaselineTolerance)
+            {
+                Hint = $"Those points are {baseline * 100f:0.#} cm off the plan's spacing · touch {points[0].name} again";
+                Changed?.Invoke();
+                return;
+            }
+            transform.SetParent(null, true);
+            transform.SetPositionAndRotation(pose.position, pose.rotation);
+            Lock("touch_2pt");
+        }
+
+        async void Lock(string method)
+        {
+            State = AlignmentState.Locked; Method = method; Hint = "Saving position…"; _nudged = false;
+            PlayerPrefs.DeleteKey(NudgeKey);
+            Changed?.Invoke();
+
+            Transform anchor = null;
+            try
+            {
+                if (_anchors != null) { await _anchors.Forget(); anchor = await _anchors.CreateAt(new Pose(transform.position, transform.rotation)); }
+            }
+            catch (Exception e) { Debug.LogWarning("[CutOnce] Could not save a spatial anchor: " + e.Message); }
+            if (this == null) return;
+            if (anchor != null) transform.SetParent(anchor, true);
+            Finish(method);
+        }
+
+        void Finish(string method)
+        {
+            State = AlignmentState.Locked; Method = method;
+            Hint = "Hold grip + stick to nudge · hold the stick button to place again";
+            Changed?.Invoke();
+        }
+
+        // ── after the lock ──────────────────────────────────────────────────────────────────────────────────────
+        float _replaceHeldFor;
+
+        void NudgeOrReplace()
+        {
+            _replaceHeldFor = _input.StickClickHeld ? _replaceHeldFor + Time.deltaTime : 0f;
+            if (_replaceHeldFor > 1f) { _replaceHeldFor = 0f; BeginPlacing(); return; }
+
+            if (!_input.GripHeld)
+            {
+                if (_nudged) { SaveNudge(); _nudged = false; }
+                return;
+            }
+            Vector2 stick = _input.Stick;
+            if (stick.sqrMagnitude < 0.04f) return;                    // dead zone
+            var bounds = LocalBounds();
+            var pivot = new Vector3(bounds.center.x, bounds.min.y, bounds.center.z);
+            var pose = _input.TriggerHeld
+                ? PlacementMath.Nudge(new Pose(transform.position, transform.rotation), new Vector3(0, stick.y * LiftMetresPerSecond * Time.deltaTime, 0), stick.x * YawDegreesPerSecond * Time.deltaTime, pivot)
+                : PlacementMath.Nudge(new Pose(transform.position, transform.rotation), new Vector3(stick.x, 0, stick.y) * (NudgeMetresPerSecond * Time.deltaTime), 0f, pivot);
+            transform.SetPositionAndRotation(pose.position, pose.rotation);
+            _nudged = true;
+        }
+
+        [Serializable] struct SavedNudge { public Vector3 position; public Quaternion rotation; }
+
+        /// <summary>The nudge is the root's pose relative to its anchor, so it survives a restart together with the anchor.</summary>
+        void SaveNudge()
+        {
+            PlayerPrefs.SetString(NudgeKey, JsonUtility.ToJson(new SavedNudge { position = transform.localPosition, rotation = transform.localRotation }));
+            PlayerPrefs.Save();
+        }
+
+        void RestoreNudge()
+        {
+            if (!PlayerPrefs.HasKey(NudgeKey)) { transform.localPosition = Vector3.zero; transform.localRotation = Quaternion.identity; return; }
+            var saved = JsonUtility.FromJson<SavedNudge>(PlayerPrefs.GetString(NudgeKey));
+            transform.localPosition = saved.position;
+            transform.localRotation = saved.rotation.normalized;
+        }
+
+        /// <summary>The model's bounds in AssemblyRoot's own frame, from the parts' meshes (so it works before anything is visible).</summary>
+        public Bounds LocalBounds()
+        {
+            bool any = false; var total = new Bounds();
+            foreach (var view in _assembly.Views.Values)
+            {
+                var filter = view.GetComponent<MeshFilter>();
+                if (filter == null || filter.sharedMesh == null) continue;
+                var b = filter.sharedMesh.bounds;
+                for (int i = 0; i < 8; i++)
+                {
+                    var corner = b.center + Vector3.Scale(b.extents, new Vector3((i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1));
+                    var p = view.transform.localPosition + view.transform.localRotation * corner;
+                    if (!any) { total = new Bounds(p, Vector3.zero); any = true; } else total.Encapsulate(p);
+                }
+            }
+            return total;
+        }
+    }
+}

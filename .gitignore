@@ -29,3 +29,6 @@ sim-out/
 # dotnet build output of the headset's fast tests
 tools/quest-tests/bin/
 tools/quest-tests/obj/
+# the headset's server address and token (copy apps/quest/cutonce.config.example.json)
+apps/quest/Assets/CutOnce/AR/Resources/CutOnce/config.json
+apps/quest/Assets/CutOnce/AR/Resources/CutOnce/config.json.meta

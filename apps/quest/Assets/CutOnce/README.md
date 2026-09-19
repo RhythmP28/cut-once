@@ -1,0 +1,92 @@
+# Cut Once headset app: the build guide ("Litematica")
+
+One component runs the whole thing. Add **`CutOnceApp`** to a scene that has Meta's camera rig, or use
+**Cut Once > Rebuild main scene**, which writes `Assets/CutOnce/Scenes/Main.unity` with the rig, passthrough and the
+app, and makes it the first scene in the build. There are no prefabs and no inspector references to wire.
+
+## Run it
+
+1. **Server address and token.** Copy `apps/quest/cutonce.config.example.json` to
+   `Assets/CutOnce/AR/Resources/CutOnce/config.json` (git-ignored) and fill it in. On a built headset you can
+   instead push a file, which wins over the bundled one:
+   `adb push cutonce.config.json /sdcard/Android/data/<package>/files/cutonce.config.json`.
+   With neither, the app uses `http://127.0.0.1:8080`: fine in the Editor next to `pnpm dev`, useless on a headset.
+2. **Cut Once > Rebuild main scene**, then Play (Meta XR Simulator on a laptop, or build to the Quest).
+3. With no server at all the app still runs: it loads the last run from its journal, or the bundled desk plan.
+
+## Controls (right controller)
+
+| When | Do | Result |
+|---|---|---|
+| Placing | Point at the floor or a table | The hologram follows, standing on the surface, facing you |
+| Placing | Stick left / right | Turns it |
+| Placing | **Trigger** | Locks it and saves a spatial anchor: next launch it is where you left it |
+| Placing | **B** on each of the plan's two touch points (the small marker is the point that is recorded) | Second way in: snaps the plan onto something that already exists |
+| Locked | Point at a part, **B** | Built ↔ missing (so B is also undo) |
+| Locked | Point at a part, **hold B** | Flags it wrong |
+| Locked | Hold **grip** + stick | Slides the hologram; with the trigger also held: stick turns and lifts it |
+| Locked | Hold the **stick button** 1 s | Place again |
+| Any time | Hold **A** | Ask the copilot (Rhythm's `CopilotController`; created automatically if the scene has none) |
+
+There are no QR codes, no markers and no calibration step.
+
+## How it is put together, and why
+
+```
+events ─► BuildStateStore ─► Reducer.Fold ─► VisualStateResolver ─► HologramPalette.StyleFor ─► PartView (shader)
+   ▲             │                                   └────────────► HudText ─► HudController
+   │             └─► SyncEngine ─► ApiClient / Journal
+ B button, voice, the stream
+```
+
+| Assembly | UnityEngine? | Holds | Why it is separate |
+|---|---|---|---|
+| `CutOnce.Core` | no | Plan/event/state types, `Reducer` (twin of `fold.ts`), `BuildStateStore`, visual states, palette, material list, accuracy tags, `HudText` | Pure C#, so its tests run in under a second with `pnpm quest:core-test`, and inside Unity too |
+| `CutOnce.Net` | no | `ApiClient`, `StreamClient`, `Journal`, `SyncEngine` | Same: tested against a fake server that follows the API's rules |
+| `CutOnce.Net.Unity` | yes | `UnityHttpTransport` | The one platform seam for HTTP |
+| `CutOnce.AR` | yes, no Meta | `ModelSpace`, `ShapeFactory`, `PartView`, `AssemblyView`, the shader, placement, nudge, proof overlay, selection | Testable in EditMode with no headset and no Meta packages |
+| `CutOnce.UI` | yes | `HudController` | Built in code; wording lives in `Core.HudText` |
+| `Device/` (Assembly-CSharp) | Meta | `QuestInput`, `QuestSurfaceRaycaster`, `QuestAnchorStore`, `CutOnceApp` | Everything that names a Meta type is here and nowhere else |
+
+Decisions worth knowing before you change something:
+
+- **Build state is never stored.** It is always `Reducer.Fold(plan, events)`. The C# reducer is held to the TypeScript
+  one by the shared fixtures in `data/fixtures/events_to_state`: all eight must fold to the same state, field for
+  field (`ReducerFixtureTests`). Change one reducer and that test tells you.
+- **A tap shows at once.** It becomes a provisional event (version `null`), is saved to the journal, then sent. The
+  server's numbered copy replaces it by event id, whether it arrives in the POST response or on the stream. Only the
+  server's 409 (no-op) and 422 (invalid) may discard a tap; no network, a 5xx or a wrong token keep it queued, and it
+  survives a restart.
+- **Plans are right-handed; Unity is not.** `ModelSpace` mirrors X, the same convention glTFast uses and the one
+  `AlignmentSolver` already expects. Everything under `AssemblyRoot` is in that mirrored model space;
+  `AssemblyRoot`'s pose *is* the alignment, and only `AlignmentController` writes it.
+- **Meshes are generated at true size** (no transform scale), so the shader measures the distance to a box's edges in
+  object space. That gives crisp edges of a constant width in pixels with no wireframe pass, no extra geometry and no
+  post-processing, which the Quest cannot afford. `GameObject.CreatePrimitive` is avoided because a build can strip
+  what it needs.
+- **The shader is in a `Resources` folder** because nothing in a scene references it, and `Shader.Find` alone does not
+  stop a shader being stripped from a build. It blends alpha with separate factors: over passthrough, joint factors
+  square the alpha and wash the hologram out.
+- **Colours come from `hologram-palette.json`**, generated from `HOLOGRAM_PALETTE` in `visual.ts`, so `/preview`, `/sim`
+  and the headset match. The app carries a copy (a build cannot read outside `Assets`); `BundledFilesTests` fails when
+  the copy is stale and `pnpm quest:bundle` refreshes it. The same goes for the bundled desk plan.
+- **Accuracy is visible.** A part tagged in `external_ids` with `source: assumed | inferred`, an unknown tolerance, or
+  a tolerance above 5 cm draws **dashed**, and its card says so ("drawings, ±0.1 m"). An untagged part is a designed
+  part: exact by definition.
+- **Placement stands the model on the surface**: the footprint's centre goes to the pointed spot and the lowest face
+  rests on it (the desk's tabletop extends below y = 0). It uses the Quest 3's depth raycast when there is one and the
+  floor plane otherwise, so it works in the simulator and needs no room scan.
+- **Selection prefers the smallest part among near-equal hits**, because colliders are padded by 1 cm and parts nest (a
+  power strip inside its tray can only be reached that way).
+
+## Tests
+
+| Command | Runs | Needs |
+|---|---|---|
+| `pnpm quest:core-test` | Core + Net, 40 tests, under a second | Unity installed (uses its bundled .NET) or a system `dotnet` |
+| Unity Test Runner, EditMode | The same tests plus geometry, placement and hologram tests | The Unity project |
+
+## Not done here
+
+`TimelineController` (history scrub on the headset), loading GLB parts (a mesh part draws as its bounds box until
+glTFast is added), depth occlusion, and the camera check's "suggests; you confirm" screen.
