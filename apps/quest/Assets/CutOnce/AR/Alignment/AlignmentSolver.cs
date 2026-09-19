@@ -23,12 +23,23 @@ namespace CutOnce.AR
         /// <summary>Distance between where the pose puts a model point and where it was measured (the m3 check).</summary>
         public static float Residual(Pose p, Vector3 model, Vector3 world) => Vector3.Distance(p.position + p.rotation * model, world);
 
+        /// <summary>The largest Residual over all markers. Blueprint §5: lock only below 4 mm.</summary>
+        public static float WorstResidual(Pose p, Vector3[] model, Vector3[] world)
+        {
+            float worst = 0f;
+            for (int i = 0; i < model.Length; i++) worst = Mathf.Max(worst, Residual(p, model[i], world[i]));
+            return worst;
+        }
+
         /// <summary>
         /// Full rigid fit for a tilted surface. zalo's solver keeps its rotation between calls and runs 9 more iterations
         /// per call, so one instance is called repeatedly on the same points. Starting from the two-point pose leaves it
-        /// only a small correction. Checked numerically: a 5° tilt is under 0.3 mm after 2 calls and ~0 after 5.
+        /// only a small correction. Checked numerically: a 5° tilt is under 0.3 mm after 2 calls and ~0 after 5, at any heading.
+        /// From identity instead, one call is 760 mm off at a 135° heading and a 180° heading never converges (456 mm).
+        /// A rigid fit always returns a pose, even when stickers m1 and m2 are swapped (729 mm off), so it reports its
+        /// worst residual: reject the pose unless it is under 4 mm.
         /// </summary>
-        public static Pose RefineThreePoint(Pose initial, Vector3[] model, Vector3[] world, int calls = 5)
+        public static Pose RefineThreePoint(Pose initial, Vector3[] model, Vector3[] world, out float worstResidual, int calls = 5)
         {
             var moved = new Vector3[model.Length];
             var refs = new Vector4[world.Length];
@@ -40,7 +51,9 @@ namespace CutOnce.AR
             var solver = new KabschSolver();
             Matrix4x4 delta = Matrix4x4.identity;
             for (int k = 0; k < calls; k++) delta = solver.SolveKabsch(moved, refs);
-            return new Pose(delta.MultiplyPoint3x4(initial.position), delta.rotation * initial.rotation);
+            var pose = new Pose(delta.MultiplyPoint3x4(initial.position), delta.rotation * initial.rotation);
+            worstResidual = WorstResidual(pose, model, world);
+            return pose;
         }
     }
 }

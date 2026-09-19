@@ -4,6 +4,6 @@ import type { Config } from "../config.js";
 export function renderToolQuery(query: string, cfg: Pick<Config, "jinaEmbedId" | "jinaRerankId">): string {
   let q = query;
   if (!cfg.jinaEmbedId) q = q.replace(/ OR MATCH\(text_semantic, \?query\)/, "");
-  if (!cfg.jinaRerankId) q = q.replace(/ \| RERANK [^|]+?(?= \|)/, "");
+  if (!cfg.jinaRerankId) q = q.replace(/ \| RERANK [^|]+?(?= \||$)/, "");
   return q.replaceAll("${JINA_RERANK_ID}", cfg.jinaRerankId);
 }

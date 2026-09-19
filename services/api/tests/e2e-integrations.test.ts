@@ -31,7 +31,7 @@ const json = (res: ServerResponse, status: number, body: unknown, headers: Recor
 };
 
 // ── stand-in Kibana: Agent Builder tools API + MCP endpoint ─────────────────────────────────────────────────
-const kibana = { created: [] as any[], xsrf: [] as string[], mcpAuth: [] as string[], webhook: "", logIssueCalls: 0, webhookReplies: [] as any[] };
+const kibana = { created: [] as any[], xsrf: [] as string[], mcpAuth: [] as string[], webhook: "", logIssueCalls: 0, webhookReplies: [] as any[], initializes: 0, failNextCall: false, rejectCreate: false, hangSearch: true };
 const esqlResult = (columns: { name: string; type: string }[], values: unknown[][]) =>
   ({ content: [{ type: "text" as const, text: JSON.stringify({ results: [{ type: "esql_results", data: { columns, values } }] }) }] });
 function fakeAgentBuilder() {
@@ -40,7 +40,9 @@ function fakeAgentBuilder() {
     esqlResult([{ name: "part_id", type: "keyword" }, { name: "name", type: "text" }], [["part_left_rear_leg", "Left rear leg"], ["part_right_rear_leg", "Right rear leg"]]));
   s.tool("cutonce_lookup_material", { text: z.string() }, async () => esqlResult([{ name: "material_id", type: "keyword" }], [["mat_leg_700"]]));
   s.tool("cutonce_build_history", { assembly_id: z.string() }, async () => esqlResult([{ name: "version", type: "integer" }], [[1], [2], [3]]));
-  s.tool("cutonce_search_documents", { query: z.string() }, async () => new Promise<never>(() => undefined)); // hangs, to force the fallback
+  s.tool("cutonce_search_documents", { query: z.string() }, async () => kibana.hangSearch
+    ? new Promise<never>(() => undefined) // hangs, to force the fallback
+    : esqlResult([{ name: "chunk_id", type: "keyword" }], [["chunk_desk_drawings_p2_1"]]));
   s.tool("cutonce_log_issue", { issue_id: z.string(), part_id: z.string(), note: z.string() }, async ({ issue_id, part_id, note }) => {
     kibana.logIssueCalls++;
     // Like the real Workflow with "wait for completion" on: it calls our webhook, and answers only after we gave up.
@@ -56,16 +58,20 @@ async function kibanaHandler(req: IncomingMessage, res: ServerResponse) {
   if (url.startsWith("/api/agent_builder/mcp")) {
     kibana.mcpAuth.push(String(req.headers.authorization ?? ""));
     const body = req.method === "POST" ? await readBody(req) : "";
+    const msg = body ? JSON.parse(body) : undefined;
+    if (msg?.method === "initialize") kibana.initializes++;
+    if (msg?.method === "tools/call" && kibana.failNextCall) { kibana.failNextCall = false; return json(res, 500, { message: "Kibana restarting" }); }
     const server = fakeAgentBuilder();
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined }); // stateless, like Kibana's
     res.on("close", () => { void transport.close(); void server.close(); });
     await server.connect(transport);
-    await transport.handleRequest(req, res, body ? JSON.parse(body) : undefined);
+    await transport.handleRequest(req, res, msg);
     return;
   }
   if (req.method === "GET" && url.startsWith("/api/agent_builder/tools/")) return json(res, 404, { message: "not found" });
   if (req.method === "POST" && url === "/api/agent_builder/tools") {
     kibana.xsrf.push(String(req.headers["kbn-xsrf"] ?? ""));
+    if (kibana.rejectCreate) return json(res, 400, { message: "[configuration.params.query.type]: expected string" });
     kibana.created.push(JSON.parse(await readBody(req)));
     return json(res, 200, { ok: true });
   }
@@ -156,6 +162,17 @@ describe("Agent Builder over real MCP", () => {
   });
 });
 
+describe("MCP session recovery", () => {
+  it("drops a failed session, so the next call reconnects instead of reusing a broken client", async () => {
+    await callKnowledgeTool(t.app.ctx, "find_parts", { query: "leg" }); // warm session
+    const before = kibana.initializes;
+    kibana.failNextCall = true;
+    expect(await callKnowledgeTool(t.app.ctx, "find_parts", { query: "leg" })).toMatchObject({ via: "direct" });
+    expect(await callKnowledgeTool(t.app.ctx, "find_parts", { query: "leg" })).toMatchObject({ via: "mcp" });
+    expect(kibana.initializes).toBe(before + 1);
+  });
+});
+
 describe("Elasticsearch on the wire", () => {
   it("hybrid retrieve sends one retriever tree (rerank around RRF) and maps hits", async () => {
     const before = es.searches.length;
@@ -206,12 +223,16 @@ describe("OpenAI on the wire (copilot schema)", () => {
 });
 
 describe("pnpm elastic:setup against stand-in Kibana", () => {
-  it("creates the four ES|QL tools with 9.4 types and rendered queries, then smoke-tests each (a hung tool times out)", async () => {
-    const { stdout } = await run("pnpm", ["exec", "tsx", "src/cli/elastic-setup.ts"], {
+  it("creates the four ES|QL tools with 9.4 types and rendered queries, then smoke-tests each (a hung tool times out and fails the run)", async () => {
+    const started = Date.now();
+    const err = await run("pnpm", ["exec", "tsx", "src/cli/elastic-setup.ts"], {
       cwd: new URL("..", import.meta.url).pathname, timeout: 60_000,
       env: { ...process.env, KIBANA_URL: kib.url, ES_API_KEY: "test-api-key", AGENT_BUILDER_MCP_URL: "", JINA_EMBED_ID: ".jina-embeddings-v5-text-small",
         JINA_RERANK_ID: ".jina-reranker-v3", SMOKE_TIMEOUT_MS: "1000" },
-    });
+    }).then(() => null, (e) => e);
+    expect(err?.code).toBe(1); // exits by itself (no hard exit), with a failing status
+    expect(Date.now() - started).toBeLessThan(30_000);
+    const stdout: string = err?.stdout ?? "";
     expect(kibana.created.map((c) => c.id).sort()).toEqual(["cutonce_build_history", "cutonce_find_parts", "cutonce_lookup_material", "cutonce_search_documents"]);
     expect(kibana.xsrf.every((x) => x === "true")).toBe(true);
     for (const tool of kibana.created) {
@@ -221,6 +242,20 @@ describe("pnpm elastic:setup against stand-in Kibana", () => {
     expect(kibana.created.find((c) => c.id === "cutonce_search_documents").configuration.query).toContain('"inference_id": ".jina-reranker-v3"');
     expect(stdout.match(/^created /gm)).toHaveLength(4);
     expect(stdout).toContain("smoke ok    cutonce_find_parts: 2 rows");
-    expect(stdout).toMatch(/smoke FAIL  cutonce_search_documents: no answer after 1000 ms/);
+    expect(stdout).toMatch(/smoke FAIL  cutonce_search_documents: timed out after 1000 ms/);
+  }, 70_000);
+
+  it("exits non-zero when Kibana rejects a tool, and treats a blank SMOKE_TIMEOUT_MS as the default", async () => {
+    kibana.rejectCreate = true; kibana.hangSearch = false;
+    try {
+      const err = await run("pnpm", ["exec", "tsx", "src/cli/elastic-setup.ts"], {
+        cwd: new URL("..", import.meta.url).pathname, timeout: 60_000,
+        env: { ...process.env, KIBANA_URL: kib.url, ES_API_KEY: "test-api-key", AGENT_BUILDER_MCP_URL: "", JINA_EMBED_ID: "", JINA_RERANK_ID: "", SMOKE_TIMEOUT_MS: "" },
+      }).then(() => null, (e) => e);
+      expect(err?.code).toBe(1);
+      expect(err?.stdout).toMatch(/FAILED 400 +cutonce_find_parts/);
+      expect(err?.stdout).toContain("up to 15000 ms each");
+      expect(err?.stdout).toMatch(/smoke ok    cutonce_search_documents: 1 rows/);
+    } finally { kibana.rejectCreate = false; kibana.hangSearch = true; }
   }, 70_000);
 });

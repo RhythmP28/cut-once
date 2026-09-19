@@ -61,18 +61,43 @@ for tilt in (2, 5):
     for calls in (1, 2, 5):
         tr, rr = refine(t, r, [A1, A2, A3], W, calls)
         print(f"   refine with {calls} call(s): worst error {max(np.linalg.norm(apply(tr, rr, a) - w) for a, w in zip((A1, A2, A3), W))*1000:.3f} mm")
-    tr, rr = refine(np.zeros(3), np.array([0, 0, 0, 1.0]), [A1, A2, A3], W, 1)
-    print(f"   cold start (no two-point first), 1 call: worst error {max(np.linalg.norm(apply(tr, rr, a) - w) for a, w in zip((A1, A2, A3), W))*1000:.1f} mm")
 
-# PartProjector: stand-in viewport = world x/y + 0.5; JPEG flip
-def project(center, size, W=1280, H=960):
-    c, e = np.array(center), np.array(size) / 2
-    corners = [c + e * np.array([sx, sy, sz]) for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)]
-    if any(p[2] <= 0.1 for p in corners): return None
-    vp = np.array([[p[0] + 0.5, p[1] + 0.5] for p in corners]); mn, mx = vp.min(0), vp.max(0)
+# Cold start (refine from identity, no two-point pose first) only converges for small headings; the refine needs the pre-alignment.
+for yaw in (37, 90, 135, 180):
+    tq = qmul(aa(yaw, up), aa(5, [1, 0, 0])); W = [apply(T, tq, a) for a in (A1, A2, A3)]
+    worst = lambda tr, rr: max(np.linalg.norm(apply(tr, rr, a) - w) for a, w in zip((A1, A2, A3), W)) * 1000
+    cold = [worst(*refine(np.zeros(3), np.array([0, 0, 0, 1.0]), [A1, A2, A3], W, n)) for n in (1, 20)]
+    t, r, _, _ = solve_two_point(A1, A2, W[0], W[1])
+    print(f"heading {yaw:3d} deg, 5 deg tilt: cold start 1 call {cold[0]:6.1f} mm, 20 calls {cold[1]:6.1f} mm"
+          f" | two-point then 5 calls {worst(*refine(t, r, [A1, A2, A3], W, 5)):.3f} mm")
+
+# Stickers m1 and m2 swapped: no rigid pose fits, so the refine must not be trusted without its residual.
+W = [apply(T, truth, a) for a in (A2, A1, A3)]
+t, r, base, _ = solve_two_point(A1, A2, W[0], W[1])
+tr, rr = refine(t, r, [A1, A2, A3], W, 5)
+worst = max(np.linalg.norm(apply(tr, rr, a) - w) for a, w in zip((A1, A2, A3), W))
+print(f"m1/m2 swapped: baseline {base*1000:.2f} mm (blind to it), m3 after two-point {np.linalg.norm(apply(t, r, A3) - W[2])*1000:.0f} mm, "
+      f"worst after refine {worst*1000:.0f} mm   (plan: > 4 mm, so the pose is rejected)")
+
+# PartProjector: corners behind the near plane are clipped away along the box's 12 edges, not allowed to drop the part.
+NEAR = 0.1
+ortho = lambda p: (p[0] + 0.5, p[1] + 0.5)                          # stand-in camera used by the C# tests
+persp = lambda p: (0.5 + 0.5 * p[0] / p[2], 0.5 + 0.5 * p[1] / p[2])  # 90° pinhole looking down +z
+def project(center, size, vp=ortho, W=1280, H=960):
+    c, e = np.array(center, float), np.array(size, float) / 2
+    corners = [c + e * np.array([1 if i & 1 else -1, 1 if i & 2 else -1, 1 if i & 4 else -1]) for i in range(8)]
+    d = [p[2] - NEAR for p in corners]  # depth along the camera's forward, minus the near plane
+    pts = [corners[i] for i in range(8) if d[i] >= 0]
+    pts += [corners[i] + (corners[j] - corners[i]) * d[i] / (d[i] - d[j])
+            for i in range(8) for bit in (1, 2, 4) if (j := i ^ bit) > i and (d[i] >= 0) != (d[j] >= 0)]
+    if not any(x >= 0 for x in d): return None
+    v = np.array([vp(p) for p in pts]); mn, mx = v.min(0), v.max(0)
     full = np.prod(mx - mn); cmn, cmx = np.maximum(mn, 0), np.minimum(mx, 1)
-    if (cmx <= cmn).any(): return None
+    if (cmx <= cmn).any() or full <= 0: return None
     return (cmn[0]*W, (1 - cmx[1])*H, (cmx[0]-cmn[0])*W, (cmx[1]-cmn[1])*H), np.prod(cmx - cmn) / full
 b, f = project([0, 0, 1], [0.2]*3); print("projector centred:", tuple(round(v, 1) for v in b), "inFrame", round(f, 3), " (plan: 512, 384, 256, 192, 1.0)")
 print("projector flip: top y", round(project([0, .3, 1], [.1]*3)[0][1]), "< bottom y", round(project([0, -.3, 1], [.1]*3)[0][1]))
 print("projector behind camera:", project([0, 0, -1], [.1]*3), "| half off-screen inFrame:", round(project([.5, 0, 1], [.2]*3)[1], 3))
+# Tabletop 0.5 m below the eyes, running from 0.2 m behind the camera to 0.8 m ahead: most of it fills the bottom of the photo.
+b, f = project([0, -0.475, 0.3], [1.0, 0.05, 1.0], persp)
+print("projector tabletop partly behind camera:", tuple(round(v, 1) for v in b), "inFrame", round(f, 3), " (plan: kept, full width, bottom edge 960)")

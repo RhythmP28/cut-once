@@ -20,3 +20,6 @@ it("without embeddings: keyword match only", () => expect(renderToolQuery(q, { j
 it("never leaves a placeholder", () => {
   for (const cfg of [{ jinaEmbedId: "a", jinaRerankId: "b" }, { jinaEmbedId: "", jinaRerankId: "" }]) expect(renderToolQuery(q, cfg)).not.toContain("${");
 });
+
+it("drops a RERANK stage even when it is the last stage", () =>
+  expect(renderToolQuery("FROM x | WHERE MATCH(text, ?query) | RERANK ?query ON text WITH { \"inference_id\": \"${JINA_RERANK_ID}\" }", { jinaEmbedId: "", jinaRerankId: "" })).toBe("FROM x | WHERE MATCH(text, ?query)"));

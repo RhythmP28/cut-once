@@ -726,8 +726,9 @@ Expected: `blueprint corrected: 5`.
 - Test: `apps/quest/Assets/CutOnce/Copilot/Tests/PartProjectorTests.cs`
 
 **Interfaces:**
-- Produces: `PartProjector.TryProject(Bounds world, Func<Vector3, Vector3> worldToViewport, Func<Vector3, bool> inFront, int width, int height, out Rect boxPx, out float inFrame): bool`
-- On device, `worldToViewport = p => pca.WorldToViewportPoint(p, cachedPose)`, with `cachedPose = pca.GetCameraPose()` read in the same step as `GetColors()`. `inFront = p => Vector3.Dot(p - cachedPose.position, cachedPose.forward) > 0.1f`.
+- Produces: `PartProjector.TryProject(Bounds world, Func<Vector3, Vector3> worldToViewport, Func<Vector3, float> depth, int width, int height, out Rect boxPx, out float inFrame): bool`
+- On device, `worldToViewport = p => pca.WorldToViewportPoint(p, cachedPose)`, with `cachedPose = pca.GetCameraPose()` read in the same step as `GetColors()`. `depth = p => Vector3.Dot(p - cachedPose.position, cachedPose.forward)`.
+- Review fix (2026-09-19): the box is clipped at 0.1 m in front of the camera along its 12 edges, so a part that runs behind the operator (the tabletop) is kept rather than dropped. The code on disk supersedes the listing below.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -866,7 +867,7 @@ namespace CutOnce.AR {
 - Copy: `apps/quest/Assets/CutOnce/AR/Alignment/ThirdParty/Kabsch.cs` from `https://github.com/zalo/MathUtilities/blob/master/Assets/Kabsch/Kabsch.cs` (Unlicense, public domain; keep its header and add a `// Source:` line)
 - Test: `apps/quest/Assets/CutOnce/AR/Tests/AlignmentSolverTests.cs`
 
-**Interfaces:** Produces `AlignmentSolver.SolveTwoPoint(a1, a2, w1, w2, out float baselineResidual, out float levelError): Pose`, `AlignmentSolver.Residual(Pose, Vector3 model, Vector3 world): float`, and `AlignmentSolver.RefineThreePoint(Pose initial, Vector3[] model, Vector3[] world): Pose`. Model points are already in Unity space (X negated).
+**Interfaces:** Produces `AlignmentSolver.SolveTwoPoint(a1, a2, w1, w2, out float baselineResidual, out float levelError): Pose`, `AlignmentSolver.Residual(Pose, Vector3 model, Vector3 world): float`, `AlignmentSolver.WorstResidual(Pose, Vector3[] model, Vector3[] world): float`, and `AlignmentSolver.RefineThreePoint(Pose initial, Vector3[] model, Vector3[] world, out float worstResidual, int calls = 5): Pose`. Model points are already in Unity space (X negated). Lock only if `worstResidual` < 4 mm: the rigid fit returns a pose even for swapped stickers (review fix 2026-09-19; the code on disk supersedes the listing below).
 
 **Options for the tilt fallback:** (a) zalo's Kabsch (public domain, iterative); (b) write an SVD-based fit ourselves; (c) no fallback. **Chosen: (a), started from the two-point answer.** No licence concerns (K9). The research found it runs 9 iterations from its previous answer, so a large rotation may not converge from a cold start. Giving it only the small leftover tilt removes that risk. (c) leaves a tilted surface with no answer (blueprint risk 19).
 

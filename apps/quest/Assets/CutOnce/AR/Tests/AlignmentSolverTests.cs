@@ -28,7 +28,19 @@ public class AlignmentSolverTests
         var tilted = Tilted(5f);
         var model = new[] { A1, A2, A3 };
         var world = new[] { Apply(tilted, A1), Apply(tilted, A2), Apply(tilted, A3) };
-        var p = AlignmentSolver.RefineThreePoint(AlignmentSolver.SolveTwoPoint(A1, A2, world[0], world[1], out _, out _), model, world);
+        var p = AlignmentSolver.RefineThreePoint(AlignmentSolver.SolveTwoPoint(A1, A2, world[0], world[1], out _, out _), model, world, out var worst);
         for (int i = 0; i < 3; i++) Assert.Less(Vector3.Distance(Apply(p, model[i]), world[i]), 0.001f);
+        Assert.Less(worst, 0.001f);
+    }
+
+    [Test] public void SwappedStickersAreRejectedAfterTheRefine() // numerically: 729 mm; the baseline check cannot see it
+    {
+        var truth = Tilted(0f);
+        var model = new[] { A1, A2, A3 };
+        var world = new[] { Apply(truth, A2), Apply(truth, A1), Apply(truth, A3) }; // m1 and m2 stuck on each other's spot
+        var p = AlignmentSolver.SolveTwoPoint(A1, A2, world[0], world[1], out var baseline, out _);
+        Assert.Less(baseline, 1e-4f);
+        AlignmentSolver.RefineThreePoint(p, model, world, out var worst);
+        Assert.Greater(worst, 0.004f);
     }
 }
