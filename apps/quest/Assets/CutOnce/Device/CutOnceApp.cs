@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -40,6 +41,7 @@ namespace CutOnce.Device
         int _seenConnects; string _lastEventId, _toastRun;
         Action<WsMessageDto> _handleMessage;                          // cached: a method group in Update would allocate a delegate every frame
         bool _waitForMarkRelease;
+        readonly ConcurrentQueue<(string permission, bool granted)> _permissionAnswers = new ConcurrentQueue<(string, bool)>();   // filled from Android's thread
 
         // ── start-up ─────────────────────────────────────────────────────────────────────────────────────────────
         void Awake()
@@ -182,6 +184,10 @@ namespace CutOnce.Device
             }
             if (_highlighted.Count > 0 && Time.time >= _highlightUntil) { _highlighted.Clear(); _dirty = true; }
             if (_alignment.State == AlignmentState.Locked) ReadMarkButton();
+            while (_permissionAnswers.TryDequeue(out var answer))
+                if (!answer.granted) _hud.Toast(answer.permission == QuestPermissions.Camera
+                    ? "Camera not allowed: the copilot answers without seeing the desk. Allow it in Settings > Privacy."
+                    : "Microphone not allowed: use the question buttons, or allow it in Settings > Privacy.", 6f);
             if (_dirty) Refresh();
         }
 
@@ -259,6 +265,9 @@ namespace CutOnce.Device
                 controller.pushToTalkBehaviour = go.AddComponent<QuestPushToTalk>();
                 controller.mic = go.AddComponent<MicRecorder>(); controller.speaker = go.AddComponent<PcmStreamPlayer>();
                 go.SetActive(true);
+                // AGENTS rule 3: ask on the headset before first use (the Editor grants at once). The camera waits for its
+                // grant by itself; a refusal only costs the copilot its eyes or ears, so the HUD says what still works.
+                QuestPermissions.Request(new[] { QuestPermissions.Camera, QuestPermissions.Microphone }, (p, ok) => _permissionAnswers.Enqueue((p, ok)));
             }
             catch (Exception e) { Debug.LogWarning("[CutOnce] The copilot could not be created; the build guide still works: " + e.Message); }
         }
