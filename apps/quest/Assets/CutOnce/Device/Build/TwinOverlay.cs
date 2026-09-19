@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Globalization;
 using CutOnce.AR;
@@ -58,26 +57,16 @@ namespace CutOnce.Device
             position = default; rotation = Quaternion.identity;
             if (twinId == null || !_twins.TryGetValue(twinId, out var t)) return false;
             position = ModelSpace.Point(t.position);
-            rotation = ModelSpace.Rotation(YawQuat(t.yaw_deg));
+            rotation = TwinPose.Rotation(t.yaw_deg);
             return true;
         }
 
-        /// <summary>
-        /// Where a design part has to start so that it lies exactly on its real object. A build plan never rotates a part:
-        /// it reorders a box's size (a book stood upright swaps x and y), so the start is the real object's turn times the
-        /// turn that puts each of the design's axes back on the real axis of that length. The flight undoes it on the way.
-        /// </summary>
+        /// <summary>Where a design part has to start so that it lies exactly on its real object (TwinPose.StartRotation). The flight undoes the turn on the way.</summary>
         public bool TryGetStartPose(string twinId, PartDto part, out Vector3 position, out Quaternion rotation)
         {
             if (!TryGetWorldPose(twinId, out position, out rotation)) return false;
-            var real = _twins[twinId].shape; var design = part?.shape;
-            if (design == null || design.type != real.type) return true;
-            if (real.type == "cylinder") rotation *= ModelSpace.AxisFromY(real.axis);      // the mesh runs along its own +Y
-            else if (real.type == "box")
-            {
-                var order = FlyPath.MatchAxes(design.size, real.size);
-                rotation *= Quaternion.LookRotation(Axis(order[2]), Axis(order[1]));      // x follows: a box looks the same either way round
-            }
+            var twin = _twins[twinId];
+            rotation = TwinPose.StartRotation(twin.yaw_deg, twin.shape, part?.shape);
             return true;
         }
 
@@ -98,12 +87,10 @@ namespace CutOnce.Device
         /// <summary>A twin is a box or a cylinder (TwinShape). Anything else, or a box with no size, is skipped rather than thrown on.</summary>
         static bool Drawable(ShapeDto s) => s != null && (s.type == "box" ? s.size != null && s.size.Length == 3 : s.type == "cylinder" && s.diameter > 0 && s.length > 0);
         static bool IsNamed(TwinDto t) => !string.IsNullOrEmpty(t.name) && t.name != "unknown";
-        static Vector3 Axis(int i) => i == 0 ? Vector3.right : i == 1 ? Vector3.up : Vector3.forward;
 
         static PartDto AsPart(TwinDto t) => new PartDto
-        { part_id = "part_" + t.twin_id, name = t.label, kind = t.name, layer = "scan", shape = t.shape, position = t.position, rotation_quat = YawQuat(t.yaw_deg) };
+        { part_id = "part_" + t.twin_id, name = t.label, kind = t.name, layer = "scan", shape = t.shape, position = t.position, rotation_quat = TwinPose.YawQuat(t.yaw_deg) };
 
-        static double[] YawQuat(double deg) { double h = deg * Math.PI / 360.0; return new[] { 0.0, Math.Sin(h), 0.0, Math.Cos(h) }; }
         static double Height(ShapeDto s) => s.type == "box" ? s.size[1] : s.axis == "y" ? s.length : s.diameter;
 
         static string Caption(TwinDto t)

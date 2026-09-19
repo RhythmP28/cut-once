@@ -74,11 +74,14 @@ namespace CutOnce.Device.PlayTests
             var alignment = hologram.GetComponent<AlignmentController>();
             Assert.That(new object[] { alignment.State, alignment.Method }, Is.EqualTo(new object[] { AlignmentState.Locked, "build" }));
             Assert.That(hologram.gameObject.activeSelf, Is.True, "the design is shown");
-            Assert.That(Vector3.Distance(hologram.transform.position, ModelSpace.Point(idea.origin.position)), Is.LessThan(1e-4f), "locked where the server put it");
-            Assert.That(Quaternion.Angle(hologram.transform.rotation, ModelSpace.Rotation(idea.origin.rotation_quat)), Is.LessThan(0.05f));
+            // The fixture's origin is [0.1, 0.74, 0.5] with a right-handed yaw of +45° about +Y (quat [0, 0.3826834, 0, 0.9238795]):
+            // in Unity x is mirrored, so (-0.1, 0.74, 0.5), and the design's front (+Z) turns to (sin -45°, 0, cos -45°).
+            Assert.That(Vector3.Distance(hologram.transform.position, new Vector3(-0.1f, 0.74f, 0.5f)), Is.LessThan(1e-4f), $"locked where the server put it: {hologram.transform.position:F4}");
+            Assert.That(Vector3.Distance(hologram.transform.forward, new Vector3(-0.70710678f, 0f, 0.70710678f)), Is.LessThan(1e-4f), $"turned as the server said: {hologram.transform.forward:F4}");
+            Assert.That(Vector3.Distance(hologram.transform.up, Vector3.up), Is.LessThan(1e-4f), "and level");
             Assert.That(Phase(mode), Is.EqualTo(BuildPhase.Assembling));
             var can = hologram.ViewOf("part_o1");
-            Assert.That(Vector3.Distance(can.transform.position, ModelSpace.Point(canInRoom)), Is.LessThan(1e-4f), "the can's hologram starts on the real can");
+            Assert.That(Vector3.Distance(can.transform.position, new Vector3(-0.6f, 0.8185f, 0.9f)), Is.LessThan(1e-4f), $"the can's hologram starts on the real can, at (0.6, 0.8185, 0.9) in the plan's frame: {can.transform.position:F4}");
             var hud = GameObject.Find("[HUD]").transform;
             var stoodBehindTheDesign = hud.position;                            // stood by the lock, before the pieces left for their objects
 
@@ -93,7 +96,7 @@ namespace CutOnce.Device.PlayTests
 
             for (float waited = 0f; waited < 8f && Phase(mode) != BuildPhase.Walkthrough; waited += Time.unscaledDeltaTime) yield return null;
             Assert.That(Phase(mode), Is.EqualTo(BuildPhase.Walkthrough), "the fly-together never finished");
-            Assert.That(Vector3.Distance(can.transform.localPosition, ModelSpace.Point(idea.plan.parts[1].position)), Is.LessThan(1e-5f), "and ends exactly in its place in the design");
+            Assert.That(Vector3.Distance(can.transform.localPosition, new Vector3(0f, 0.0785f, 0f)), Is.LessThan(1e-5f), "and ends exactly in its place in the design (the plan's [0, 0.0785, 0])");
             Assert.That(Quaternion.Angle(can.transform.localRotation, Quaternion.identity), Is.LessThan(0.01f));
             yield return null;
             Assert.That(GameObject.Find("[BuildTwins]").transform.childCount, Is.EqualTo(0), "the outlines over the real objects go once the pieces have left them");
@@ -127,15 +130,24 @@ namespace CutOnce.Device.PlayTests
         [UnityTest]
         public IEnumerator AScanThatFindsNoDepthLeavesBuildModeOffAndTheHologramShowing()
         {
-            // The Editor has the copilot's stored photo but no depth sensor, so every ray misses and the scan fails with a reason.
+            // The Editor has no depth sensor, so every one of the 128 × 96 rays misses and the scan fails with a reason. The
+            // camera is a stand-in that always has a picture: with the copilot's stored photo (only there after pnpm
+            // sync:fixtures) the scan would have failed before casting a ray, and this test would have proved nothing.
             var app = StartApp("[App] (build scan test)", copilot: true);
-            for (float waited = 0f; waited < 15f && (Hologram() == null || Hologram().Views.Count == 0); waited += Time.unscaledDeltaTime) yield return null;
+            yield return UntilTheFirstRunShows();
             var mode = BuildModeOf();
+            CutOnce.Copilot.CopilotController copilot = null;
+            yield return Until(() => (copilot = UnityEngine.Object.FindAnyObjectByType<CutOnce.Copilot.CopilotController>()) != null, 5f, "the app did not create the copilot");
+            copilot.frameSourceBehaviour = copilot.gameObject.AddComponent<StubFrames>();
+            LogAssert.Expect(LogType.Log, new System.Text.RegularExpressions.Regex(@"\[CutOnce\] Scan: 0/12288 depth hits"));
 
             Call(mode, "StartScan");
-            for (float waited = 0f; waited < 10f && Phase(mode) != BuildPhase.Off; waited += Time.unscaledDeltaTime) yield return null;
+            Assert.That(Phase(mode), Is.EqualTo(BuildPhase.Scanning), "the scan did not start");
+            Assert.That(Hologram().gameObject.activeSelf, Is.False, "the run that was showing is out of the way while the room is scanned");
+            yield return Until(() => Phase(mode) == BuildPhase.Off, 15f, "a scan with no depth did not end with build mode off");
 
             Assert.That(new object[] { Phase(mode), ModeOf(app), Hologram().gameObject.activeSelf }, Is.EqualTo(new object[] { BuildPhase.Off, "overlay", true }));
+            Assert.That(Toast(), Does.StartWith("Couldn't scan: no depth here yet"));
             UnityEngine.Object.Destroy(app.gameObject);
             yield return null;
         }
