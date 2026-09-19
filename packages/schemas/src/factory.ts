@@ -216,9 +216,15 @@ export function buildSchemas(mode: Mode) {
   ]);
   const TwinMaterial = z.enum(["cardboard", "metal", "plastic", "glass", "wood", "paper", "fabric", "ceramic", "other"]);
   /** A flat, level surface: its height, and its extent as x/z min and max. */
+  /**
+   * A flat place things stand on. min/max is its box along the room's axes; rect is its own outline (yaw_deg turns local
+   * +X onto its long side, like a twin's). The headset's frame points wherever it started, so a table is almost never
+   * square to the axes, and its box then covers floor the table does not. Without a rect, the box is the outline.
+   */
   const Surface = o({
     surface_id: z.string().regex(/^s[0-9]+$/), kind: z.enum(["floor", "table", "shelf", "other"]),
     y: z.number(), min: Vec2, max: Vec2, points: z.number().int().min(0),
+    rect: o({ centre: Vec2, len: z.number().positive(), wid: z.number().positive(), yaw_deg: z.number() }).optional(),
   });
   /** One real object: where it is in the room (plan frame, its centre), how big, what it is. yaw_deg turns its local +X onto its long side. */
   const Twin = o({

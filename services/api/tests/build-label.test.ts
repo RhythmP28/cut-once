@@ -21,6 +21,19 @@ describe("applyLabels", () => {
     expect(out.filter((t) => t.name === "tall_can")).toHaveLength(3);
     expect(out.every((t) => t.label === "tall can")).toBe(true);
   });
+  it("splits a lump of two cans along the lump, whichever way it lies", () => {
+    // Two cans standing one behind the other: a 13.2 × 6.6 cm lump whose long side runs along z (yaw -90).
+    const lumpTwin: Twin = { ...twins[0]!, twin_id: "o1", shape: { type: "box", size: [0.132, 0.157, 0.066] }, position: [0, 0.8185, 0.6], yaw_deg: -90 };
+    const out = applyLabels([lumpTwin], { objects: [item(1, { count: 2 })], missed: [] }, vocab, surfaces, cloud, 1024 / 1280);
+    expect(out).toHaveLength(2);
+    const at = out.map((t) => [Math.round(t.position[0] * 1000) || 0, Math.round(t.position[2] * 1000) || 0]).sort((a, b) => a[1]! - b[1]!);
+    expect(at).toEqual([[0, 567], [0, 633]]);
+  });
+  it("takes what an object is made of, and whether it holds weight, from the vocabulary when it knows the object", () => {
+    const out = applyLabels(twins, { objects: [item(1, { name: "paper_cup", material: "metal", load_bearing: true, cuttable: false })], missed: [] }, vocab, surfaces, cloud, 1024 / 1280);
+    const cup = out.find((t) => t.name === "paper_cup")!;
+    expect([cup.material, cup.load_bearing, cup.cuttable]).toEqual([vocab.get("paper_cup")!.material, false, vocab.get("paper_cup")!.cuttable]);
+  });
   it("drops what is not an object and calls unknown names 'other' with their own label", () => {
     const out = applyLabels(twins, { objects: [item(1, { is_object: false }), item(2, { name: "banana", other_name: "banana" })], missed: [] }, vocab, surfaces, cloud, 1024 / 1280);
     expect(out).toHaveLength(1);

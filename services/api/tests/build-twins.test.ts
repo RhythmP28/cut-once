@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Vec3 } from "@cutonce/schemas";
-import { buildTwins, decodeScan, minAreaRect, yawQuat } from "../src/build/twins.js";
+import { Strict } from "@cutonce/schemas";
+import { onSurface, buildTwins, decodeScan, minAreaRect, yawQuat } from "../src/build/twins.js";
 import { heightOf } from "../src/build/shape.js";
 import { CAMERA, FLOOR, KIT, TABLE, box, can, synthScan, turned, type Prim } from "./build-synth.js";
 
@@ -26,8 +27,8 @@ describe("objects on the table and the floor", () => {
     const table = surfaces.find((s) => s.kind === "table")!, floor = surfaces.find((s) => s.kind === "floor")!;
     const theCan = twins.find((t) => t.shape.type === "cylinder")!;
     expect(theCan.sits_on).toBe(table.surface_id);
-    expect(theCan.shape.type === "cylinder" && theCan.shape.diameter).toBeCloseTo(0.066, 1);
-    expect(heightOf(theCan.shape)).toBeCloseTo(0.157, 1);
+    expect(Math.abs((theCan.shape.type === "cylinder" ? theCan.shape.diameter : NaN) - 0.066)).toBeLessThan(0.02);
+    expect(Math.abs(heightOf(theCan.shape) - 0.157)).toBeLessThan(0.02);
     const floorBox = twins.find((t) => t.sits_on === floor.surface_id)!;
     expect(floorBox.shape.type).toBe("box");
     expect(Math.abs(heightOf(floorBox.shape) - 0.3)).toBeLessThan(0.02);
@@ -144,5 +145,40 @@ describe("a real table, a real pile, real depth noise", () => {
     const [inView, clipped] = [...twins].sort((a, b) => a.position[0] - b.position[0]);
     expect(inView!.error_m).toBeLessThan(0.05);
     expect(clipped!.error_m).toBeGreaterThan(0.15);
+  });
+});
+
+/**
+ * The headset's tracking frame points wherever the headset was when it started, so a real table is almost never square
+ * to the room's axes. Its box along those axes is bigger than the table, by the corners the table does not have.
+ */
+describe("a table turned 30° in the room", () => {
+  const turnedTable = turned(0, 1.0, 1.2, 0.02, 0.6, 30, 0.72);
+  // On the floor just past the table's end: inside the table's box along the room's axes, but not under the table.
+  const floorBox = box(0.5, 0.55, 0.2, 0.2, 0.2, 0);
+  const { surfaces, twins } = run([FLOOR, turnedTable, can(0, 1.0), floorBox]);
+  const table = surfaces.find((q) => q.kind === "table")!;
+
+  it("keeps the table's own outline: its true length and width, not the box around it", () => {
+    expect(table.rect).toBeDefined();
+    expect(Math.abs(table.rect!.len - 1.2)).toBeLessThan(0.08);
+    expect(Math.abs(table.rect!.wid - 0.6)).toBeLessThan(0.08);
+    expect(table.max[0] - table.min[0]).toBeGreaterThan(1.25);        // the box along the room's axes is wider than the table
+  });
+  it("still finds the box on the floor beside it: it is not furniture under the table", () => {
+    const floor = surfaces.find((q) => q.kind === "floor")!;
+    expect(twins.map((t) => t.sits_on).sort()).toEqual([floor.surface_id, table.surface_id].sort());
+  });
+  it("says a point in the box's empty corner is not on the table", () => {
+    expect(onSurface(table, 0, 1.0, 0)).toBe(true);
+    expect(onSurface(table, table.max[0] - 0.03, table.min[1] + 0.03, 0)).toBe(false);
+  });
+});
+
+describe("a flat card seen face-on, with no noise (what the simulator gives)", () => {
+  it("never yields a twin with a side of zero: the stream's schema, and a replay's saved labels, refuse one", () => {
+    const { twins } = run([FLOOR, TABLE, box(0, 0.5, 0.056, 0.141, 0.001)]);
+    for (const t of twins) expect(() => Strict.Twin.parse({ ...t, twin_id: "o1" })).not.toThrow();
+    for (const t of twins) expect(Math.min(...(t.shape.type === "box" ? t.shape.size : [t.shape.diameter, t.shape.length]))).toBeGreaterThanOrEqual(0.005);
   });
 });

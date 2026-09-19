@@ -56,6 +56,22 @@ describe("merging scans", () => {
     expect(surfaces[0]!.min).toEqual([-0.8, 0.1]);
     expect(idMap.get("s2")).toBe("s2");
   });
+  it("keeps two tables of the same height apart: a design must not be sited in the aisle between them", () => {
+    const left = table({ surface_id: "s1", min: [-1.3, 0.2], max: [-0.15, 1.0] }), right = table({ surface_id: "s2", min: [0.15, 0.2], max: [1.3, 1.0] });
+    const { surfaces } = mergeSurfaces([], [left, right]);
+    expect(surfaces).toHaveLength(2);
+    expect(mergeSurfaces(surfaces, [table({ surface_id: "s1", min: [-1.2, 0.25], max: [-0.1, 1.05] })]).surfaces).toHaveLength(2);   // the left one seen again
+  });
+  it("takes the shape and its error from the same look, and prefers the look that measured better", () => {
+    const whole = twin({ twin_id: "o1", name: "cardboard_box", shape: { type: "box", size: [0.35, 0.2, 0.35] }, points: 150, error_m: 0.04 });
+    // A closer look cut off by the edge of the photo: more points, half the box, and an error that says so.
+    const cut = twin({ twin_id: "o9", name: "cardboard_box", shape: { type: "box", size: [0.35, 0.2, 0.17] }, points: 300, error_m: 0.175 });
+    const [merged] = mergeTwins([whole], [cut]);
+    expect(merged!.shape).toEqual(whole.shape);
+    expect(merged!.error_m).toBe(0.04);
+    const [other] = mergeTwins([cut], [whole]);
+    expect([other!.shape, other!.error_m]).toEqual([whole.shape, 0.04]);
+  });
   it("appends a Director-added object even where another one stands", () => {
     expect(appendTwin([twin()], twin()).map((t) => t.twin_id)).toEqual(["o1", "o2"]);
   });

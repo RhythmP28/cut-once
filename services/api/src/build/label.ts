@@ -70,8 +70,15 @@ export function applyLabels(marked: Twin[], result: LabelResult, vocab: Vocab, s
     const label = vocab.get(name)?.label ?? (r.other_name?.trim() || "object");
     // The shape type: the vocabulary's when it knows the object, else what the model saw.
     const shape = reshape(t.shape, vocab.get(name)?.shape ?? r.shape);
-    const named: Twin = { ...t, shape, yaw_deg: shape.type === "cylinder" ? 0 : t.yaw_deg, name, label, material: r.material, load_bearing: r.load_bearing, cuttable: r.cuttable, confidence: Math.min(1, Math.max(0, r.confidence)) };
-    out.push(...split(named, Math.max(1, Math.min(6, r.count))));
+    // What it is made of and whether it holds weight: the vocabulary's word when it knows the object. A paper cup the
+    // model calls load-bearing would otherwise end up as a support.
+    const known = vocab.get(name);
+    const named: Twin = {
+      ...t, shape, name, label, confidence: Math.min(1, Math.max(0, r.confidence)),
+      material: known?.material ?? r.material, load_bearing: known?.load_bearing ?? r.load_bearing, cuttable: known?.cuttable ?? r.cuttable,
+    };
+    // Split along the lump's long side first (that needs its yaw); a cylinder itself has no yaw.
+    out.push(...split(named, Math.max(1, Math.min(6, r.count))).map((q) => (q.shape.type === "cylinder" ? { ...q, yaw_deg: 0 } : q)));
   });
   for (const m of result.missed) { const t = placeMissed(m, vocab, surfaces, cloud, scale); if (t) out.push(t); }
   return out;

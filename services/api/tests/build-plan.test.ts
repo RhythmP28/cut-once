@@ -67,6 +67,32 @@ describe("chooseSite", () => {
     expect(Math.abs(moved.position[0] - free.position[0])).toBeGreaterThan(0.4);
   });
 
+  it("keeps the whole design on a table that is turned in the room, wherever the pile is", () => {
+    // A 1.5 × 0.75 m table turned 30°. Its box along the room's axes has four empty corners a design must not land in.
+    const yaw = 30, t = (yaw * Math.PI) / 180, c = Math.cos(t), sn = Math.sin(t);
+    const corner = (u: number, w: number): [number, number] => [u * c + w * sn, 1 - u * sn + w * c];       // centre (0, 1)
+    const xs = [corner(0.75, 0.375), corner(-0.75, 0.375), corner(0.75, -0.375), corner(-0.75, -0.375)];
+    const turnedTable: Surface = {
+      surface_id: "s1", kind: "table", y: 0.74, points: 2000, rect: { centre: [0, 1], len: 1.5, wid: 0.75, yaw_deg: yaw },
+      min: [Math.min(...xs.map((q) => q[0])), Math.min(...xs.map((q) => q[1]))], max: [Math.max(...xs.map((q) => q[0])), Math.max(...xs.map((q) => q[1]))],
+    };
+    const onTable = (x: number, z: number) => { const u = (x - 0) * c - (z - 1) * sn, w = (x - 0) * sn + (z - 1) * c; return Math.abs(u) <= 0.75 + 1e-9 && Math.abs(w) <= 0.375 + 1e-9; };
+    let beside = 0;
+    for (let i = -3; i <= 3; i++) for (let k = -1; k <= 1; k++) {
+      const [px, pz] = corner(i * 0.18, k * 0.12);
+      const pile = { min: [px - 0.1, pz - 0.08] as [number, number], max: [px + 0.1, pz + 0.08] as [number, number] };
+      const site = chooseSite(turnedTable, pile, { w: 0.35, d: 0.35 }, [0, 1.6, -1]);
+      if (Math.hypot(site.position[0] - px, site.position[2] - pz) < 1e-6) continue;              // nothing fitted: built where the pile is
+      beside++;
+      const th = (site.yaw_deg * Math.PI) / 180, r = [Math.cos(th), -Math.sin(th)], f = [Math.sin(th), Math.cos(th)];
+      for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+        const x = site.position[0] + r[0]! * a! * 0.175 + f[0]! * b! * 0.175, z = site.position[2] + r[1]! * a! * 0.175 + f[1]! * b! * 0.175;
+        expect([i, k, onTable(x, z)]).toEqual([i, k, true]);
+      }
+    }
+    expect(beside).toBeGreaterThan(5);
+  });
+
   it("still gives a spot when every clear one is taken", () => {
     const everywhere = [{ min: [-5, -5] as [number, number], max: [5, 5] as [number, number] }];
     const site = chooseSite(table, { min: [-0.1, 0.5], max: [0.1, 0.6] }, { w: 0.35, d: 0.35 }, [0, 1.6, -1], everywhere);

@@ -1,4 +1,5 @@
 import type { Surface, Vec3 } from "@cutonce/schemas";
+import { onSurface } from "./twins.js";
 
 type P2 = [number, number];
 export interface Box2 { min: P2; max: P2 }
@@ -26,7 +27,7 @@ export function chooseSite(surface: Surface, pile: Box2, design: { w: number; d:
   const fits = (c: P2) => ([[-1, -1], [1, -1], [1, 1], [-1, 1]] as P2[]).every(([sx, sz]) => {
     const x = c[0] + right[0] * sx * (design.w / 2) + toward[0] * sz * (design.d / 2);
     const z = c[1] + right[1] * sx * (design.w / 2) + toward[1] * sz * (design.d / 2);
-    return x >= surface.min[0] + 0.02 && x <= surface.max[0] - 0.02 && z >= surface.min[1] + 0.02 && z <= surface.max[1] - 0.02;
+    return onSurface(surface, x, z, -0.02);                 // in the table's own frame: its box along the room's axes has corners the table lacks
   });
   // The turned design's outer bound along the room's axes, against each obstacle's box.
   const reachX = (Math.abs(right[0]) * design.w + Math.abs(toward[0]) * design.d) / 2;

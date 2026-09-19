@@ -526,6 +526,42 @@
                       "points": {
                         "type": "integer",
                         "minimum": 0
+                      },
+                      "rect": {
+                        "type": "object",
+                        "properties": {
+                          "centre": {
+                            "type": "array",
+                            "minItems": 2,
+                            "maxItems": 2,
+                            "items": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "number"
+                              }
+                            ]
+                          },
+                          "len": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          },
+                          "wid": {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          },
+                          "yaw_deg": {
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "centre",
+                          "len",
+                          "wid",
+                          "yaw_deg"
+                        ],
+                        "additionalProperties": false
                       }
                     },
                     "required": [

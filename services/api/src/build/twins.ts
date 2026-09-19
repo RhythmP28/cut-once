@@ -67,7 +67,7 @@ export function minAreaRect(pts: P2[]): Rect {
 }
 
 /** A point in a rectangle's own frame: u along its long side, v along its short one. */
-function inRectFrame(r: Rect, x: number, z: number): P2 {
+export function inRectFrame(r: Rect, x: number, z: number): P2 {
   const t = (-r.yawDeg * Math.PI) / 180, c = Math.cos(t), s = Math.sin(t);
   return [(x - r.cx) * c + (z - r.cz) * s, -(x - r.cx) * s + (z - r.cz) * c];
 }
@@ -193,13 +193,36 @@ function findSurfaces(v: View, levels: number[], opts: Options): { surfaces: Sur
     const min: P2 = [Infinity, Infinity], max: P2 = [-Infinity, -Infinity];
     for (const i of f.cells) { min[0] = Math.min(min[0], v.x(i)); min[1] = Math.min(min[1], v.z(i)); max[0] = Math.max(max[0], v.x(i)); max[1] = Math.max(max[1], v.z(i)); }
     const kind = f.y < opts.floorMaxY ? "floor" : f.y >= 0.55 && f.y <= 1.2 ? "table" : f.y > 1.2 ? "shelf" : "other";
-    return { surface_id: `s${idx + 1}`, kind, y: f.y, min, max, points: f.cells.length };
+    const r = minAreaRect(v.xz(f.cells));
+    const rect = r.len > 0 && r.wid > 0 ? { centre: [r.cx, r.cz] as P2, len: r.len, wid: r.wid, yaw_deg: r.yawDeg } : undefined;
+    return { surface_id: `s${idx + 1}`, kind, y: f.y, min, max, points: f.cells.length, ...(rect ? { rect } : {}) };
   });
   return { surfaces, isSurface };
 }
 
-const inside = (s: Surface, x: number, z: number, margin: number) =>
-  x >= s.min[0] - margin && x <= s.max[0] + margin && z >= s.min[1] - margin && z <= s.max[1] + margin;
+/** A surface's outline: its own turned rectangle when it has one, else its box along the room's axes. */
+export const rectOf = (s: Surface): Rect => s.rect
+  ? { cx: s.rect.centre[0], cz: s.rect.centre[1], len: s.rect.len, wid: s.rect.wid, yawDeg: s.rect.yaw_deg }
+  : { cx: (s.min[0] + s.max[0]) / 2, cz: (s.min[1] + s.max[1]) / 2, len: s.max[0] - s.min[0], wid: s.max[1] - s.min[1], yawDeg: 0 };
+
+/** The four corners of a rectangle, in the room. */
+export function cornersOf(r: Rect): P2[] {
+  const t = (r.yawDeg * Math.PI) / 180, c = Math.cos(t), sn = Math.sin(t);
+  return ([[1, 1], [-1, 1], [-1, -1], [1, -1]] as P2[]).map(([a, b]) => {
+    const u = (a * r.len) / 2, w = (b * r.wid) / 2;
+    return [r.cx + u * c + w * sn, r.cz - u * sn + w * c];
+  });
+}
+
+/** Is (x, z) over the surface, within `margin` of its outline? Judged in the surface's own frame, not the room's. */
+export function onSurface(s: Surface, x: number, z: number, margin: number): boolean {
+  const r = rectOf(s), [u, w] = inRectFrame(r, x, z);
+  return Math.abs(u) <= r.len / 2 + margin && Math.abs(w) <= r.wid / 2 + margin;
+}
+// The floor goes on past what one view shows of it; a table ends where it ends.
+const standsOn = (s: Surface, x: number, z: number) => onSurface(s, x, z, s.kind === "floor" ? 0.5 : 0.05);
+
+const MIN_SIDE = 0.005;
 
 interface Body { cells: number[]; rect: Rect; minY: number; maxY: number }
 
@@ -214,7 +237,7 @@ function findBodies(v: View, surfaces: Surface[], isSurface: Uint8Array): Body[]
   const free = new Uint8Array(v.n);
   for (let i = 0; i < v.n; i++) {
     if (!v.ok(i) || isSurface[i]) continue;
-    free[i] = surfaces.some((s) => Math.abs(v.y(i) - s.y) <= v.band(i) && inside(s, v.x(i), v.z(i), 0.05)) ? 0 : 1;
+    free[i] = surfaces.some((s) => Math.abs(v.y(i) - s.y) <= v.band(i) && standsOn(s, v.x(i), v.z(i))) ? 0 : 1;
   }
   const seen = new Uint8Array(v.n), clusters: number[][] = [];
   for (let s = 0; s < v.n; s++) if (!seen[s] && free[s]) {
@@ -296,7 +319,7 @@ function fit(v: View, cloud: Cloud, body: Body, surfaces: Surface[], scanId: str
   let sx = 0, sz = 0;
   for (const i of cells) { sx += v.x(i); sz += v.z(i); }
   const cx = sx / cells.length, cz = sz / cells.length;
-  const base = surfaces.filter((s) => s.y <= body.minY + 0.03 && inside(s, cx, cz, 0.05)).sort((a, b) => b.y - a.y)[0];
+  const base = surfaces.filter((s) => s.y <= body.minY + 0.03 && standsOn(s, cx, cz)).sort((a, b) => b.y - a.y)[0];
   if (!base) return null;                                            // floating: a wall, a person, a lamp
   const ys = cells.map(v.y).sort((a, b) => a - b);
   const top = ys[Math.min(ys.length - 1, Math.floor(ys.length * 0.95))]!, height = top - base.y;
@@ -304,10 +327,12 @@ function fit(v: View, cloud: Cloud, body: Body, surfaces: Surface[], scanId: str
   if (height < opts.minObjectHeight + opts.minObjectHeightPerMetre * away) return null;   // a table rim, a shadow, noise
   // Whatever stands under a higher surface and no taller than it is that furniture's body (legs, an apron, a cabinet
   // front), or is stored under it: nothing to build with.
-  if (surfaces.some((s) => s !== base && s.y > base.y && body.maxY <= s.y + 0.02 && inside(s, cx, cz, 0.03))) return null;
+  if (surfaces.some((s) => s !== base && s.y > base.y && body.maxY <= s.y + 0.02 && onSurface(s, cx, cz, 0.03))) return null;
 
   const tight = minAreaRect(v.xz(cells)), pad = samplePad(v, cells, tight, top);
-  const rect: Rect = { ...tight, len: tight.len + pad[0], wid: tight.wid + pad[1] };
+  // Seen edge-on (a card facing the camera, a pole one sample wide) a side measures zero. Nothing real is thinner than
+  // MIN_SIDE, and a zero is refused by the stream's schema, which would hide every object in the scan with it.
+  const rect: Rect = { ...tight, len: Math.max(MIN_SIDE, tight.len + pad[0]), wid: Math.max(MIN_SIDE, tight.wid + pad[1]) };
   if (rect.len > opts.maxObjectSize || height > opts.maxObjectSize) return null;
 
   // Round or square? Two tests, because a can is rarely seen whole. Seen from above, its points fill a circle and
@@ -326,7 +351,7 @@ function fit(v: View, cloud: Cloud, body: Body, surfaces: Surface[], scanId: str
     && circle.arcDeg >= 55 && Math.abs(2 * circle.r - rect.len) <= 0.4 * rect.len ? circle : null;
   const round = fromAbove || arc !== null;
   const shape: TwinShape = round
-    ? { type: "cylinder", axis: "y", diameter: arc ? 2 * arc.r : (rect.len + rect.wid) / 2, length: height }
+    ? { type: "cylinder", axis: "y", diameter: Math.max(MIN_SIDE, arc ? 2 * arc.r : (rect.len + rect.wid) / 2), length: height }
     : { type: "box", size: [rect.len, height, rect.wid] };
   // A half-seen cylinder's rectangle leans toward the camera; the fitted circle's centre does not.
   const px = arc ? arc.cx : rect.cx, pz = arc ? arc.cz : rect.cz;

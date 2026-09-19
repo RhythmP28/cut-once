@@ -18,8 +18,13 @@ const footprint = (p: Placed): P2[] => p.shape.type === "cylinder" && p.shape.ax
  * supports, or its own footprint on the table) by at least max(1 cm, the size error), plus 1 cm for every level
  * stacked above it: a person sets each piece down about a centimetre off, and those errors add up, so four cans
  * stacked on end pass a perfect-placement check and fall over on a real table. Deterministic and exact.
+ *
+ * Balance alone is not enough: a pizza box centred on one can balances on paper and falls when a finger touches its
+ * edge. So what holds a piece up must also span at least SUPPORT_SPAN of it, along both of its sides. Three cans in a
+ * triangle do, and so does one support as wide as the piece: the rule the ideas model is given, kept here in code.
  */
 export const PLACEMENT_ERROR = 0.01;
+export const SUPPORT_SPAN = 0.5;
 
 export function checkStability(placed: Placed[], twins: Map<string, Twin>, vocab: Vocab, payload: Payload | null): { ok: true } | { ok: false; reason: string } {
   const byId = new Map(placed.map((p) => [p.twin_id, p]));
@@ -62,6 +67,15 @@ export function checkStability(placed: Placed[], twins: Map<string, Twin>, vocab
       return { ok: false, reason: got < 0 || !Number.isFinite(got)
         ? `the ${t.label} would tip: its weight lands ${Number.isFinite(got) ? cm(-got) : "well"} cm outside what holds it up`
         : `the ${t.label} is only ${cm(got)} cm from tipping; it needs ${cm(need)} cm` };
+    }
+    if (p.rests_on.length > 0) {
+      const own = footprint(p);
+      for (const k of [0, 1] as const) {
+        const span = (poly: P2[]) => (poly.length ? Math.max(...poly.map((q) => q[k])) - Math.min(...poly.map((q) => q[k])) : 0);
+        if (span(region) < SUPPORT_SPAN * span(own)) {
+          return { ok: false, reason: `the ${t.label} overhangs what holds it up: its supports span ${cm(span(region))} cm of its ${cm(span(own))} cm. Use three supports that are not in a line, or one at least half as wide` };
+        }
+      }
     }
   }
   return { ok: true };

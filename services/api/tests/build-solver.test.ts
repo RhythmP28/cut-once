@@ -75,16 +75,32 @@ describe("checkStability", () => {
     expect(!r.ok && r.reason).toMatch(/tall can is only 3\.\d cm from tipping; it needs 4\.0 cm/);
   });
 
+  // The ideas model is told: "at least 3 supports that are not in a line, or one support at least as wide". A pizza box
+  // centred on one can balances on paper, and falls the moment a judge touches its edge.
+  it("refuses a wide board balanced on one can, and on two cans in a line, and says why", () => {
+    const onOne = checkStability(solved(draft([step({ place: "o1" }), step({ place: "o4", orientation: "flat", on: ["o1"] })])), kit, vocab, null);
+    expect(!onOne.ok && onOne.reason).toMatch(/pizza box overhangs what holds it up: its supports span 6\.6 cm of its 35\.0 cm/);
+    const inLine = checkStability(solved(draft([
+      step({ place: "o1", at_cm: { x: -12, z: 0 } }), step({ place: "o2", at_cm: { x: 12, z: 0 } }), step({ place: "o4", orientation: "flat", on: ["o1", "o2"] }),
+    ])), kit, vocab, null);
+    expect(inLine).toMatchObject({ ok: false });
+  });
+  it("lets a can stand on a can: a support as wide as what rests on it", () => {
+    const two = new Map([std("tall_can", "o1"), std("tall_can", "o2")].map((t) => [t.twin_id, t]));
+    const r = solve(draft([step({ place: "o1" }), step({ place: "o2", on: ["o1"] })]), two);
+    expect(r.ok && checkStability(r.placed, two, vocab, null)).toEqual({ ok: true });
+  });
+
   it("asks for more margin under an object whose size is only roughly known", () => {
-    // The same stand twice: a board on one cardboard box 12 cm wide. Measured to 3 mm it stands; measured to 5 cm it may not.
+    // The same stand twice: a board on one cardboard box 20 cm wide. Measured to 3 mm it stands; cut off by the photo's edge (±11 cm) it may not.
     const stand = (error_m: number) => {
-      const base = { ...std("cardboard_box", "o1"), shape: { type: "box" as const, size: [0.12, 0.2, 0.12] as [number, number, number] }, error_m };
+      const base = { ...std("cardboard_box", "o1"), shape: { type: "box" as const, size: [0.2, 0.2, 0.2] as [number, number, number] }, error_m };
       const things = new Map([base, std("pizza_box", "o2")].map((t) => [t.twin_id, t]));
       const r = solve(draft([step({ place: "o1" }), step({ place: "o2", orientation: "flat", on: ["o1"] })]), things);
       if (!r.ok) throw new Error(r.reason);
       return checkStability(r.placed, things, vocab, null);
     };
     expect(stand(0.003)).toEqual({ ok: true });
-    expect(stand(0.05)).toMatchObject({ ok: false });
+    expect(stand(0.11)).toMatchObject({ ok: false });
   });
 });
