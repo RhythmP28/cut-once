@@ -5,6 +5,6 @@
   "tags": ["cutonce", "plan"],
   "configuration": {
     "query": "FROM cutonce-parts METADATA _score | WHERE MATCH(name, ?query) OR MATCH(aliases, ?query) | SORT _score DESC | KEEP part_id, name, layer, step_id, dims_text | LIMIT 5",
-    "params": { "query": { "type": "text", "description": "Words from the part's name or alias" } }
+    "params": { "query": { "type": "string", "description": "Words from the part's name or alias" } }
   }
 }

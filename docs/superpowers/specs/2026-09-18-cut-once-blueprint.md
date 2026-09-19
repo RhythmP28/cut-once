@@ -354,8 +354,7 @@ Full part list (9): `part_tabletop`, `part_left_front_leg`, `part_right_front_le
 3. **`W → A` (anchoring).** At lock time create an `OVRSpatialAnchor` at pose `T_W_L`, make `AssemblyRoot` its child with local pose = `T_nudge`. From then on the OS keeps `A` fixed to the room.
 4. **`T_nudge`.** A small local offset `{dx, dy, dz, dyaw}` applied about the desk's centre. Saved with the anchor.
 5. **`W → C → I` (projection, for the copilot and verification).** The passthrough camera component gives the camera pose at the frame timestamp and intrinsics `fx, fy, cx, cy`.
-   `p_C = T_W_C⁻¹ · p_W`; visible if `p_C.z > 0.1`; `u = cx + fx·p_C.x / p_C.z`; `v = cy − fy·p_C.y / p_C.z`.
-   The sign of `v` and any lens-distortion handling come from Meta's CameraToWorld sample. **Test:** the Director page draws the projected boxes over the received JPEG; boxes must sit on the real parts.
+   Call Meta's `PassthroughCameraAccess.WorldToViewportPoint(p_W, cachedPose)`; viewport (0,0) is the image's bottom-left, so JPEG pixels are `u = vp.x·W`, `v = (1 − vp.y)·H`. Reject points behind the camera (dot product with the camera's forward). Meta's intrinsics are in sensor pixels on a centred crop, so never plug them straight into JPEG maths; there is no lens-distortion model in Meta's code. The device sends pixel boxes, so the server needs no intrinsics (`PartProjector`, fixes plan task C2). **Test:** the Director page draws the projected boxes over the received JPEG; boxes must sit on the real parts.
 
 **Why two centres and not one marker's rotation.** A 10 cm marker's orientation is noisy: 1° of error moves a point 1 m away by 17 mm. Two centres 0.6 m apart, each good to about 2 mm, give a yaw error of roughly `atan(2.8 / 600) ≈ 0.27°`, which is about 2.5 mm at the far corner of the desk.
 
@@ -369,8 +368,8 @@ Full part list (9): `part_tabletop`, `part_left_front_leg`, `part_right_front_le
 ### Calibration procedure (ideal path, about 10 s)
 
 1. `AlignmentController` enters `Scanning`. MRUK QR tracking is switched on (copy the enabling code and the `TrackableAdded` handler from QuestCameraKit's QRCodeDetection scene). Trackables are filtered by `TrackableType == QRCode` and by payload.
-2. For each marker collect **K = 8 centre samples** while head speed is under 5 cm/s. Centre = `trackable.transform.TransformPoint(PlaneRect.center)`. Take the per-axis median. MRUK updates QR poses "at a lower frequency"; measure the real rate at gate G3 and tune K.
-3. Sanity: each marker's plane normal within 5° of world up. Meta does not document which local axis is the normal, so at G3 drop an axis gizmo on a trackable and record the answer in `QrAlignmentSource`.
+2. For each marker collect **K = 5 centre samples**, keeping a sample only when the pose has changed and `IsTracked` is true: MRUK updates QR poses at about 1 Hz and has no update event, so every-frame reads repeat one measurement. Sample all markers in parallel (about 5 s). Centre = `TransformPoint(PlaneRect.Value.center)`, falling back to `transform.position` when `PlaneRect` is null. Take the per-axis median (`MarkerSampler`, fixes plan task C3).
+3. Sanity: each marker's plane normal within 5° of world up. MRUK's code puts the plane in local XY, so the normal is `transform.forward`; confirm with a gizmo at G3.
 4. Solve. Show the ghost, the **alignment proof** (ghost outlines of both marker squares and an "A" cross at the origin corner) and the two residuals.
 5. Operator nudges if the proof is visibly off, then presses **Lock**: anchor created and saved, `{uuid, nudge, residuals}` written to `persistentDataPath/alignment_plan_desk_demo.json`, QR tracking switched **off** (saves power, prevents jumps).
 
@@ -500,7 +499,7 @@ modifiers(part) ⊆ { SELECTED, HIGHLIGHTED, VERIFYING, UNVERIFIED }     drawn o
 | State | Fill | Edges | Animation | Collider | Meaning |
 |---|---|---|---|---|---|
 | **BUILT_LIVE** | none, so the real part stays visible | Thin green corner brackets; α 0.6 fading to 0.15 after 3 s | Brief flash and tick sound on entry | yes | Confirmed in place |
-| **BUILT_REPLAY** | Solid blue, α 0.55 | Bright blue | Rises into place over 0.4 s | no | History or planned playback |
+| **BUILT_REPLAY** | Solid blue, α 0.55 | Bright blue | Revealed bottom-up over 0.4 s by a world-height clip in the shader (pivots differ, so never scale; `Reveal`, fixes plan task C5) | no | History or planned playback |
 | **CURRENT_STEP** | Cyan, α 0.35 | Thick bright cyan + grid | Pulse at 1.2 Hz | yes | Build this now |
 | **MISSING** | Cyan, α 0.18 | Steady cyan | none | yes | Can be built, not the current step |
 | **FUTURE** | α 0.05 | Thin dim blue | none | yes (so "what goes here?" still works) | Blocked by an earlier part |
@@ -1021,7 +1020,7 @@ Priority = demo importance × technical risk. **P0** the demo cannot succeed wit
 | 15 | A rules breach (assets made before T+0, committed drawings) | Low | **Critical** | Now | Appendix D; `data/e7/raw` git-ignored; SOURCES.md |
 | 16 | Battery or heat during back-to-back judging | Medium | Medium | T+24 | Battery pack on the strap; QR tracking off after lock; app closed between slots |
 | 17 | Exhaustion causes late breakage | High | High | n/a | Freeze at T+24; two sleep blocks; nobody merges after T+27 |
-| 18 | **First launch in a room the headset has never seen** (every judging room): the saved anchor will not localise, a boundary prompt can appear, the headset slept in the waiting room | **Certain** | **Critical** | T+14, in a different room | QR scan is the default path in a new room (anchor restore is only for crashes); suppress the boundary (`shouldBoundaryVisibilityBeSuppressed` on OVRManager plus the boundaryless manifest flag, which sideloaded builds may use); proximity sensor off in MQDH; rehearse the 60 s room entry |
+| 18 | **First launch in a room the headset has never seen** (every judging room): the saved anchor will not localise, a boundary prompt can appear, the headset slept in the waiting room | **Certain** | **Critical** | T+14, in a different room | QR scan is the default path in a new room (anchor restore is only for crashes); suppress the boundary with `OVRManager.shouldBoundaryVisibilityBeSuppressed` only (the fork already has the permission; the boundaryless manifest flag is an alternative, not an addition); proximity sensor off in MQDH; rehearse the 60 s room entry |
 | 19 | The surface is not level, so the gravity-constrained solve is wrong at the leg tips | Medium | High | T+14, shim test | Third-marker check, then the three-point rigid fit; desk on the floor |
 
 ---

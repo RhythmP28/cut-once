@@ -19,18 +19,42 @@ export async function mcpClient(cfg: Config): Promise<Client | null> {
   return client;
 }
 
+/** Forget a session whose request failed (Kibana restarted, network dropped), so the next call reconnects. */
+function dropSession(client: Client) {
+  if (session?.client !== client) return; // a newer session already replaced it
+  session = null;
+  void client.close().catch(() => undefined);
+}
+async function using<T>(client: Client, fn: () => Promise<T>): Promise<T> {
+  try { return await fn(); } catch (err) { dropSession(client); throw err; }
+}
+
 export async function mcpListTools(cfg: Config): Promise<string[]> {
   const client = await mcpClient(cfg);
-  return client ? (await client.listTools()).tools.map((t) => t.name) : [];
+  return client ? (await using(client, () => client.listTools())).tools.map((t) => t.name) : [];
+}
+
+/** Agent Builder wraps every answer as {"results":[{type, data}]}. Return plain rows so MCP and the direct twins agree. */
+export function unwrapAgentBuilder(value: unknown): unknown {
+  const first = (value as { results?: { type?: string; data?: any }[] } | null)?.results?.[0];
+  if (!first) return value;
+  if (first.type === "error") throw new Error(`Agent Builder tool error: ${JSON.stringify(first.data).slice(0, 200)}`);
+  if (first.type === "esql_results" && Array.isArray(first.data?.columns) && Array.isArray(first.data?.values)) {
+    const cols = first.data.columns as { name: string }[];
+    return (first.data.values as unknown[][]).map((row) => Object.fromEntries(cols.map((c, i) => [c.name, row[i]])));
+  }
+  return first.data;
 }
 
 export async function mcpCall(cfg: Config, name: string, args: Record<string, unknown>): Promise<unknown> {
   const client = await mcpClient(cfg);
   if (!client) throw new Error("Agent Builder MCP is not configured");
-  const res = await client.callTool({ name, arguments: args });
+  const res = await using(client, () => client.callTool({ name, arguments: args }));
   if (res.isError) throw new Error(`tool ${name} returned an error`);
   const text = (res.content as { type: string; text?: string }[] | undefined)?.find((c) => c.type === "text")?.text;
-  try { return text ? JSON.parse(text) : res.structuredContent ?? res.content; } catch { return text; }
+  let parsed: unknown;
+  try { parsed = text ? JSON.parse(text) : res.structuredContent ?? res.content; } catch { return text; }
+  return unwrapAgentBuilder(parsed);
 }
 
-export const resetMcp = () => { session = null; };
+export const resetMcp = () => { if (session) dropSession(session.client); };

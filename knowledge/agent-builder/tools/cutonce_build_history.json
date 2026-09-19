@@ -5,6 +5,6 @@
   "tags": ["cutonce", "history"],
   "configuration": {
     "query": "FROM cutonce-build-events | WHERE assembly_id == ?assembly_id AND kind == \"part_state\" | KEEP version, part_id, previous_state, new_state, source, step_id, seconds_since_prev, @timestamp | SORT version | LIMIT 100",
-    "params": { "assembly_id": { "type": "keyword", "description": "The run to read, for example asm_run_017" } }
+    "params": { "assembly_id": { "type": "string", "description": "The run to read, for example asm_run_017" } }
   }
 }

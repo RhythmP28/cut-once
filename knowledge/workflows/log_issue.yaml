@@ -2,16 +2,16 @@
 # Closes the loop: the copilot hears a problem, this Workflow records it and tells the site lead's screen.
 # Syntax follows Elastic's Workflows cheat sheet (9.4: `inputs` at the top level).
 # Paste into Kibana > Workflows, set the two constants, run it once by hand, then export over this file.
+# 9.5+ and Serverless: move "inputs" under the manual trigger.
+# Our server writes the final issue record (with @timestamp) under the same id, so this step's copy is overwritten, not duplicated.
 version: "1"
 name: cutonce-log-issue
 enabled: true
 triggers:
   - type: manual
 consts:
-  webhook_url: "https://YOUR-DOMAIN/v1/webhooks/issue"
-  auth_headers:
-    Authorization: "Bearer YOUR_API_TOKEN"
-    Content-Type: "application/json"
+  webhook_url: "https://YOUR-TUNNEL-OR-DOMAIN/v1/webhooks/issue"
+  webhook_token: "YOUR_API_TOKEN"
 inputs:
   - name: issue_id
     type: string
@@ -39,9 +39,10 @@ steps:
     with:
       url: "{{ consts.webhook_url }}"
       method: POST
-      headers: "{{ consts.auth_headers }}"
+      headers:
+        Authorization: "Bearer {{ consts.webhook_token }}"
+        Content-Type: "application/json"
       body:
         issue_id: "{{ inputs.issue_id }}"
         part_id: "{{ inputs.part_id }}"
         note: "{{ inputs.note }}"
-        indexed: true
