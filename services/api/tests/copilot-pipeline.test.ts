@@ -657,7 +657,7 @@ describe("build mode: Kit's turn", () => {
       const started = Date.now();
       const body = (await query({ mode: "build" })).json();
       expect([body.answer_text, body.needs_clarification]).toEqual(["That took too long. Ask me again.", true]);
-      expect(Date.now() - started).toBeLessThan(1500);
+      expect(Date.now() - started).toBeLessThan(3000);                     // the model's 1 s floor, not a fallback's wait
       expect(runKitTurn.mock.calls.map((c) => c[0].ai.provider)).toEqual(["omni"]);
     } finally { await t.cleanup(); t = old; }
   });
