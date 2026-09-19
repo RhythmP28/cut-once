@@ -9,9 +9,10 @@ Nothing outside this folder should reference the copilot's internals. The seam i
 
 | File | What it does |
 |---|---|
-| `Interfaces.cs` | `CameraFrame`, `CameraIntrinsics`, `ICameraFrameSource`, `ICopilotHost` — the seams |
+| `Interfaces.cs` | `CameraFrame`, `CameraIntrinsics`, `ICameraFrameSource`, `IPushToTalk`, `Selection`, `ICopilotHost` — the seams |
 | `Schemas/CopilotDtos.cs` | C# mirror of `packages/schemas/dist/jsonschema/CopilotResponse.json` |
-| `Capture/PcaFrameSource.cs` | Passthrough Camera API on the device (G2) |
+| `../Device/PcaFrameSource.cs` | Meta's `PassthroughCameraAccess` on the device (G2): the colour camera's own pose and Meta's projection |
+| `../Device/QuestPushToTalk.cs` | The A button through `OVRInput` |
 | `Capture/FixtureFrameSource.cs` | Replays `frame_0001.jpg` in the Editor, so the headset is not a blocker |
 | `Projection/PartProjector.cs` | Projects every part's box into the frame → `visible_parts` |
 | `Voice/MicRecorder.cs` | Push-to-talk, 16 kHz mono, WAV |
@@ -23,8 +24,9 @@ Nothing outside this folder should reference the copilot's internals. The seam i
 
 1. Add a `[Copilot]` prefab with `CopilotController`, `MicRecorder`, `PcmStreamPlayer` and an
    `AudioSource`.
-2. Drop `FixtureFrameSource` on it for Editor work, `PcaFrameSource` for the device, and wire whichever
-   one you want into `frameSourceBehaviour`.
+2. Drop `FixtureFrameSource` on it for Editor work, `CutOnce.Device.PcaFrameSource` for the device (point its
+   `cameraAccess` at the scene's `PassthroughCameraAccess`), and wire whichever one you want into
+   `frameSourceBehaviour`. Put `CutOnce.Device.QuestPushToTalk` into `pushToTalkBehaviour`.
 3. Wire A2's `ICopilotHost` into `hostBehaviour`.
 4. Set `baseUrl` and `apiToken` to the tunnel address and the token in `.env.local`.
 5. Run `pnpm copilot:fixtures && pnpm sync:fixtures` so `frame_0001.jpg` is in StreamingAssets.
@@ -42,5 +44,9 @@ Check both in the first hour — G2 depends on them and there is no workaround o
 
 ## Status
 
-Written against the blueprint before `apps/quest` existed, so **none of this has been compiled yet**.
-Expect to fix namespaces and the OVRInput reference when it first lands in the Unity project.
+`CutOnce.Copilot` and `CutOnce.AR` compile and their EditMode tests pass in Unity:
+`bash tools/quest-check/run-editmode.sh` runs them headless in a throwaway project, no fork needed.
+Anything that touches Meta's packages (`OVRInput`, `PassthroughCameraAccess`) lives in `../Device/`, which has
+no asmdef, so Unity's default assembly compiles it the way QuestCameraKit compiles its own scripts. It has been
+compiled against stand-ins with MRUK 205's exact signatures; the fork is its first compile against the real
+packages. On the headset, check G2 on `/debug`: the frame is upright and the boxes sit on the parts.

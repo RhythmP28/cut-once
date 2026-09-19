@@ -46,7 +46,7 @@ namespace CutOnce.Copilot.Capture
             Vector3 position = _pose?.position is { Length: 3 } p ? new Vector3(p[0], p[1], p[2]) : Vector3.zero;
             Quaternion rotation = _pose?.rotation_quat is { Length: 4 } r ? new Quaternion(r[0], r[1], r[2], r[3]) : Quaternion.identity;
             CameraIntrinsics k = _pose != null && _pose.camera.width > 0 ? _pose.camera : CameraIntrinsics.FromFov(1280, 960, 60f);
-            return new CameraFrame(_jpeg, position, rotation, k, DateTime.UtcNow);
+            return new CameraFrame(_jpeg, position, rotation, k, DateTime.UtcNow, p => k.Pinhole(p, position, rotation));
         }
     }
 }

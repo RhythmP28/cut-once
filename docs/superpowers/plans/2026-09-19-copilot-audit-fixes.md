@@ -166,11 +166,11 @@ data/fixtures/** -filter -diff -merge binary
 
 ### Task 12: Boxes use the colour camera's own pose and Meta's projection
 
-**Files:** Modify `Copilot/Interfaces.cs` (`CameraIntrinsics.FromMeta`), `Device/PcaFrameSource.cs`, `tools/quest-math/validate.py`; Create test in `Copilot/Tests/CameraIntrinsicsTests.cs`.
+**Files:** Modify `Copilot/Interfaces.cs` (`CameraIntrinsics.FromMeta`), `Device/PcaFrameSource.cs`; Create test in `Copilot/Tests/CameraIntrinsicsTests.cs` (it runs in Unity against Meta's formula, so a Python copy adds nothing).
 
 - [ ] **Step 1: Failing test:** for three points, `FromMeta(...).Pinhole` equals Meta's `WorldToViewportPoint` formula (copied from MRUK 205 into the test) within 1e-4, sensor 1280×1280 → image 1280×960. **Step 2: Run** → FAIL (no `FromMeta`).
-- [ ] **Step 3: Implement** `FromMeta` (centred crop, sensor → image pixels, bottom-left → top-left) and rewrite `PcaFrameSource` on `PassthroughCameraAccess`. Add the same check to `validate.py`.
-- [ ] **Step 4: Run** runner + `python3 tools/quest-math/validate.py` → PASS. **Step 5: Commit** `fix(quest): frames from PassthroughCameraAccess: the colour camera's pose at the image timestamp, Meta's projection, intrinsics in image pixels`
+- [ ] **Step 3: Implement** `FromMeta` (centred crop, sensor → image pixels, bottom-left → top-left) and rewrite `PcaFrameSource` on `PassthroughCameraAccess`.
+- [ ] **Step 4: Run** the runner → PASS; compile `Device/` once against stand-ins with MRUK 205's exact signatures. **Step 5: Commit** `fix(quest): frames from PassthroughCameraAccess: the colour camera's pose at the image timestamp, Meta's projection, intrinsics in image pixels`
 - [ ] **On device (G2):** press A, open `/debug`: the frame is upright and the drawn boxes sit on the physical parts.
 
 ### Task 13: Press-time state, no-frame packet, visible failure

@@ -5,7 +5,6 @@ using System.Globalization;
 using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
-using CutOnce.Copilot.Projection;
 
 namespace CutOnce.Copilot.Net
 {
@@ -29,7 +28,8 @@ namespace CutOnce.Copilot.Net
         private static string Quote(string s) => s == null ? "null" : "\"" + s.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
         private static string NewId(string prefix) => prefix + "_" + Guid.NewGuid().ToString("N").Substring(0, 20).ToLowerInvariant();
 
-        public static string BuildContextJson(ICopilotHost host, List<ProjectedPart> visible, CameraIntrinsics k, string scriptedQueryId)
+        /// <summary>The CopilotContext. `selection` is what was pointed at when the button went down, not now.</summary>
+        public static string BuildContextJson(ICopilotHost host, Selection selection, List<ProjectedPart> visible, CameraIntrinsics k, string scriptedQueryId)
         {
             var sb = new StringBuilder(1024);
             sb.Append("{");
@@ -38,9 +38,9 @@ namespace CutOnce.Copilot.Net
             sb.Append("\"plan_revision\":").Append(host.PlanRevision).Append(",");
             sb.Append("\"state_version\":").Append(host.StateVersion).Append(",");
             sb.Append("\"mode\":").Append(Quote(host.Mode)).Append(",");
-            sb.Append("\"selected_part_id\":").Append(Quote(host.SelectedPartId)).Append(",");
-            sb.Append("\"selection_source\":").Append(Quote(string.IsNullOrEmpty(host.SelectedPartId) ? "none" : host.SelectionSource)).Append(",");
-            sb.Append("\"current_step_id\":").Append(Quote(host.CurrentStepId)).Append(",");
+            sb.Append("\"selected_part_id\":").Append(Quote(selection.PartId)).Append(",");
+            sb.Append("\"selection_source\":").Append(Quote(selection.Source)).Append(",");
+            sb.Append("\"current_step_id\":").Append(Quote(selection.StepId)).Append(",");
 
             sb.Append("\"visible_parts\":[");
             for (int i = 0; i < visible.Count; i++)
@@ -55,9 +55,13 @@ namespace CutOnce.Copilot.Net
             }
             sb.Append("],");
 
-            sb.Append("\"camera\":{\"width\":").Append(k.width).Append(",\"height\":").Append(k.height)
-              .Append(",\"fx\":").Append(F(k.fx)).Append(",\"fy\":").Append(F(k.fy))
-              .Append(",\"cx\":").Append(F(k.cx)).Append(",\"cy\":").Append(F(k.cy)).Append("},");
+            // No frame, no camera: the schema wants null, and a zero-sized camera is rejected with a 400.
+            if (k.width > 0 && k.height > 0)
+                sb.Append("\"camera\":{\"width\":").Append(k.width).Append(",\"height\":").Append(k.height)
+                  .Append(",\"fx\":").Append(F(k.fx)).Append(",\"fy\":").Append(F(k.fy))
+                  .Append(",\"cx\":").Append(F(k.cx)).Append(",\"cy\":").Append(F(k.cy)).Append("},");
+            else
+                sb.Append("\"camera\":null,");
 
             sb.Append("\"scripted_query_id\":").Append(Quote(scriptedQueryId)).Append(",");
             sb.Append("\"client_sent_at\":").Append(Quote(DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture)));
@@ -73,8 +77,9 @@ namespace CutOnce.Copilot.Net
             {
                 new MultipartFormDataSection("context", contextJson),
                 new MultipartFormFileSection("audio", wav, "turn.wav", "audio/wav"),
-                new MultipartFormFileSection("frame", jpeg, "frame.jpg", "image/jpeg"),
             };
+            // No frame is allowed (the server answers from the tables and documents); an empty file section is not.
+            if (jpeg != null && jpeg.Length > 0) form.Add(new MultipartFormFileSection("frame", jpeg, "frame.jpg", "image/jpeg"));
 
             using var request = UnityWebRequest.Post($"{_baseUrl}/v1/assemblies/{assemblyId}/copilot/query", form);
             request.SetRequestHeader("Authorization", "Bearer " + _token);

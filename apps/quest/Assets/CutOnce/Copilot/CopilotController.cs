@@ -1,8 +1,7 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
-using CutOnce.Copilot.Capture;
 using CutOnce.Copilot.Net;
-using CutOnce.Copilot.Projection;
 using CutOnce.Copilot.Voice;
 
 namespace CutOnce.Copilot
@@ -17,6 +16,7 @@ namespace CutOnce.Copilot
     ///
     /// Two rules worth keeping in your head while editing this:
     ///   1. The frame and the selection are frozen on PRESS, not on release. The user moves while talking.
+    ///      A HUD button captures its own; a frame is never reused by a later question.
     ///   2. A `mark_state` action has ALREADY been written by the server. Show an Undo toast; do not
     ///      append an event, or the same command lands twice.
     ///
@@ -29,13 +29,11 @@ namespace CutOnce.Copilot
         public string apiToken = "dev-token";
 
         [Header("Wiring")]
-        public MonoBehaviour frameSourceBehaviour;   // any ICameraFrameSource: PcaFrameSource on device, FixtureFrameSource in the Editor
+        public MonoBehaviour frameSourceBehaviour;   // any ICameraFrameSource: Device/PcaFrameSource on the headset, FixtureFrameSource in the Editor
         public MonoBehaviour hostBehaviour;          // A2's ICopilotHost implementation
+        public MonoBehaviour pushToTalkBehaviour;    // any IPushToTalk: Device/QuestPushToTalk (the A button) on the headset
         public MicRecorder mic;
         public PcmStreamPlayer speaker;
-
-        [Header("Input")]
-        public OVRInput.RawButton pushToTalk = OVRInput.RawButton.A;
 
         public bool IsListening { get; private set; }
         public bool IsThinking { get; private set; }
@@ -44,38 +42,46 @@ namespace CutOnce.Copilot
 
         private ICameraFrameSource _frames;
         private ICopilotHost _host;
+        private IPushToTalk _ptt;
         private CopilotClient _client;
-        private CameraFrame _frozenFrame;
-        private string _frozenPartId;
-        private string _frozenStepId;
+        private CameraFrame _pressFrame;         // frozen when the button goes down, cleared once sent
+        private Selection _pressSelection;
 
         private void Awake()
         {
             _frames = frameSourceBehaviour as ICameraFrameSource;
             _host = hostBehaviour as ICopilotHost;
+            _ptt = pushToTalkBehaviour as IPushToTalk;
             _client = new CopilotClient(baseUrl, apiToken);
             if (_frames == null) Debug.LogError("[Copilot] frameSourceBehaviour does not implement ICameraFrameSource.");
             if (_host == null) Debug.LogError("[Copilot] hostBehaviour does not implement ICopilotHost.");
+            if (_ptt == null) Debug.LogError("[Copilot] pushToTalkBehaviour does not implement IPushToTalk.");
         }
 
         private void Update()
         {
-            if (_host == null) return;
-            if (OVRInput.GetDown(pushToTalk)) BeginListening();
-            else if (IsListening && (OVRInput.GetUp(pushToTalk) || mic.ElapsedSeconds >= MicRecorder.MaxSeconds - 0.2f)) EndListening();
+            if (_host == null || _ptt == null) return;
+            if (_ptt.Down) BeginListening();
+            else if (IsListening && (_ptt.Up || mic.ElapsedSeconds >= MicRecorder.MaxSeconds - 0.2f)) EndListening();
         }
 
         /// <summary>Also the entry point for a HUD query button: pass the rehearsed question's id.</summary>
-        public void AskScripted(string scriptedQueryId) => StartCoroutine(Send(null, scriptedQueryId));
+        public void AskScripted(string scriptedQueryId)
+        {
+            if (IsListening || IsThinking || _host == null) return;
+            // A HUD button is its own press: take the frame and the selection now, never a previous question's.
+            StartCoroutine(Send(null, scriptedQueryId, CaptureNow(), Selection.Of(_host)));
+        }
+
+        private CameraFrame CaptureNow() => _frames != null && _frames.IsReady ? _frames.Capture() : default;
 
         private void BeginListening()
         {
             if (IsListening || IsThinking) return;
             // Frozen on press: the answer must be about what they were looking at when they asked.
-            _frozenFrame = _frames != null && _frames.IsReady ? _frames.Capture() : default;
-            _frozenPartId = _host.SelectedPartId;
-            _frozenStepId = _host.CurrentStepId;
-            if (!mic.Begin()) return;
+            _pressFrame = CaptureNow();
+            _pressSelection = Selection.Of(_host);
+            if (!mic.Begin()) { _pressFrame = default; return; }
             IsListening = true;
         }
 
@@ -83,38 +89,43 @@ namespace CutOnce.Copilot
         {
             IsListening = false;
             byte[] wav = mic.End();
+            CameraFrame frame = _pressFrame;
+            _pressFrame = default; // never reused by a later question
             if (wav == null || wav.Length < 1000)
             {
                 Debug.Log("[Copilot] nothing recorded; ignoring.");
                 return;
             }
-            StartCoroutine(Send(wav, null));
+            StartCoroutine(Send(wav, null, frame, _pressSelection));
         }
 
-        private IEnumerator Send(byte[] wav, string scriptedQueryId)
+        private IEnumerator Send(byte[] wav, string scriptedQueryId, CameraFrame frame, Selection selection)
         {
             IsThinking = true;
             LastFirstAudioMs = -1f;
 
-            CameraFrame frame = _frozenFrame.IsValid ? _frozenFrame
-                : _frames != null && _frames.IsReady ? _frames.Capture() : default;
-            if (!frame.IsValid)
-            {
-                // No pixels is survivable: geometry and the documents still answer most questions.
-                Debug.LogWarning("[Copilot] no camera frame; asking without one.");
-            }
-
-            var visible = frame.IsValid
-                ? PartProjector.Project(_host.PartsForProjection(), frame)
-                : new System.Collections.Generic.List<ProjectedPart>();
-
-            string context = CopilotClient.BuildContextJson(_host, visible, frame.Intrinsics, scriptedQueryId);
+            // No pixels is survivable: the server answers from the tables and documents (camera null, no frame part).
+            if (!frame.IsValid) Debug.LogWarning("[Copilot] no camera frame; asking without one.");
+            var visible = frame.IsValid ? PartProjector.Project(_host.PartsForProjection(), frame) : new List<ProjectedPart>();
+            string context = CopilotClient.BuildContextJson(_host, selection, visible, frame.Intrinsics, scriptedQueryId);
 
             yield return _client.Query(
                 _host.AssemblyId, context, wav ?? MicRecorder.EncodeWav(new float[160], MicRecorder.SampleRate, 1),
-                frame.IsValid ? frame.Jpeg : new byte[0],
+                frame.IsValid ? frame.Jpeg : null,
                 OnAnswer,
-                error => { Debug.LogWarning("[Copilot] " + error); IsThinking = false; });
+                OnFailed);
+        }
+
+        /// <summary>Never a silent failure: the HUD says nothing is coming and what to do.</summary>
+        private void OnFailed(string error)
+        {
+            IsThinking = false;
+            Debug.LogWarning("[Copilot] " + error);
+            _host.ShowAnswer(new CopilotResponseDto
+            {
+                answer_text = "I couldn't answer that. Hold A and ask again.",
+                needs_clarification = true, highlight_parts = new string[0], drawing_refs = new DrawingRefDto[0],
+            });
         }
 
         private void OnAnswer(CopilotResponseDto response)
