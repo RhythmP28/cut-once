@@ -1,106 +1,31 @@
-using System;
 using System.Collections;
-using System.IO;
-using System.Reflection;
-using System.Threading.Tasks;
 using CutOnce.AR;
 using CutOnce.Core;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
+using static CutOnce.Device.PlayTests.BuildModeHarness;
 
 namespace CutOnce.Device.PlayTests
 {
     /// <summary>
     /// Build mode inside the whole app, with no server and no headset: the messages the server would send are handed to
-    /// it directly, and the run a picked design starts is loaded the way the app loads any run. Like E7DefaultTests, the
-    /// app is pointed at a closed port and any config and journal on this machine are moved aside and put back.
-    /// BuildMode lives in Assembly-CSharp (it names Meta types), so it is reached by name.
+    /// it directly, and the run a picked design starts is loaded the way the app loads any run (BuildModeHarness). Like
+    /// E7DefaultTests, the app is pointed at a closed port and any config and journal on this machine are moved aside and
+    /// put back.
     /// </summary>
     public class BuildModeTests
     {
-        const BindingFlags Hidden = BindingFlags.NonPublic | BindingFlags.Instance;
-        string _config, _journal, _configBackup, _journalBackup;
+        Isolation _isolation;
 
-        [SetUp]
-        public void SetUp()
-        {
-            _config = Path.Combine(Application.persistentDataPath, "cutonce.config.json");
-            _journal = Path.Combine(Application.persistentDataPath, "cutonce");
-            _configBackup = _config + ".before-build-test"; _journalBackup = _journal + ".before-build-test";
-            if (File.Exists(_config)) File.Move(_config, _configBackup);
-            if (Directory.Exists(_journal)) Directory.Move(_journal, _journalBackup);
-            File.WriteAllText(_config, "{\"server_url\":\"http://127.0.0.1:9\",\"api_token\":\"none\",\"device_id\":\"build-test\"}");   // port 9: nothing listens
-        }
-
-        [TearDown]
-        public void TearDown()
-        {
-            if (File.Exists(_config)) File.Delete(_config);
-            if (Directory.Exists(_journal)) Directory.Delete(_journal, true);
-            if (File.Exists(_configBackup)) File.Move(_configBackup, _config);
-            if (Directory.Exists(_journalBackup)) Directory.Move(_journalBackup, _journal);
-        }
+        [SetUp] public void SetUp() => _isolation = new Isolation();
+        [TearDown] public void TearDown() => _isolation.Restore();
 
         [UnityTearDown]
         public IEnumerator DestroyWhatTheAppCreated()
         {
             AppSmokeTests.DestroyAppObjects();
             yield return null;
-        }
-
-        // ── the app, and what the server would send ─────────────────────────────────────────────────────────────
-        static readonly Type AppType = Type.GetType("CutOnce.Device.CutOnceApp, Assembly-CSharp");
-        static Type BuildType => Type.GetType("CutOnce.Device.BuildMode, Assembly-CSharp");
-
-        static Component StartApp(string name, bool copilot)
-        {
-            Assert.That(AppType, Is.Not.Null, "CutOnceApp is missing from Assembly-CSharp");
-            Assert.That(BuildType, Is.Not.Null, "BuildMode is missing from Assembly-CSharp");
-            var app = new GameObject(name).AddComponent(AppType);
-            AppType.GetField("createCopilot").SetValue(app, copilot);
-            return app;
-        }
-
-        static UnityEngine.Object BuildModeOf() => UnityEngine.Object.FindAnyObjectByType(BuildType);
-        static BuildPhase Phase(UnityEngine.Object mode) => ((BuildFlow)BuildType.GetProperty("Flow").GetValue(mode)).Phase;
-        static string ModeOf(Component app) => (string)AppType.GetProperty("Mode").GetValue(app);
-        static AssemblyView Hologram() => UnityEngine.Object.FindAnyObjectByType<AssemblyView>(FindObjectsInactive.Include);
-
-        static void Send(UnityEngine.Object mode, WsMessageDto message) =>
-            BuildType.GetMethod("OnBuildMessage", Hidden).Invoke(mode, new object[] { message });
-
-        /// <summary>The message both the TypeScript and the C# tests parse: one idea, "Can on a stage", whose can is twin o1.</summary>
-        static WsMessageDto IdeasFixture()
-        {
-            for (var dir = new DirectoryInfo(Application.dataPath); dir != null; dir = dir.Parent)
-            {
-                string path = Path.Combine(dir.FullName, "data", "fixtures", "build", "ws_build_ideas.json");
-                if (File.Exists(path)) return CoreJson.Parse<WsMessageDto>(File.ReadAllText(path));
-            }
-            throw new FileNotFoundException("data/fixtures/build/ws_build_ideas.json was not found above " + Application.dataPath);
-        }
-
-        static WsMessageDto Inventory(double[] canPosition)
-        {
-            var can = new TwinDto { twin_id = "o1", name = "tall_can", label = "tall can", snapped = true, material = "metal",
-                shape = new ShapeDto { type = "cylinder", axis = "y", diameter = 0.066, length = 0.157 }, position = canPosition };
-            var inventory = new InventoryDto { session_id = "bsess_fixture", labelled = true };
-            inventory.twins.Add(can);
-            return new WsMessageDto { type = "build_inventory", inventory = inventory };
-        }
-
-        /// <summary>
-        /// Loads a run of <paramref name="plan"/> the way the app does when the stream says a run started: the store, then the
-        /// hologram. A plan with no model files to fetch is built before this returns, so what follows sees the very first
-        /// moment of the placement, however slow the frames are.
-        /// </summary>
-        static void LoadRun(Component app, PlanDto plan, string assemblyId)
-        {
-            var store = (BuildStateStore)AppType.GetField("_store", Hidden).GetValue(app);
-            store.Reset(plan, assemblyId, null);
-            var building = (Task)AppType.GetMethod("BuildHologram", Hidden).Invoke(app, null);
-            Assert.That(building.IsCompleted && !building.IsFaulted, Is.True, "the hologram was not built at once: " + building.Exception);
         }
 
         // ── tests ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -169,9 +94,9 @@ namespace CutOnce.Device.PlayTests
             Assert.That(ModeOf(app), Is.EqualTo("build"));
 
             // B with nothing pointed at: the whole step is done, and the walkthrough moves on.
-            var store = (BuildStateStore)AppType.GetField("_store", Hidden).GetValue(app);
+            var store = StoreOf(app);
             Assert.That(store.Current.current_step_id, Is.EqualTo("step_01"));
-            Assert.That((bool)BuildType.GetMethod("MarkCurrentStep").Invoke(mode, null), Is.True);
+            Assert.That((bool)Call(mode, "MarkCurrentStep"), Is.True);
             Assert.That(new[] { store.Current.parts["part_surface"].state, store.Current.current_step_id }, Is.EqualTo(new[] { "built", "step_02" }));
 
             // The Director starts another run: build mode steps aside for it.
@@ -190,7 +115,7 @@ namespace CutOnce.Device.PlayTests
             for (float waited = 0f; waited < 15f && (Hologram() == null || Hologram().Views.Count == 0); waited += Time.unscaledDeltaTime) yield return null;
             var mode = BuildModeOf();
 
-            BuildType.GetMethod("StartScan").Invoke(mode, null);
+            Call(mode, "StartScan");
             for (float waited = 0f; waited < 10f && Phase(mode) != BuildPhase.Off; waited += Time.unscaledDeltaTime) yield return null;
 
             Assert.That(new object[] { Phase(mode), ModeOf(app), Hologram().gameObject.activeSelf }, Is.EqualTo(new object[] { BuildPhase.Off, "overlay", true }));

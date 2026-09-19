@@ -61,12 +61,22 @@ namespace CutOnce.Device
         }
 
         // ── scanning ──────────────────────────────────────────────────────────────────────────────────────────────
+        /// <summary>The scan button (X), as CutOnceApp reads it: a press scans until a design is chosen; holding it leaves build mode.</summary>
+        public void OnScanButton(ButtonGesture gesture)
+        {
+            if (gesture == ButtonGesture.Hold) { if (_flow.Active) { Exit(); _hud.Toast("Left build mode", 3f); } }
+            else if (gesture != ButtonGesture.Press) return;
+            else if (_flow.CanScanFromButton) StartScan();
+            else _hud.Toast("X is off while you build · hold it to leave build mode", 3f);   // a thumb resting on X must not throw the walkthrough away
+        }
+
+        /// <summary>"What can I build?" (and X, and the trigger on empty space): scan this view. Ignored while the pieces are flying.</summary>
         public void StartScan()
         {
             if (_capture.Busy) return;
-            if (!_flow.Active) _overServerRun = _sync.HasServerRun;
-            _fly.Stop();                                                     // "what can I build?" said while the pieces were still flying
-            _flow.StartScan();
+            bool wasOff = !_flow.Active;
+            if (!_flow.StartScan()) return;
+            if (wasOff) _overServerRun = _sync.HasServerRun;
             _previews.Clear(); _hovered = null;
             ShowOrHideHologram();
             _hud.Toast("Scanning… hold still for a second", 3f);
@@ -139,7 +149,7 @@ namespace CutOnce.Device
             if (hit != _hovered) { _hovered = hit; _previews.Highlight(hit); }
             if (!_input.TriggerDown) return;
             if (hit != null) Run(Pick(hit));
-            else StartScan();                                                // trigger on empty space: add this view (D11)
+            else if (_flow.CanScanFromTrigger) StartScan();                  // trigger on empty space, with no previews to miss: add this view (D11)
         }
 
         async Task Pick(string ideaId)

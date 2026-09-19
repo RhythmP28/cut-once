@@ -26,7 +26,7 @@ namespace CutOnce.Device
     /// </summary>
     public sealed class CutOnceApp : MonoBehaviour, ICopilotHost
     {
-        const float HighlightSeconds = 6f, RetrySeconds = 5f, WrongHoldSeconds = 0.8f;
+        const float HighlightSeconds = 6f, RetrySeconds = 5f, WrongHoldSeconds = 0.8f, ScanButtonHoldSeconds = 1f;
 
         [Tooltip("Create the copilot (push-to-talk on A) if the scene has none.")]
         public bool createCopilot = true;
@@ -42,6 +42,7 @@ namespace CutOnce.Device
         Action<WsMessageDto> _handleMessage;                          // cached: a method group in Update would allocate a delegate every frame
         bool _waitForMarkRelease;
         BuildMode _build;
+        readonly PressOrHold _scanButton = new PressOrHold(ScanButtonHoldSeconds);
         readonly ConcurrentQueue<(string permission, bool granted)> _permissionAnswers = new ConcurrentQueue<(string, bool)>();   // filled from Android's thread
 
         // ── start-up ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -222,7 +223,9 @@ namespace CutOnce.Device
                     : answer.permission == QuestPermissions.Scene
                     ? "Spatial data not allowed: build mode can't measure objects. Allow it in Settings > Privacy."
                     : "Microphone not allowed: use the question buttons, or allow it in Settings > Privacy.", 6f);
-            if (OVRInput.GetDown(OVRInput.RawButton.X)) _build.StartScan();      // X on the left controller: scan this view (what "what can I build?" does)
+            // X on the left controller: a press scans this view (what "what can I build?" does), holding it for a second leaves build mode.
+            var x = _scanButton.Update(OVRInput.GetDown(OVRInput.RawButton.X), OVRInput.Get(OVRInput.RawButton.X), OVRInput.GetUp(OVRInput.RawButton.X), Time.deltaTime);
+            if (x != ButtonGesture.None) _build.OnScanButton(x);
             if (_dirty) Refresh();
         }
 

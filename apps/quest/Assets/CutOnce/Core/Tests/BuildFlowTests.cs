@@ -63,6 +63,55 @@ namespace CutOnce.Core.Tests
             Assert.That(new object[] { f.Phase, f.SessionId, f.Active }, Is.EqualTo(new object[] { BuildPhase.Off, null, false }));
         }
 
+        /// <summary>A flow taken to <paramref name="phase"/> the way the headset gets there.</summary>
+        static BuildFlow At(BuildPhase phase)
+        {
+            var f = new BuildFlow();
+            if (phase == BuildPhase.Off) return f;
+            f.StartScan(); f.OnScanAccepted("bsess_a");
+            if (phase == BuildPhase.Scanning) return f;
+            f.OnInventory(Inv(true));
+            if (phase == BuildPhase.Labelled) return f;
+            f.OnIdeas("bsess_a", new List<BuildIdeaDto> { Idea("idea_1", "plan_build_1") }, true);
+            if (phase == BuildPhase.Ideas) return f;
+            f.Pick("idea_1");
+            if (phase == BuildPhase.Starting) return f;
+            f.TryPlace("plan_build_1"); f.OnPlaced();
+            if (phase == BuildPhase.Assembling) return f;
+            f.OnAssembled();
+            return f;
+        }
+
+        [TestCase(BuildPhase.Off, true)]
+        [TestCase(BuildPhase.Scanning, true)]
+        [TestCase(BuildPhase.Labelled, true)]
+        [TestCase(BuildPhase.Ideas, true)]
+        [TestCase(BuildPhase.Starting, false)]
+        [TestCase(BuildPhase.Assembling, false)]
+        [TestCase(BuildPhase.Walkthrough, false)]
+        public void TheScanButtonIsIgnoredOnceADesignIsBeingBuilt(BuildPhase phase, bool scans)
+        {
+            // A judge holds both controllers while placing a real can: a thumb on X must not throw the walkthrough away.
+            // Saying "what can I build?" stays the deliberate way to start over.
+            var f = At(phase);
+            Assert.That(f.Phase, Is.EqualTo(phase));
+            Assert.That(f.CanScanFromButton, Is.EqualTo(scans));
+        }
+
+        [TestCase(BuildPhase.Off, false)]
+        [TestCase(BuildPhase.Scanning, false)]
+        [TestCase(BuildPhase.Labelled, true)]
+        [TestCase(BuildPhase.Ideas, false)]
+        [TestCase(BuildPhase.Starting, false)]
+        [TestCase(BuildPhase.Assembling, false)]
+        [TestCase(BuildPhase.Walkthrough, false)]
+        public void TheTriggerOnEmptySpaceOnlyScansWhileThereAreNoPreviewsToMiss(BuildPhase phase, bool scans)
+        {
+            // With previews showing, a trigger that hits none of them is a near miss (or a hand inside one), not a request to
+            // look again: a rescan would clear the very previews being picked from. X is the rescan button there.
+            Assert.That(At(phase).CanScanFromTrigger, Is.EqualTo(scans));
+        }
+
         [Test]
         public void AMessageSaysWhetherItWasTakenSoOnlyThoseAreShown()
         {
@@ -105,6 +154,21 @@ namespace CutOnce.Core.Tests
             Assert.That(f.Phase, Is.EqualTo(BuildPhase.Walkthrough), "carry on building");
             f.ScanFailed();
             Assert.That(f.Phase, Is.EqualTo(BuildPhase.Walkthrough), "a failure with no scan running changes nothing");
+        }
+
+        [Test]
+        public void NoScanStartsWhileThePiecesAreFlyingSoAFailedOneCannotStrandThem()
+        {
+            // Only the flight's end leaves Assembling. A scan started mid-flight stopped the flight, and when that scan failed
+            // (it always does in the Editor) the flow came back to Assembling with nothing left to end it.
+            var f = At(BuildPhase.Assembling);
+            Assert.That(f.StartScan(), Is.False, "by button or by voice: wait the second or two the flight takes");
+            Assert.That(f.Phase, Is.EqualTo(BuildPhase.Assembling));
+            f.ScanFailed();
+            Assert.That(f.Phase, Is.EqualTo(BuildPhase.Assembling), "a failure with no scan running changes nothing");
+            f.OnAssembled();
+            Assert.That(f.Phase, Is.EqualTo(BuildPhase.Walkthrough));
+            Assert.That(f.StartScan(), Is.True, "in the walkthrough, asking again is a deliberate start over");
         }
 
         [Test]

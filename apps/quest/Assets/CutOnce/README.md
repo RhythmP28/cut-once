@@ -39,9 +39,11 @@ the headset scans, shows what comes back and flies the chosen design together.
 
 | When | Do | Result |
 |---|---|---|
-| Any time | Say **"What can I build?"**, or press **X** (left controller) | Scans this view: one passthrough photo plus 128 × 96 depth rays through its pixels. The run that was showing hides; outlines appear over the real objects, dim at first, then named with their sizes |
-| Ideas are floating above the pile | Point at one, **trigger** | Starts that design: it locks where the server put it and each piece flies from its real object into place |
-| Objects or ideas are showing | **Trigger** on empty space | Scans that view too; the server merges it into the room |
+| Any time | Say **"What can I build?"** | Scans this view: one passthrough photo plus 128 × 96 depth rays through its pixels. The run that was showing hides; outlines appear over the real objects, dim at first, then named with their sizes. Mid-build it is the deliberate way to start over (ignored for the second or two the pieces are flying) |
+| Until a design is chosen | Press **X** (left controller) | The same scan. Once a design is chosen X is off, so a thumb resting on it cannot throw the walkthrough away |
+| Any time in build mode | **Hold X** for a second | Leaves build mode: the run that is loaded shows again, where it is |
+| Ideas are floating above the pile | Point at one (or reach into it), **trigger** | Starts that design: it locks where the server put it and each piece flies from its real object into place. A trigger that hits no preview does nothing |
+| Objects are showing, no ideas yet | **Trigger** on empty space | Scans that view too; the server merges it into the room |
 | Ideas are showing | Say **"Build the …"** (or **Start** on `/director`) | Picks by name |
 | Building | Say **"Done"**, or **B** with nothing pointed at | Marks the whole current step; the next step is read aloud |
 | Building | Everything in the table above | Unchanged: B on a part, next / back / undo, questions, grip to nudge |

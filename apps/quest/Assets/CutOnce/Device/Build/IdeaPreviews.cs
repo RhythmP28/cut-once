@@ -14,7 +14,7 @@ namespace CutOnce.Device
     {
         public const float Scale = 0.25f, Spacing = 0.4f, Lift = 0.3f, Reach = 6f;
         public const int MaxShown = 3;
-        struct Item { public string ideaId; public Transform root; public BoxCollider hit; }
+        struct Item { public string ideaId; public Transform root; public BoxCollider hit; public Bounds box; }
         readonly List<Item> _items = new List<Item>();
         string _highlighted;
 
@@ -51,13 +51,18 @@ namespace CutOnce.Device
                 hit.transform.position = bounds.center;
                 hit.size = bounds.size + Vector3.one * 0.03f;
                 WorldLabel.Create(transform, idea.title, new Vector3(bounds.center.x, bounds.max.y + 0.06f, bounds.center.z));
-                _items.Add(new Item { ideaId = idea.idea_id, root = root, hit = hit });
+                _items.Add(new Item { ideaId = idea.idea_id, root = root, hit = hit, box = new Bounds(bounds.center, hit.size) });
             }
         }
 
-        /// <summary>The idea under the pointer, or null. One nearest-hit ray: nothing is allocated, so it can run every frame.</summary>
+        /// <summary>
+        /// The idea under the pointer, or null. The previews float within arm's reach, and physics never reports a collider
+        /// the ray starts inside, so a hand reaching into a preview is asked about first. Then one nearest-hit ray: nothing
+        /// is allocated, so it can run every frame.
+        /// </summary>
         public string Hit(Ray ray)
         {
+            for (int i = 0; i < _items.Count; i++) if (_items[i].box.Contains(ray.origin)) return _items[i].ideaId;
             if (_items.Count == 0 || !Physics.Raycast(ray, out var h, Reach)) return null;
             for (int i = 0; i < _items.Count; i++) if (h.collider == _items[i].hit) return _items[i].ideaId;
             return null;

@@ -22,12 +22,28 @@ namespace CutOnce.Core
         /// <summary>While you look at the room and choose, the run that was showing (E7, the desk, the last design) is out of the way.</summary>
         public bool HidesHologram => Phase == BuildPhase.Scanning || Phase == BuildPhase.Labelled || Phase == BuildPhase.Ideas || Phase == BuildPhase.Starting;
         bool Building => Phase == BuildPhase.Starting || Phase == BuildPhase.Assembling || Phase == BuildPhase.Walkthrough;
+        /// <summary>
+        /// The scan BUTTON (X) only works until a design is chosen: a thumb resting on it mid-build must not throw the
+        /// walkthrough away. Saying "what can I build?" stays the deliberate way to start over.
+        /// </summary>
+        public bool CanScanFromButton => !Building;
+        /// <summary>
+        /// The trigger on empty space scans another view only while there are no previews to miss. With previews showing, a
+        /// trigger that hits none of them is a near miss, and a rescan would clear the very previews being picked from.
+        /// </summary>
+        public bool CanScanFromTrigger => Phase == BuildPhase.Labelled;
 
-        /// <summary>A new scan: from any phase ("what can I build?" mid-build starts over, keeping the session so views merge).</summary>
-        public void StartScan()
+        /// <summary>
+        /// A new scan ("what can I build?" mid-build starts over, keeping the session so views merge). False when it is
+        /// refused: while the pieces are flying, because only the flight's end leaves Assembling, so a scan that stopped
+        /// the flight and then failed would strand the build there.
+        /// </summary>
+        public bool StartScan()
         {
+            if (Phase == BuildPhase.Assembling) return false;
             if (Phase != BuildPhase.Scanning) _beforeScan = Phase;
             Phase = BuildPhase.Scanning;
+            return true;
         }
 
         /// <summary>The scan never reached the server: back to where you were (nothing, the ideas you had, the build you were on).</summary>
