@@ -37,6 +37,22 @@ namespace CutOnce.Core.Tests
         }
 
         [Test]
+        public void ADesignStartedWhileAnotherViewIsBeingScannedIsStillPlaced()
+        {
+            var f = new BuildFlow();
+            f.OnInventory(Inv(true));
+            f.OnIdeas("bsess_a", new List<BuildIdeaDto> { Idea("idea_1", "plan_build_1") }, true);
+            f.StartScan();                                  // a look-around scan is running when "build the can stage" is said
+            Assert.That(f.TryPlace("plan_e7_massing"), Is.False, "not one of the ideas");
+            Assert.That(f.Phase, Is.EqualTo(BuildPhase.Scanning));
+            Assert.That(f.TryPlace("plan_build_1"), Is.True);
+            Assert.That(new object[] { f.Phase, f.Chosen.idea_id }, Is.EqualTo(new object[] { BuildPhase.Starting, "idea_1" }));
+            f.OnPlaced(); f.OnAssembled();
+            Assert.That(f.TryPlace("plan_build_1"), Is.False, "already built: a reload is not a second fly-together");
+            Assert.That(new BuildFlow().TryPlace("plan_build_1"), Is.False, "build mode is off");
+        }
+
+        [Test]
         public void IdeasFromAnotherSessionAreIgnoredAndExitResets()
         {
             var f = new BuildFlow();

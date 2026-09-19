@@ -59,7 +59,7 @@ namespace CutOnce.Core
         public bool Pick(string ideaId)
         {
             if (Phase != BuildPhase.Ideas) return false;
-            var idea = Ideas.Find(i => i.idea_id == ideaId);
+            var idea = ideaId == null ? null : Ideas.Find(i => i?.idea_id == ideaId);
             if (idea == null) return false;
             Chosen = idea; Phase = BuildPhase.Starting;
             return true;
@@ -67,15 +67,17 @@ namespace CutOnce.Core
 
         public void PickFailed() { if (Phase == BuildPhase.Starting) { Chosen = null; Phase = BuildPhase.Ideas; } }
 
-        /// <summary>True when this run is the chosen design: picked here, or started by voice or from the Director.</summary>
+        /// <summary>
+        /// True when this run is the chosen design: picked here, or started by voice or from the Director (then it is found
+        /// among the ideas, even while another view is being scanned). Never twice: once built, a reload is just a run.
+        /// </summary>
         public bool TryPlace(string planId)
         {
-            if (Phase == BuildPhase.Ideas)
-            {
-                var idea = Ideas.Find(i => i.plan != null && i.plan.plan_id == planId);
-                if (idea != null) { Chosen = idea; Phase = BuildPhase.Starting; }
-            }
-            return Phase == BuildPhase.Starting && Chosen?.plan != null && Chosen.plan.plan_id == planId;
+            if (!Active || planId == null || Phase == BuildPhase.Assembling || Phase == BuildPhase.Walkthrough) return false;
+            var idea = Chosen?.plan != null && Chosen.plan.plan_id == planId ? Chosen : Ideas.Find(i => i?.plan != null && i.plan.plan_id == planId);
+            if (idea == null) return false;
+            Chosen = idea; Phase = BuildPhase.Starting;
+            return true;
         }
 
         public void OnPlaced() { if (Phase == BuildPhase.Starting) Phase = BuildPhase.Assembling; }

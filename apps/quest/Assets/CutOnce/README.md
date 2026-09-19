@@ -32,6 +32,23 @@ app, and makes it the first scene in the build. There are no prefabs and no insp
 
 There are no QR codes, no markers and no calibration step.
 
+### Build mode ("What can I build?")
+
+Off until a scan starts it, so E7 and the desk behave as above. The server does the thinking (`services/api/src/build`);
+the headset scans, shows what comes back and flies the chosen design together.
+
+| When | Do | Result |
+|---|---|---|
+| Any time | Say **"What can I build?"**, or press **X** (left controller) | Scans this view: one passthrough photo plus 128 × 96 depth rays through its pixels. The run that was showing hides; outlines appear over the real objects, dim at first, then named with their sizes |
+| Ideas are floating above the pile | Point at one, **trigger** | Starts that design: it locks where the server put it and each piece flies from its real object into place |
+| Objects or ideas are showing | **Trigger** on empty space | Scans that view too; the server merges it into the room |
+| Ideas are showing | Say **"Build the …"** (or **Start** on `/director`) | Picks by name |
+| Building | Say **"Done"**, or **B** with nothing pointed at | Marks the whole current step; the next step is read aloud |
+| Building | Everything in the table above | Unchanged: B on a part, next / back / undo, questions, grip to nudge |
+
+Another run started from the Director page ends build mode. In the Editor there is no depth, so a scan fails with "no
+depth here yet": replay a recorded scan from `/director` instead, and the twins, ideas and fly-together all show.
+
 ## How it is put together, and why
 
 ```
@@ -48,7 +65,7 @@ events ─► BuildStateStore ─► Reducer.Fold ─► VisualStateResolver ─
 | `CutOnce.Net.Unity` | yes | `UnityHttpTransport` | The one platform seam for HTTP |
 | `CutOnce.AR` | yes, no Meta | `ModelSpace`, `ShapeFactory`, `PartView`, `AssemblyView`, the shader, placement, nudge, proof overlay, selection | Testable in EditMode with no headset and no Meta packages |
 | `CutOnce.UI` | yes | `HudController` | Built in code; wording lives in `Core.HudText` |
-| `Device/` (Assembly-CSharp) | Meta | `QuestInput`, `QuestSurfaceRaycaster`, `QuestAnchorStore`, `CutOnceApp` | Everything that names a Meta type is here and nowhere else |
+| `Device/` (Assembly-CSharp) | Meta | `QuestInput`, `QuestSurfaceRaycaster`, `QuestAnchorStore`, `CutOnceApp`, `Build/` (build mode: `BuildMode`, the scan, the twin outlines, the previews, the fly-together) | Everything that names a Meta type is here and nowhere else |
 
 Decisions worth knowing before you change something:
 

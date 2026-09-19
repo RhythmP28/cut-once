@@ -24,13 +24,20 @@ namespace CutOnce.Device.PlayTests
         [UnityTearDown]
         public IEnumerator DestroyWhatTheAppCreated()
         {
+            DestroyAppObjects();
+            yield return null;                                                   // Destroy takes effect at the end of the frame
+        }
+
+        /// <summary>Shared with the build-mode tests. Build mode's two roots go with their app; by name too, in case its OnDestroy never ran.</summary>
+        public static void DestroyAppObjects()
+        {
             LogAssert.ignoreFailingMessages = false;
             var app = Type.GetType("CutOnce.Device.CutOnceApp, Assembly-CSharp");
             foreach (var type in new[] { app, typeof(CutOnce.Copilot.CopilotController), typeof(AssemblyView), typeof(HudController), typeof(SelectionController) })
                 if (type != null)
                     foreach (var found in UnityEngine.Object.FindObjectsByType(type, FindObjectsInactive.Include, FindObjectsSortMode.None))
                         UnityEngine.Object.Destroy(((Component)found).gameObject);
-            yield return null;                                                   // Destroy takes effect at the end of the frame
+            foreach (var name in new[] { "[BuildTwins]", "[BuildIdeas]" }) { var left = GameObject.Find(name); if (left != null) UnityEngine.Object.Destroy(left); }
         }
 
         [UnityTest]
