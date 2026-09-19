@@ -6,7 +6,7 @@ import { annotateFrame } from "./annotate.js";
 import { ask, ground } from "./answer.js";
 import type { DemoCache } from "./cache.js";
 import { gather, searchQuery } from "./context.js";
-import { isQuestion, matchFastPath } from "./fastpath.js";
+import { isQuestion, matchFastPath, type FastPath } from "./fastpath.js";
 import { markUp, type LegendRow } from "./marks.js";
 import type { CopilotModels } from "./models.js";
 import { routeOutcome, routeTurn } from "./router.js";
@@ -102,6 +102,7 @@ export async function answerQuery(deps: Deps, input: QueryInput, log: Log): Prom
         fast.action = null;
       } else ctx.hooks.build.expectScan(fast.wish);
     }
+    if (fast.startRun) fast.answer_text = await startRun(ctx, g.plan.plan_id, fast.startRun, fast.answer_text, log);
     if (fast.action) await applyAction(deps, input.assemblyId, fast.action, "operator", { confidence: 1, note: fast.note ?? "spoken command" });
     speech.start(turnId, fast.answer_text);
     const response: CopilotResponse = {
@@ -208,6 +209,21 @@ function quick(
   };
   recordTurn(response, []);
   return response;
+}
+
+/**
+ * "Build E7": a new run from the seed, exactly as the Director's New run makes one. Asked while that run's plan is
+ * already the current one, nothing restarts (its progress would be lost) and Kit says so.
+ */
+async function startRun(ctx: Ctx, currentPlanId: string, run: NonNullable<FastPath["startRun"]>, said: string, log: Log): Promise<string> {
+  try {
+    if (ctx.store.getSeed(run.seed).plan_id === currentPlanId) return run.already;
+    await ctx.store.createAssembly({ seed: run.seed });
+    return said;
+  } catch (err) {
+    log.warn({ seed: run.seed, err: (err as Error).message }, "could not start a run by voice");
+    return run.failed;
+  }
 }
 
 function capped(
