@@ -44,5 +44,31 @@ namespace CutOnce.Device.PlayTests
             yield return null;
             UnityEngine.Object.Destroy(go);
         }
+
+        [UnityTest]
+        public IEnumerator TheCopilotComesUpInsideTheAppWithTheStoredPhotoInTheEditor()
+        {
+            var type = Type.GetType("CutOnce.Device.CutOnceApp, Assembly-CSharp");
+            var go = new GameObject("[App] (copilot smoke test)");
+            var app = go.AddComponent(type);                                   // createCopilot defaults to true
+
+            CutOnce.Copilot.CopilotController copilot = null;
+            for (float waited = 0f; waited < 5f && copilot == null; waited += Time.unscaledDeltaTime)
+            {
+                copilot = UnityEngine.Object.FindAnyObjectByType<CutOnce.Copilot.CopilotController>();
+                yield return null;
+            }
+
+            Assert.That(copilot, Is.Not.Null, "the app did not create the copilot");
+            Assert.That(copilot.hostBehaviour, Is.SameAs(app), "the app is the copilot's host");
+            Assert.That(copilot.frameSourceBehaviour, Is.InstanceOf<CutOnce.Copilot.Capture.FixtureFrameSource>(),
+                "the Editor asks with the stored photo, never the headset camera (AGENTS rule 1)");
+            Assert.That(copilot.pushToTalkBehaviour, Is.InstanceOf<CutOnce.Copilot.IPushToTalk>());
+            Assert.That(copilot.mic, Is.Not.Null);
+            Assert.That(copilot.speaker, Is.Not.Null);
+
+            UnityEngine.Object.Destroy(copilot.gameObject);
+            UnityEngine.Object.Destroy(go);
+        }
     }
 }

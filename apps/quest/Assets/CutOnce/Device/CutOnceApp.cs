@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using CutOnce.AR;
 using CutOnce.Copilot;
+using CutOnce.Copilot.Capture;
 using CutOnce.Copilot.Voice;
 using CutOnce.Core;
 using CutOnce.Net;
@@ -252,16 +253,27 @@ namespace CutOnce.Device
                 var go = new GameObject("[Copilot]");
                 go.SetActive(false);                                   // fields must be set before CopilotController.Awake reads them
                 go.AddComponent<AudioSource>();
-                var frames = go.AddComponent<PcaFrameSource>();
-                frames.cameraAccess = go.AddComponent<Meta.XR.PassthroughCameraAccess>();
                 var controller = go.AddComponent<CopilotController>();
                 controller.baseUrl = _config.BaseUrl; controller.apiToken = _config.api_token;
-                controller.frameSourceBehaviour = frames; controller.hostBehaviour = this;
+                controller.frameSourceBehaviour = AddCameraSource(go); controller.hostBehaviour = this;
                 controller.pushToTalkBehaviour = go.AddComponent<QuestPushToTalk>();
                 controller.mic = go.AddComponent<MicRecorder>(); controller.speaker = go.AddComponent<PcmStreamPlayer>();
                 go.SetActive(true);
             }
             catch (Exception e) { Debug.LogWarning("[CutOnce] The copilot could not be created; the build guide still works: " + e.Message); }
+        }
+
+        /// <summary>
+        /// The copilot's camera (AGENTS rule 1). On the headset, Meta's PassthroughCameraAccess. In the Editor, the stored
+        /// photo: the simulator's camera gives a pose but no pixels on a Mac, and the API does not run over Quest Link.
+        /// `pnpm sync:fixtures` puts the photo in StreamingAssets; without it the copilot asks with no frame.
+        /// </summary>
+        static MonoBehaviour AddCameraSource(GameObject go)
+        {
+            if (Application.isEditor) return go.AddComponent<FixtureFrameSource>();
+            var frames = go.AddComponent<PcaFrameSource>();
+            frames.cameraAccess = go.AddComponent<Meta.XR.PassthroughCameraAccess>();
+            return frames;
         }
     }
 }
