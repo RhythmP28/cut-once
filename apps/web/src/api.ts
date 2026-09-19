@@ -1,7 +1,7 @@
 import {
   AssemblySchema, BuildStateSchema, JobSchema, PlanSchema, S,
-  type Assembly, type BuildEvent, type BuildState, type CopilotContext, type CopilotResponse, type DirectorCommand, type Job, type Plan,
-  type RetrievedChunk,
+  type Assembly, type BuildEvent, type BuildIdea, type BuildState, type CopilotContext, type CopilotResponse, type DirectorCommand, type Job, type Plan,
+  type RetrievedChunk, type Twin,
 } from "@cutonce/schemas";
 import type { ZodTypeAny } from "zod";
 import { clearToken, getToken } from "./auth";
@@ -308,3 +308,16 @@ export async function fetchLastFrame(signal?: AbortSignal): Promise<string | nul
   if (!res.ok) return null;
   return URL.createObjectURL(await res.blob());
 }
+
+// ── build mode ───────────────────────────────────────────────────────────────
+export interface BuildCurrent { session: { session_id: string; created_at: string; scans: string[] } | null; twins: Twin[]; ideas: BuildIdea[] }
+export interface BuildScanRow { scan_id: string; session_id: string | null; captured_at: string | null; recording: boolean }
+/** `standard`: the object has a standard size, so it can be added by hand. */
+export interface BuildVocabItem { name: string; label: string; standard: boolean }
+export const getBuildCurrent = () => request<BuildCurrent>("GET", "/v1/build/sessions/current");
+export const listBuildScans = () => request<{ scans: BuildScanRow[] }>("GET", "/v1/build/scans");
+export const replayBuildScan = (scanId: string, labels: "saved" | "live") => request<{ session_id: string }>("POST", `/v1/build/scans/${enc(scanId)}/replay`, { body: { labels } });
+export const startBuildIdea = (ideaId: string) => request<{ assembly_id: string; plan_id: string; revision: number }>("POST", `/v1/build/ideas/${enc(ideaId)}/start`, { body: {} });
+export const addBuildObject = (name: string) => request<Twin>("POST", "/v1/build/objects", { body: { name } });
+export const newBuildSession = () => request<{ session_id: string }>("POST", "/v1/build/sessions", { body: {} });
+export const getBuildVocabulary = () => request<{ items: BuildVocabItem[] }>("GET", "/v1/build/vocabulary");

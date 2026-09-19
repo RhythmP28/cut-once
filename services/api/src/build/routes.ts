@@ -4,7 +4,7 @@ import { S } from "@cutonce/schemas";
 import type { Ctx, Plugin } from "../app.js";
 import { ApiError, badRequest } from "../errors.js";
 import { jsonCall } from "../llm.js";
-import { loadRules, loadVocab } from "./data.js";
+import { loadRules, loadVocab, standardShape } from "./data.js";
 import { BuildSessions } from "./session.js";
 
 /** Build mode (the Lego Movie). Models: OPENAI_LABEL_MODEL and OPENAI_IDEAS_MODEL, each defaulting to OPENAI_MODEL. */
@@ -55,7 +55,7 @@ export const buildRoutes: Plugin = (app: FastifyInstance, ctx: Ctx) => {
     if (!body.success) throw badRequest("body must be { name }");
     return sessions.addObject(body.data.name);
   });
-  app.get("/v1/build/vocabulary", async () => ({ items: [...vocab.values()].map(({ name, label }) => ({ name, label })) }));
+  app.get("/v1/build/vocabulary", async () => ({ items: [...vocab.values()].map((item) => ({ name: item.name, label: item.label, standard: standardShape(item) !== null })) }));
   app.post("/v1/build/say", async (req) => {
     const body = z.object({ text: z.string().min(1).max(400) }).safeParse(req.body);
     if (!body.success) throw badRequest("body must be { text }");

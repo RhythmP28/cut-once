@@ -89,6 +89,13 @@ describe("a scan of the kit", () => {
     expect(seen.some((m) => m.type === "build_ideas" && m.final && m.ideas.length === 1)).toBe(true);
   });
 
+  it("lists the vocabulary, and says which objects have a standard size: only those can be added by hand", async () => {
+    const { items } = (await t.app.inject({ method: "GET", url: "/v1/build/vocabulary", headers: auth })).json() as { items: { name: string; label: string; standard: boolean }[] };
+    expect(items.find((i) => i.name === "tall_can")).toEqual({ name: "tall_can", label: "tall can", standard: true });
+    expect(items.find((i) => i.name === "cardboard_box")?.standard).toBe(false);
+    for (const i of items) expect([i.name, (await post("/v1/build/objects", { name: i.name })).statusCode]).toEqual([i.name, i.standard ? 200 : 400]);
+  });
+
   it("adds a missed object from the Director", async () => {
     await post("/v1/build/scans", kitUpload());
     await t.app.ctx.hooks.build!.idle();

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Assembly, BuildEvent, BuildState, Plan, Presence as PresenceClient } from "@cutonce/schemas";
 import { ApiError, describeError, getCurrentAssembly, getEvents, getPlan, getState } from "../api";
 import { useStream, useStreamStatus } from "../ws";
+import { BuildPanel } from "./BuildPanel";
 import { Commands } from "./Commands";
 import { CopilotPanel } from "./CopilotPanel";
 import { ElasticTab } from "./ElasticTab";
@@ -165,6 +166,7 @@ export function DirectorPage() {
         <div className="col">
           <Presence clients={clients} status={status} />
           <RunPanel assembly={assembly} plan={plan} state={state} noRun={noRun} onChanged={reload} />
+          <BuildPanel />
           <ForceState plan={plan} state={state} onChanged={reload} />
           <Commands />
         </div>
