@@ -221,6 +221,15 @@ describe("the safety net", () => {
   });
 });
 
+describe("a blank answer", () => {
+  it("is replaced by a short spoken line, so the headset never shows and plays nothing", async () => {
+    transcribe.mockResolvedValue("hmm"); ask.mockResolvedValue(draft({ answer_text: "   " }));
+    const body = (await query()).json();
+    expect(body.answer_text).toBe("I don't have an answer for that. Try asking another way.");
+    expect(body.needs_clarification).toBe(true);
+  });
+});
+
 describe("a question with no camera frame", () => {
   const noFrame = (over: Partial<CopilotContext> = {}, frameBytes: Buffer | null = null) => t.app.inject({
     method: "POST", url: `/v1/assemblies/${aid()}/copilot/query`,

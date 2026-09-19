@@ -145,6 +145,8 @@ export async function answerQuery(deps: Deps, input: QueryInput, log: Log): Prom
   }
 
   const grounded = ground(result.draft, g, chunks);
+  // The schema allows an empty string; the headset must never show and play nothing.
+  if (!grounded.answer_text) Object.assign(grounded, { answer_text: "I don't have an answer for that. Try asking another way.", needs_clarification: true });
   // Blueprint §587: state changes come from commands. A model-proposed one is applied only for a sure,
   // unambiguous statement, never a question, and the log records it as the model's call with its confidence.
   const commanded = grounded.action && !isQuestion(transcript) && !grounded.needs_clarification && grounded.confidence >= MODEL_ACTION_MIN

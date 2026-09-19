@@ -311,6 +311,20 @@ describe("verification", () => {
     expect(r.json().evidence).toContain("not in this plan");
   });
 
+  it("checks the part against the assembly's own plan revision, even after a newer one is approved", async () => {
+    const aid = currentId();
+    const plan = t.app.ctx.store.planOf(aid);
+    // Revision 2 renames the tray everywhere (still a valid plan); the running assembly stays on revision 1.
+    const next = JSON.parse(JSON.stringify(plan).replaceAll("part_cable_tray", "part_tray_v2"));
+    const { revision, validation } = t.app.ctx.store.putDraft(next);
+    expect(validation.filter((v) => v.severity === "error")).toEqual([]);
+    t.app.ctx.store.approve(plan.plan_id, revision, "test");
+    const r = await send(aid, request({ part_id: "part_cable_tray" }));
+    // Found in the assembly's revision, so it reaches the model step (which has no key here) instead of "not in this plan".
+    expect(r.json().evidence).not.toContain("is not in this plan");
+    expect(r.json().evidence).toContain("did not complete");
+  });
+
   it("an unsure verdict writes no event: the camera never changes what is built", async () => {
     const aid = currentId();
     const before = t.app.ctx.store.getEvents(aid).head;

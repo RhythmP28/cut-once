@@ -40,7 +40,7 @@ export async function verifyPart(
 ): Promise<VerificationResult> {
   const t0 = Date.now();
   const { request: req } = input;
-  const plan = ctx.store.getPlan(ctx.store.getAssembly(input.assemblyId).plan_id);
+  const plan = ctx.store.planOf(input.assemblyId); // the assembly's own revision, not the newest approved one
   const part: Part | undefined = plan.parts.find((p) => p.part_id === req.part_id);
   if (!part) return unsure(req, `${req.part_id} is not in this plan`, Date.now() - t0, m.chat);
   if (req.in_frame < MIN_IN_FRAME) return unsure(req, "the part is mostly outside the frame", Date.now() - t0, m.chat);
