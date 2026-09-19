@@ -7,7 +7,7 @@ import { badRequest, notFound } from "../errors.js";
 import { standardShape, type Rule, type Vocab } from "./data.js";
 import { BuildFiles, newId } from "./files.js";
 import { computeIdeas, summary } from "./ideas.js";
-import { labelBySize, labelTwins, type ModelCall } from "./label.js";
+import { nameTwins, type ModelCall } from "./label.js";
 import { appendTwin, mergeSurfaces, mergeTwins } from "./merge.js";
 import { flatSize, heightOf } from "./shape.js";
 import { fixSizes } from "./sizes.js";
@@ -155,26 +155,16 @@ export class BuildSessions {
     }
   }
 
-  /**
-   * Names for this scan's twins. Saved labels on a replay; else the vision model; and when it cannot be asked (no
-   * key) or fails (no Wi-Fi, a timeout, a malformed answer), names from sizes alone, so the rule designs still work.
-   * Labelling never sinks a scan: the outlines are already on show, and "I couldn't name these" beats a dead end.
-   */
+  /** Names for this scan's twins: its saved labels on a replay, else nameTwins (the vision model, or sizes alone). */
   private async label(scan: BuildScan, photo: Buffer, incoming: Twin[], surfaces: Surface[], cloud: Cloud, mode: "saved" | "live"): Promise<{ twins: Twin[]; note: string | null }> {
     if (mode === "saved") { const saved = this.files.readLabels(scan.scan_id); if (saved) return { twins: saved, note: null }; }
     if (incoming.length === 0) return { twins: incoming, note: null };
-    if (this.ctx.cfg.openaiKey) {
-      try {
-        const out = await labelTwins({ cfg: this.ctx.cfg, call: this.deps.call, model: this.deps.models.label, vocab: this.deps.vocab, timeoutMs: 15_000 }, photo, incoming, surfaces, cloud);
-        this.files.saveLabels(scan.scan_id, out);
-        return { twins: out, note: null };
-      } catch (err) {
-        this.deps.log.warn({ err: (err as Error).message }, "the vision model could not label the scan; naming by size instead");
-      }
-    }
-    const bySize = labelBySize(incoming, this.deps.vocab);
-    const named = bySize.filter((t) => t.name !== "unknown").length;
-    return { twins: bySize, note: named ? `I named ${named} of ${bySize.length} objects by their size alone.` : "I can see objects but couldn't name them. Add them from the laptop, or ask again." };
+    const { twins, by } = await nameTwins(
+      { cfg: this.ctx.cfg, call: this.deps.call, model: this.deps.models.label, vocab: this.deps.vocab, timeoutMs: 15_000, log: this.deps.log },
+      photo, incoming, surfaces, cloud);
+    if (by === "vision") { this.files.saveLabels(scan.scan_id, twins); return { twins, note: null }; }
+    const named = twins.filter((t) => t.name !== "unknown").length;
+    return { twins, note: named ? `I named ${named} of ${twins.length} objects by their size alone.` : "I can see objects but couldn't name them. Add them from the laptop, or ask again." };
   }
 
   private async ideas(session: Session, photo: Buffer | null, request: string | null): Promise<void> {

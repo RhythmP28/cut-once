@@ -54,6 +54,14 @@ describe("POST /v1/build/scans", () => {
 });
 
 describe("BuildFiles", () => {
+  it("never writes into a recording: they are fixtures in the public repo, and a live replay must not change them", () => {
+    const files = new BuildFiles(t.dataDir, t.dataDir);             // a stand-in repo root, so nothing real is touched
+    files.saveLabels("scan_rec_kit", []);
+    expect(existsSync(join(t.dataDir, "data", "build", "recordings", "kit", "labels.json"))).toBe(false);
+    files.saveLabels("scan_live01", []);
+    expect(existsSync(join(t.dataDir, "build", "scans", "scan_live01", "labels.json"))).toBe(true);
+  });
+
   it("checks a scan id before it touches a path (ids arrive in URLs)", () => {
     const files = new BuildFiles(t.dataDir, REPO_ROOT);
     for (const id of ["scan_rec_../../../etc", "../scan_x", "scan_rec_a/b", "scan_A", "SCAN_x", ""]) {

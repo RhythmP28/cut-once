@@ -16,6 +16,8 @@
     "elastic:indices": "pnpm -F @cutonce/api exec tsx src/cli/elastic-indices.ts",
     "elastic:setup": "pnpm -F @cutonce/api exec tsx src/cli/elastic-setup.ts",
     "search:eval": "pnpm -F @cutonce/api exec tsx src/cli/search-eval.ts",
+    "build:record": "pnpm -F @cutonce/api exec tsx src/cli/build-record.ts",
+    "build:eval": "pnpm -F @cutonce/api exec tsx src/cli/build-eval.ts",
     "extract:eval": "pnpm -F @cutonce/api exec tsx src/cli/extract-eval.ts",
     "copilot:fixtures": "pnpm -F @cutonce/api exec tsx src/cli/copilot-fixtures.ts",
     "g0": "pnpm -F @cutonce/api exec tsx src/cli/g0-check.ts",

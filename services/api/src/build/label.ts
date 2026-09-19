@@ -150,3 +150,18 @@ export function labelBySize(twins: Twin[], vocab: Vocab): Twin[] {
       material: item.material, load_bearing: item.load_bearing, cuttable: item.cuttable, confidence: 0.6 };
   });
 }
+
+/**
+ * Names for a scan's twins: the vision model's, or, when it cannot be asked (no key) or fails (no Wi-Fi, a timeout,
+ * a malformed answer), names from sizes alone, so the rule designs still work. Never throws: labelling must not sink a
+ * scan whose outlines are already on show. The server and `pnpm build:eval` both name through here.
+ */
+export async function nameTwins(
+  deps: LabelDeps & { log: { warn: (o: object, m: string) => void } }, photo: Buffer, twins: Twin[], surfaces: Surface[], cloud: Cloud,
+): Promise<{ twins: Twin[]; by: "vision" | "size" }> {
+  if (deps.cfg.openaiKey) {
+    try { return { twins: await labelTwins(deps, photo, twins, surfaces, cloud), by: "vision" }; }
+    catch (err) { deps.log.warn({ err: (err as Error).message }, "the vision model could not label the scan; naming by size instead"); }
+  }
+  return { twins: labelBySize(twins, deps.vocab), by: "size" };
+}

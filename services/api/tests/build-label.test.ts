@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { REPO_ROOT, loadConfig } from "../src/config.js";
 import { loadVocab } from "../src/build/data.js";
 import type { Twin } from "@cutonce/schemas";
-import { MAX_MARKS, applyLabels, labelBySize, labelTwins, type LabelResult } from "../src/build/label.js";
+import { MAX_MARKS, applyLabels, labelBySize, labelTwins, nameTwins, type LabelResult } from "../src/build/label.js";
 import { buildTwins, decodeScan } from "../src/build/twins.js";
 import { CAMERA, FLOOR, TABLE, box, can, synthScan } from "./build-synth.js";
 
@@ -96,6 +96,29 @@ describe("labelBySize: names from sizes alone, when the vision model cannot be a
   it("never renames an object that already has a name", () => {
     const [t] = labelBySize([measured({ type: "cylinder", axis: "y", diameter: 0.066, length: 0.157 }, { name: "other", label: "thermos", confidence: 0.9 })], vocab);
     expect([t!.name, t!.label]).toEqual(["other", "thermos"]);
+  });
+});
+
+describe("nameTwins: the vision model's names, or names by size when it cannot be asked or fails", () => {
+  const photo = readFileSync(join(REPO_ROOT, "data", "fixtures", "frame_0001.jpg"));
+  const answer = { objects: twins.map((_, i) => item(i + 1)), missed: [] };
+  const deps = (key: string, call: (cfg: unknown, req: unknown) => Promise<unknown>, warn = vi.fn()) =>
+    ({ cfg: loadConfig({}, { openaiKey: key }), call, model: "m", vocab, timeoutMs: 1000, log: { warn } });
+
+  it("asks the vision model when there is a key", async () => {
+    const out = await nameTwins(deps("k", vi.fn(async () => answer)), photo, twins, surfaces, cloud);
+    expect([out.by, out.twins.every((t) => t.name === "tall_can")]).toEqual(["vision", true]);
+  });
+  it("names by size with no key, and never calls the model", async () => {
+    const call = vi.fn(async () => answer);
+    const out = await nameTwins(deps("", call), photo, twins, surfaces, cloud);
+    expect([out.by, call.mock.calls.length]).toEqual(["size", 0]);
+  });
+  it("names by size when the call fails, and logs why", async () => {
+    const warn = vi.fn();
+    const out = await nameTwins(deps("k", vi.fn(async () => { throw new Error("connect ETIMEDOUT"); }), warn), photo, twins, surfaces, cloud);
+    expect(out.by).toBe("size");
+    expect(warn.mock.calls[0]![0]).toEqual({ err: "connect ETIMEDOUT" });
   });
 });
 

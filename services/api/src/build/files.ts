@@ -48,7 +48,11 @@ export class BuildFiles {
     return raw ? raw.map((t) => S.Twin.parse(t)) : null;
   }
 
-  saveLabels(scanId: string, twins: Twin[]): void { writeJsonAtomic(join(this.scanDir(scanId), "labels.json"), twins); }
+  /** A recording keeps the labels it was recorded with (pnpm build:record): the server never writes into the repo's tracked data. */
+  saveLabels(scanId: string, twins: Twin[]): void {
+    if (scanId.startsWith("scan_rec_")) return;
+    writeJsonAtomic(join(this.scanDir(scanId), "labels.json"), twins);
+  }
 
   listScans(): { scan_id: string; session_id: string | null; captured_at: string | null; recording: boolean }[] {
     const live = existsSync(join(this.root, "scans")) ? readdirSync(join(this.root, "scans")).filter((d) => d.startsWith("scan_")) : [];
