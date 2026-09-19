@@ -5,3 +5,4 @@ export { partAabb, aabbGap, aabbOverlapDepth, union, volume, isSolid, type Aabb 
 export { toPartId, toMaterialId } from "./ids.js";
 export { plannedEvents } from "./planned.js";
 export { HOLOGRAM_PALETTE, resolveVisuals, styleFor, stateForBuilt, type BaseVisual, type Modifier, type PartVisual, type VisualStyle } from "./visual.js";
+export { diffPlans, type PartChange, type PlanDiff } from "./diff.js";
