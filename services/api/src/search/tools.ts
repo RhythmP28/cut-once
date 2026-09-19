@@ -16,6 +16,15 @@ export const REMOTE_NAME: Record<ToolName, string> = {
   build_history: "cutonce_build_history", log_issue: "cutonce_log_issue",
 };
 
+/** Reshape MCP rows into the direct twin's shape, so the copilot sees one format per tool. */
+const REMOTE_SHAPE: Record<ToolName, (rows: unknown, sent: Record<string, unknown>) => unknown> = {
+  search_documents: (rows) => ({ chunks: rows }),
+  find_parts: (rows) => ({ parts: rows }),
+  lookup_material: (rows) => ({ materials: rows }),
+  build_history: (rows) => ({ report: "events", events: rows }),
+  log_issue: (_rows, sent) => ({ ok: true, issue_id: sent.issue_id }),
+};
+
 /** The Agent Builder tools take exactly the parameters in knowledge/agent-builder/tools/*.json; adapt ours to theirs. */
 function remoteArgs(ctx: Ctx, name: ToolName, args: Record<string, unknown>): Record<string, unknown> {
   if (name === "build_history") return { assembly_id: args.assembly_id ?? ctx.store.currentAssembly()?.assembly_id ?? "" };
@@ -33,7 +42,8 @@ export async function callKnowledgeTool(ctx: Ctx, name: ToolName, args: Record<s
   if (!(name in directTools)) return { ok: false, error: `unknown tool ${name}` };
   const remote: Remote | null = opts.remote ?? (ctx.cfg.mcpUrl && ctx.cfg.esApiKey ? (n, a) => mcpCall(ctx.cfg, n, a) : null);
   if (remote) {
-    try { return { ok: true, data: await timeout(remote(REMOTE_NAME[name], remoteArgs(ctx, name, args)), opts.timeoutMs ?? 2000), via: "mcp" }; }
+    const sent = remoteArgs(ctx, name, args);
+    try { return { ok: true, data: REMOTE_SHAPE[name](await timeout(remote(REMOTE_NAME[name], sent), opts.timeoutMs ?? 2000), sent), via: "mcp" }; }
     catch { /* fall through to the direct twin */ }
   }
   try { return { ok: true, data: await directTools[name](ctx, args), via: "direct" }; }

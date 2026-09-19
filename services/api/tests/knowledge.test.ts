@@ -3,6 +3,7 @@ import { loadConfig } from "../src/config.js";
 import { startEventIndexer } from "../src/search/indexEvents.js";
 import { buildSearchBody } from "../src/search/retrieve.js";
 import { callKnowledgeTool, knowledgeToolSpecs } from "../src/search/tools.js";
+import { unwrapAgentBuilder } from "../src/search/mcp.js";
 import { auth, builtEvent, makeApp } from "./helpers.js";
 
 let t: Awaited<ReturnType<typeof makeApp>>;
@@ -57,7 +58,7 @@ describe("knowledge tools", () => {
   });
   it("falls back when MCP errors, and uses MCP when it answers", async () => {
     expect(await callKnowledgeTool(t.app.ctx, "lookup_material", { material_id: "mat_leg_700" }, { remote: async () => { throw new Error("403"); } })).toMatchObject({ ok: true, via: "direct" });
-    expect(await callKnowledgeTool(t.app.ctx, "find_parts", { query: "x" }, { remote: async (name) => ({ name }) })).toEqual({ ok: true, via: "mcp", data: { name: "cutonce_find_parts" } });
+    expect(await callKnowledgeTool(t.app.ctx, "find_parts", { query: "x" }, { remote: async (name) => ({ name }) })).toEqual({ ok: true, via: "mcp", data: { parts: { name: "cutonce_find_parts" } } });
   });
   it("never throws", async () => expect(await callKnowledgeTool(t.app.ctx, "nope" as never, {})).toMatchObject({ ok: false }));
   it("answers build_history from disk with no cluster", async () =>
@@ -83,5 +84,22 @@ describe("issue webhook and analytics", () => {
   it("analytics: unknown name is 404, no cluster is 503", async () => {
     expect((await t.app.inject({ method: "GET", url: "/v1/analytics/nope", headers: auth })).statusCode).toBe(404);
     expect((await t.app.inject({ method: "GET", url: "/v1/analytics/step_durations", headers: auth })).statusCode).toBe(503);
+  });
+});
+
+describe("Agent Builder result shape", () => {
+  // Shape from Kibana 9.4 agent-builder-common/tools/tool_result.ts, returned as JSON text over MCP.
+  const wrapped = { results: [{ type: "esql_results", data: { columns: [{ name: "part_id", type: "keyword" }, { name: "name", type: "text" }], values: [["part_tabletop", "Tabletop"]] } }] };
+  it("turns ES|QL columns into row objects", () =>
+    expect(unwrapAgentBuilder(wrapped)).toEqual([{ part_id: "part_tabletop", name: "Tabletop" }]));
+  it("throws on an error result so the caller falls back", () =>
+    expect(() => unwrapAgentBuilder({ results: [{ type: "error", data: { message: "boom" } }] })).toThrow(/boom/));
+  it("passes unwrapped values through", () => expect(unwrapAgentBuilder({ parts: [] })).toEqual({ parts: [] }));
+  it("gives MCP answers the direct twin's keys", async () => {
+    const rows = [{ part_id: "part_left_rear_leg", name: "Left rear leg" }];
+    const viaMcp = await callKnowledgeTool(t.app.ctx, "find_parts", { query: "rear leg" }, { remote: async () => rows });
+    const direct = await callKnowledgeTool(t.app.ctx, "find_parts", { query: "rear leg" });
+    expect(viaMcp).toMatchObject({ ok: true, via: "mcp" });
+    expect(Object.keys((viaMcp as any).data)).toEqual(Object.keys((direct as any).data));
   });
 });
