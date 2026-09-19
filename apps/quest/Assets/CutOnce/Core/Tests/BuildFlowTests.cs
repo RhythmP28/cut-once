@@ -227,6 +227,22 @@ namespace CutOnce.Core.Tests
         }
 
         [Test]
+        public void TheSiteIsWhereTheChosenDesignStandsElseWhereTheIdeasWouldGo()
+        {
+            var chosen = new BuildOriginDto { position = new[] { 0.1, 0.74, 0.5 } };
+            var other = new BuildOriginDto { position = new[] { 0.4, 0.74, 0.5 } };
+            var f = new BuildFlow();
+            Assert.That(f.Site, Is.Null, "nothing scanned: no site");
+            f.OnInventory(Inv(true));
+            var first = Idea("idea_1", "plan_build_1"); first.origin = other;
+            var second = Idea("idea_2", "plan_build_2"); second.origin = chosen;
+            f.OnIdeas("bsess_a", new List<BuildIdeaDto> { first, second }, true);
+            Assert.That(f.Site, Is.SameAs(other), "while choosing: where the first idea would go");
+            f.Pick("idea_2");
+            Assert.That(f.Site, Is.SameAs(chosen));
+        }
+
+        [Test]
         public void NoScanStartsWhileThePiecesAreFlyingSoAFailedOneCannotStrandThem()
         {
             // Only the flight's end leaves Assembling. A scan started mid-flight stopped the flight, and when that scan failed

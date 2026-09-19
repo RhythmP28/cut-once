@@ -29,8 +29,12 @@ namespace CutOnce.Device
         string _hovered, _lastStepId;
         /// <summary>Build mode was switched on while a run from the server was showing, so any other run that loads now was started on purpose.</summary>
         bool _overServerRun;
+        /// <summary>Where the last design was placed, and which plan that was: another run that arrives while the hologram is still there stands there too.</summary>
+        BuildOriginDto _site; string _sitePlanId;
 
         public bool Active => _flow.Active;
+        /// <summary>The pieces are between their real objects and the design: the hologram's bounds are half the room, so nothing should be stood against them.</summary>
+        public bool PiecesInFlight => _flow.Phase == BuildPhase.Assembling;
         public BuildFlow Flow => _flow;
 
         public void Init(ServerConfig config, ApiClient api, SyncEngine sync, BuildStateStore store, AssemblyView assembly, AlignmentController alignment,
@@ -195,6 +199,7 @@ namespace CutOnce.Device
                 var origin = _flow.Chosen.origin;
                 if (origin?.position != null && origin.position.Length == 3)
                     _alignment.LockAt(new Pose(ModelSpace.Point(origin.position), ModelSpace.Rotation(origin.rotation_quat)), "build");
+                _site = origin; _sitePlanId = plan.plan_id;
                 _flow.OnPlaced();
                 _fly.Play(_assembly, plan, _flow.Chosen, _twins);
                 return true;
@@ -203,8 +208,21 @@ namespace CutOnce.Device
             // under way that always ends build mode. Before that, only when build mode was switched on over a server run: the
             // app's own first load, arriving after an early scan, is not a takeover.
             bool building = _flow.Phase == BuildPhase.Assembling || _flow.Phase == BuildPhase.Walkthrough;
-            if (_flow.Active && (building || _overServerRun)) Exit();
+            var site = _flow.Site ?? _site;                                  // read before Exit forgets the ideas
+            bool tookOver = _flow.Active && (building || _overServerRun);
+            if (tookOver) Exit();
+            // The new run ("build E7") stands on the build site, where the viewer is looking: its own origin may be a corner
+            // (E7's is), and the hologram is where build mode put it or was about to. Not when build mode is still choosing
+            // (the run stays hidden), not for the placed design itself coming round again, and not once the operator has
+            // placed something by hand since.
+            if (!_flow.Active && plan != null && plan.plan_id != _sitePlanId && (tookOver || _alignment.Method == "build")) StandOnTheBuildSite(site);
             return false;
+        }
+
+        void StandOnTheBuildSite(BuildOriginDto site)
+        {
+            if (site?.position == null || site.position.Length != 3) return;
+            _alignment.StandAt(ModelSpace.Point(site.position), ModelSpace.Rotation(site.rotation_quat).eulerAngles.y, "build");
         }
 
         void OnFlown()

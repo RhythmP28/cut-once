@@ -79,10 +79,16 @@ namespace CutOnce.Device.PlayTests
             Assert.That(Phase(mode), Is.EqualTo(BuildPhase.Assembling));
             var can = hologram.ViewOf("part_o1");
             Assert.That(Vector3.Distance(can.transform.position, ModelSpace.Point(canInRoom)), Is.LessThan(1e-4f), "the can's hologram starts on the real can");
+            var hud = GameObject.Find("[HUD]").transform;
+            var stoodBehindTheDesign = hud.position;                            // stood by the lock, before the pieces left for their objects
 
             yield return null;
             for (float waited = 0f; waited < 5f && alignment.Hint.StartsWith("Saving"); waited += Time.unscaledDeltaTime) yield return null;
+            yield return null;
             LogAssert.ignoreFailingMessages = false;
+            Assert.That(Phase(mode), Is.EqualTo(BuildPhase.Assembling), "the lock settles long before the 0.7 s flight ends");
+            Assert.That(Vector3.Distance(hud.position, stoodBehindTheDesign), Is.LessThan(1e-4f),
+                "the HUD was stood again while the can was still over at the real one, half a metre away: off-centre and high for the whole walkthrough");
             Assert.That(GameObject.Find("[Idea] Can on a stage"), Is.Null, "the previews are gone once one is picked");
 
             for (float waited = 0f; waited < 8f && Phase(mode) != BuildPhase.Walkthrough; waited += Time.unscaledDeltaTime) yield return null;
@@ -99,10 +105,21 @@ namespace CutOnce.Device.PlayTests
             Assert.That((bool)Call(mode, "MarkCurrentStep"), Is.True);
             Assert.That(new[] { store.Current.parts["part_surface"].state, store.Current.current_step_id }, Is.EqualTo(new[] { "built", "step_02" }));
 
-            // The Director starts another run: build mode steps aside for it.
+            // The Director starts another run ("build E7"): build mode steps aside for it, and it stands on the build site, where
+            // the judge is looking. Its own origin is a corner, 30 cm and 20 cm from the middle of its footprint, as E7's is.
             var other = IdeasFixture().ideas[0].plan; other.plan_id = "plan_started_elsewhere";
+            foreach (var part in other.parts) { part.position[0] += 0.3; part.position[2] += 0.2; }
+            LogAssert.ignoreFailingMessages = true;                            // the Editor cannot make the lock's spatial anchor
             LoadRun(app, other, "asm_started_elsewhere");
+            yield return null; yield return null;
+            LogAssert.ignoreFailingMessages = false;
             Assert.That(new object[] { Phase(mode), ModeOf(app), Hologram().gameObject.activeSelf }, Is.EqualTo(new object[] { BuildPhase.Off, "overlay", true }));
+            var footprint = new Bounds(); bool any = false;
+            foreach (var view in Hologram().Views.Values) { if (!any) { footprint = view.WorldBounds; any = true; } else footprint.Encapsulate(view.WorldBounds); }
+            // The fixture's site is [0.1, 0.74, 0.5] in the plan's frame: x is mirrored into Unity, so (-0.1, 0.74, 0.5).
+            Assert.That(new Vector2(footprint.center.x - -0.1f, footprint.center.z - 0.5f).magnitude, Is.LessThan(2e-3f), "the new run's footprint is centred on the build site");
+            Assert.That(footprint.min.y, Is.EqualTo(0.74f).Within(2e-3f), "and its lowest face rests on the table");
+            Assert.That(new object[] { alignment.State, alignment.Method }, Is.EqualTo(new object[] { AlignmentState.Locked, "build" }));
             UnityEngine.Object.Destroy(app.gameObject);
             yield return null;
         }

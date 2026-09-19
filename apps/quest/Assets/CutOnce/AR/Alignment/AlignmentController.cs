@@ -19,10 +19,15 @@ namespace CutOnce.AR
         /// <summary>Two touched points must be as far apart as the plan says, within this. A larger gap means the wrong corners were touched.</summary>
         public const float TouchBaselineTolerance = 0.03f;
         const string NudgeKey = "cutonce.alignment.nudge";
+        const string LockedHint = "Hold grip + stick to nudge · hold the stick button to place again";
 
         IOperatorInput _input; ISurfaceRaycaster _surface; IAnchorStore _anchors; AssemblyView _assembly;
         readonly List<Vector3> _touches = new List<Vector3>();
         float _yaw; bool _yawChosen, _nudged;
+        /// <summary>The current lock is for this session only (build mode's): nothing about it, not even a nudge, is saved.</summary>
+        bool _sessionLock;
+        /// <summary>Goes up with every lock and every "place again", so a lock still waiting for its anchor knows it has been overtaken.</summary>
+        int _lockTicket;
 
         public AlignmentState State { get; private set; } = AlignmentState.Restoring;
         /// <summary>How the current pose was reached: restored | pointed | touch_2pt | build. Shown on the HUD and useful in the event log.</summary>
@@ -52,6 +57,7 @@ namespace CutOnce.AR
 
         public void BeginPlacing()
         {
+            _lockTicket++;
             State = AlignmentState.Placing; _touches.Clear(); _yawChosen = false;
             Hint = (_assembly != null && _assembly.DisplayScale < 1f ? $"Tabletop model at {_assembly.ScaleLabel} · " : "") + "Point at where the build stands · stick turns it · trigger locks";
             Changed?.Invoke();
@@ -59,14 +65,33 @@ namespace CutOnce.AR
 
         /// <summary>
         /// Build mode knows where the design goes (the server chose a spot beside the pile, facing the viewer), so it
-        /// locks there directly, with a spatial anchor, like any other lock. Grip + stick nudges still work afterwards.
+        /// locks there directly. The lock is for this session only: it gets a spatial anchor of its own, but the anchor and
+        /// the nudge saved for E7 or the desk are left exactly as they were, so the next launch still finds them. Grip +
+        /// stick nudges still work afterwards (and are not saved either). Pointing and pulling the trigger is the way to
+        /// make a placement that lasts.
         /// </summary>
-        public void LockAt(Pose worldPose, string method)
+        public async void LockAt(Pose worldPose, string method)
         {
+            int ticket = ++_lockTicket;
             transform.SetParent(null, true);
             transform.SetPositionAndRotation(worldPose.position, worldPose.rotation);
-            Lock(method);
+            State = AlignmentState.Locked; Method = method; Hint = LockedHint; _nudged = false; _sessionLock = true; _touches.Clear();
+            Changed?.Invoke();
+
+            Transform anchor = null;
+            try { if (_anchors != null) anchor = await _anchors.CreateForSessionAt(worldPose); }
+            catch (Exception e) { Debug.LogWarning("[CutOnce] Could not make a spatial anchor for this session: " + e.Message); }
+            if (this == null || anchor == null || ticket != _lockTicket) return;   // overtaken by a newer lock, or by "place again"
+            transform.SetParent(anchor, true);
         }
+
+        /// <summary>
+        /// Stands whatever is drawn now on a spot, as pointing at it would (the middle of its footprint on the point, its
+        /// lowest face on the surface), for this session only. Build mode uses it when another run takes over ("build
+        /// E7"): the new run appears on the build site, where the viewer is looking.
+        /// </summary>
+        public void StandAt(Vector3 surfacePoint, float yawDegrees, string method) =>
+            LockAt(PlacementMath.StandOn(surfacePoint, yawDegrees, LocalBounds(), _assembly.DisplayScale), method);
 
         void Update()
         {
@@ -120,7 +145,8 @@ namespace CutOnce.AR
 
         async void Lock(string method)
         {
-            State = AlignmentState.Locked; Method = method; Hint = "Saving position…"; _nudged = false;
+            int ticket = ++_lockTicket;
+            State = AlignmentState.Locked; Method = method; Hint = "Saving position…"; _nudged = false; _sessionLock = false;
             PlayerPrefs.DeleteKey(NudgeKey);
             Changed?.Invoke();
 
@@ -130,7 +156,7 @@ namespace CutOnce.AR
                 if (_anchors != null) { await _anchors.Forget(); anchor = await _anchors.CreateAt(new Pose(transform.position, transform.rotation)); }
             }
             catch (Exception e) { Debug.LogWarning("[CutOnce] Could not save a spatial anchor: " + e.Message); }
-            if (this == null) return;
+            if (this == null || ticket != _lockTicket) return;          // overtaken while the anchor was being saved: that lock's pose is not this one's
             if (anchor != null) transform.SetParent(anchor, true);
             Finish(method);
         }
@@ -138,7 +164,7 @@ namespace CutOnce.AR
         void Finish(string method)
         {
             State = AlignmentState.Locked; Method = method;
-            Hint = "Hold grip + stick to nudge · hold the stick button to place again";
+            Hint = LockedHint;
             Changed?.Invoke();
         }
 
@@ -152,7 +178,7 @@ namespace CutOnce.AR
 
             if (!_input.GripHeld)
             {
-                if (_nudged) { SaveNudge(); _nudged = false; }
+                if (_nudged) { if (!_sessionLock) SaveNudge(); _nudged = false; }   // a session lock's nudge is relative to tonight's anchor: saved, it would offset the desk tomorrow
                 return;
             }
             Vector2 stick = _input.Stick;

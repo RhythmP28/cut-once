@@ -169,7 +169,9 @@ namespace CutOnce.Device
         void OnAlignmentChanged()
         {
             _hud.ShowStatus(_sync.StatusLine, _alignment.Hint);
-            if (_alignment.State == AlignmentState.Locked) { StandHud(); _waitForMarkRelease = true; }   // the B that finished a touch alignment is not a mark
+            // While build mode's pieces fly in from their real objects the hologram's bounds are half the room: the HUD was
+            // stood by the lock itself, with every piece at rest, and stays there.
+            if (_alignment.State == AlignmentState.Locked) { if (_build == null || !_build.PiecesInFlight) StandHud(); _waitForMarkRelease = true; }   // the B that finished a touch alignment is not a mark
             else _hudInFront = false;                                                                  // placing again: bring the panel back to the operator
         }
 

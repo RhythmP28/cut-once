@@ -48,8 +48,11 @@ the headset scans, shows what comes back and flies the chosen design together.
 | Building | Say **"Done"**, or **B** with nothing pointed at | Marks the whole current step; the next step is read aloud |
 | Building | Everything in the table above | Unchanged: B on a part, next / back / undo, questions, grip to nudge |
 
-Another run started from the Director page ends build mode. In the Editor there is no depth, so a scan fails with "no
-depth here yet": replay a recorded scan from `/director` instead, and the twins, ideas and fly-together all show.
+A design's lock is for this session only: it gets a spatial anchor of its own, but the anchor and nudge saved for E7 or
+the desk are left as they were, so the next launch still finds them. Another run started from the Director page ("build
+E7") ends build mode and stands on the build site, where the judge is looking. In the Editor there is no depth, so a
+scan fails with "no depth here yet": replay a recorded scan from `/director` instead, and the twins, ideas and
+fly-together all show.
 
 ## How it is put together, and why
 

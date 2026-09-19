@@ -15,7 +15,8 @@ namespace CutOnce.Device
     {
         const string UuidKey = "cutonce.alignment.anchor";
         const double LocalizeTimeoutSeconds = 6;
-        OVRSpatialAnchor _current;
+        OVRSpatialAnchor _current, _session;
+        int _sessionRequests;
 
         public async Task<Transform> Restore()
         {
@@ -46,8 +47,30 @@ namespace CutOnce.Device
             return go.transform;
         }
 
+        public async Task<Transform> CreateForSessionAt(Pose worldPose)
+        {
+            int mine = ++_sessionRequests;
+            var go = new GameObject("[Anchor] build (this session)");
+            go.transform.SetPositionAndRotation(worldPose.position, worldPose.rotation);
+            var anchor = go.AddComponent<OVRSpatialAnchor>();
+            bool created = await anchor.WhenCreatedAsync();
+            if (!created || mine != _sessionRequests) { if (go != null) Destroy(go); return null; }   // no anchor here, or a newer lock has asked since
+            DiscardSessionAnchor();
+            _session = anchor;                                                // never saved: the id in PlayerPrefs stays the one for E7 or the desk
+            return go.transform;
+        }
+
+        void DiscardSessionAnchor()
+        {
+            if (_session == null) return;
+            var old = _session; _session = null;
+            old.transform.DetachChildren();                                   // AssemblyRoot must outlive its old anchor
+            Destroy(old.gameObject);
+        }
+
         public async Task Forget()
         {
+            _sessionRequests++; DiscardSessionAnchor();                       // a placement made by hand replaces a session's anchor too
             PlayerPrefs.DeleteKey(UuidKey);
             if (_current == null) return;
             var old = _current; _current = null;
