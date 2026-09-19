@@ -1,0 +1,7 @@
+{
+  "name": "CutOnce.Scanner.Editor",
+  "rootNamespace": "CutOnce.Scanner.Editor",
+  "references": ["CutOnce.Scanner", "Unity.InferenceEngine"],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": true
+}
