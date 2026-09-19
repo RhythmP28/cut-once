@@ -7,7 +7,7 @@ import { auth, makeApp } from "./helpers.js";
 
 let t: Awaited<ReturnType<typeof makeApp>>;
 beforeEach(async () => { t = await makeApp(); });
-afterEach(async () => { await t.cleanup(); });
+afterEach(async () => { await t.app.ctx.hooks.build!.idle(); await t.cleanup(); });   // no scan may still be writing when the folder goes
 
 const photoB64 = () => readFileSync(join(REPO_ROOT, "data", "fixtures", "frame_0001.jpg")).toString("base64");
 const upload = (over: object = {}) => ({

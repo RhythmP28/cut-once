@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { REPO_ROOT, loadConfig } from "../src/config.js";
 import { loadVocab } from "../src/build/data.js";
-import { MAX_MARKS, applyLabels, labelTwins, type LabelResult } from "../src/build/label.js";
+import type { Twin } from "@cutonce/schemas";
+import { MAX_MARKS, applyLabels, labelBySize, labelTwins, type LabelResult } from "../src/build/label.js";
 import { buildTwins, decodeScan } from "../src/build/twins.js";
 import { CAMERA, FLOOR, TABLE, box, can, synthScan } from "./build-synth.js";
 
@@ -65,6 +66,36 @@ describe("labelTwins", () => {
     expect(text).not.toContain(`#${MAX_MARKS + 1}:`);
     expect(out).toHaveLength(30);
     expect(out.filter((t) => t.name === "unknown").map((t) => t.twin_id)).toEqual(["o25", "o26", "o27", "o28", "o29", "o30"]);
+  });
+});
+
+/**
+ * No key, no Wi-Fi, or the vision call timed out: the kit's objects still have sizes that give them away, and the
+ * rule designs need names, not pixels. This keeps build mode alive with no network at all.
+ */
+describe("labelBySize: names from sizes alone, when the vision model cannot be asked", () => {
+  const measured = (shape: Twin["shape"], over: Partial<Twin> = {}): Twin =>
+    ({ ...twins[0]!, twin_id: "o1", name: "unknown", label: "object", confidence: 0, error_m: 0.02, shape, ...over });
+
+  it("names a can, a pizza box and a tape roll from their sizes, and says how sure it is", () => {
+    const out = labelBySize([
+      measured({ type: "cylinder", axis: "y", diameter: 0.07, length: 0.16 }, { twin_id: "o1" }),
+      measured({ type: "box", size: [0.36, 0.045, 0.34] }, { twin_id: "o2" }),
+      measured({ type: "box", size: [0.115, 0.05, 0.10] }, { twin_id: "o3" }),          // a roll seen with noise comes out as a box
+    ], vocab);
+    expect(out.map((t) => t.name)).toEqual(["tall_can", "pizza_box", "tape_roll"]);
+    expect(out[0]).toMatchObject({ label: "tall can", material: "metal", load_bearing: true, confidence: 0.6 });
+  });
+  it("leaves an object alone when two products fit it about as well, or none does", () => {
+    const out = labelBySize([
+      measured({ type: "cylinder", axis: "y", diameter: 0.066, length: 0.139 }, { twin_id: "o1" }),   // between a drink can (12.2) and a tall can (15.7)
+      measured({ type: "box", size: [0.6, 0.4, 0.5] }, { twin_id: "o2" }),
+    ], vocab);
+    expect(out.map((t) => t.name)).toEqual(["unknown", "unknown"]);
+  });
+  it("never renames an object that already has a name", () => {
+    const [t] = labelBySize([measured({ type: "cylinder", axis: "y", diameter: 0.066, length: 0.157 }, { name: "other", label: "thermos", confidence: 0.9 })], vocab);
+    expect([t!.name, t!.label]).toEqual(["other", "thermos"]);
   });
 });
 

@@ -5,6 +5,7 @@ import { annotateFrame, type Mark } from "../copilot/annotate.js";
 import type { JsonCall } from "../llm.js";
 import { standardShape, type Vocab } from "./data.js";
 import { describeShape, dimsCm, flatSize, heightOf } from "./shape.js";
+import { couldBe } from "./sizes.js";
 import type { Cloud } from "./twins.js";
 
 const LabelItem = z.object({
@@ -122,4 +123,30 @@ function placeMissed(m: z.infer<typeof Missed>, vocab: Vocab, surfaces: Surface[
     };
   }
   return null;
+}
+
+/**
+ * Names from sizes alone, for when the vision model cannot be asked (no key, no Wi-Fi, a timeout). The kit's objects
+ * have sizes that give them away, and the rule designs need names, not pixels, so build mode keeps working with no
+ * network at all. An object is named only when ONE product's standard size fits it clearly better than any other;
+ * anything else stays as it was. Deterministic.
+ */
+export function labelBySize(twins: Twin[], vocab: Vocab): Twin[] {
+  return twins.map((t) => {
+    if (t.name !== "unknown") return t;
+    const mine = dimsCm(t.shape).map((cm) => cm / 100);
+    const fits: { name: string; off: number }[] = [];
+    for (const item of vocab.values()) {
+      const std = standardShape(item);
+      if (!std || (t.shape.type === "cylinder" && std.type !== "cylinder")) continue;   // a measured cylinder is never a box; a noisy can often measures as a box
+      const theirs = dimsCm(std).map((cm) => cm / 100);
+      if (theirs.every((d, k) => couldBe(mine[k]!, d, t))) fits.push({ name: item.name, off: theirs.reduce((sum, d, k) => sum + Math.abs(mine[k]! - d), 0) });
+    }
+    fits.sort((a, b) => a.off - b.off);
+    const [best, next] = fits;
+    if (!best || (next && best.off > 0.6 * next.off)) return t;                           // nothing fits, or two fit about as well
+    const item = vocab.get(best.name)!;
+    return { ...t, name: item.name, label: item.label, shape: reshape(t.shape, item.shape), yaw_deg: item.shape === "cylinder" ? 0 : t.yaw_deg,
+      material: item.material, load_bearing: item.load_bearing, cuttable: item.cuttable, confidence: 0.6 };
+  });
 }

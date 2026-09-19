@@ -19,6 +19,16 @@ export interface Hooks {
   promoteCache?: (turnId: string, scriptedQueryId: string) => Promise<void>;
   /** Live PCM for a turn still being spoken; turns/routes.ts asks here before falling back to the finished file. */
   audioStream?: (turnId: string) => { stream: NodeJS.ReadableStream; contentType: string } | null;
+  /** Speaks a sentence in the copilot's voice; the audio is at GET /v1/audio/:turn_id. Set by the copilot. */
+  say?: (text: string) => { turn_id: string; audio_url: string };
+  /** Build mode, for the copilot (set by build/routes.ts). */
+  build?: {
+    rethink: (request: string) => Promise<boolean>;
+    startByName: (transcript: string) => Promise<string | null>;
+    ideaTitles: () => string[];
+    /** Resolves once every queued scan has been processed (tests, the eval CLI). */
+    idle: () => Promise<void>;
+  };
 }
 export interface Ctx { cfg: Config; store: Store; docs: DocumentStore; hub: Hub; hooks: Hooks; turns: TurnLog }
 export type Plugin = (app: FastifyInstance, ctx: Ctx) => void | Promise<void>;

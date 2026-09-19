@@ -9,7 +9,7 @@ const within = (a: number, b: number, tol: number) => Math.abs(a - b) <= tol * b
  * measurement error. The second clause is what a small object needs: 25% of a 6.6 cm can is 1.7 cm, less than depth
  * noise alone puts on its width, so without it a correctly named can seen with 1% noise was never snapped.
  */
-const couldBe = (measured: number, standard: number, t: Twin) => Math.abs(measured - standard) <= Math.max(SNAP * standard, 1.5 * t.error_m);
+export const couldBe = (measured: number, standard: number, t: Twin) => Math.abs(measured - standard) <= Math.max(SNAP * standard, 1.5 * t.error_m);
 const reseat = (t: Twin, shape: TwinShape): Twin => {
   const base = t.position[1] - heightOf(t.shape) / 2;
   return { ...t, shape, position: [t.position[0], base + heightOf(shape) / 2, t.position[2]] };
