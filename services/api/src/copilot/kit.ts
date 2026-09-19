@@ -124,17 +124,31 @@ export interface KitAt {
 export const KIT_ACT_MIN = 0.6, KIT_CHANGE_MIN = 0.8;
 
 /**
+ * What Kit says when it will not act on what it understood. Never the model's answer: that describes the action
+ * ("Marked it done."), which did not happen. Each names the command that does it, so the next turn is exact.
+ */
+const ASK_BACK = {
+  ideas: "Do you want designs? Say what you'd like to build.",
+  change: "Do you want different designs? Say what to change.",
+  done: "Is this step finished? Say done when it is.",
+  undo: "Do you want to undo the last change? Say undo.",
+  next: "Do you want the next step? Say next.",
+  back: "Do you want the step before? Say back.",
+  open_e7: "Do you want to see Engineering 7? Say build E7.",
+} as const;
+
+/**
  * What to do with a Kit turn. Deterministic: the model's intent chooses among actions code already has; anything it
  * is unsure of becomes a spoken question back, and nothing that changes the build happens on a question.
  */
 export function decideKit(kit: KitTurn, at: KitAt): KitDecision {
   const say = (text: string, clarify: boolean): KitDecision => ({ kind: "say", text, clarify });
-  const unsure = say(kit.answer.trim() || "Sorry, what would you like to do?", true);
+  const askBack = (intent: keyof typeof ASK_BACK) => say(ASK_BACK[intent], true);
   const sure = kit.confidence >= KIT_ACT_MIN;
   switch (kit.intent) {
     case "question": return say(kit.answer.trim() || "I don't have an answer for that. Try asking another way.", kit.confidence < 0.5);
     case "ideas": case "change": {
-      if (!sure) return unsure;
+      if (!sure) return askBack(kit.intent);
       const wish = kit.wish?.trim() || (kit.intent === "change" ? kit.heard.trim() : "") || null;
       if (wish && at.canRethink) return { kind: "rethink", wish, text: kit.answer.trim() || `Let me see how to make ${wish} from what's here.` };
       const text = kit.answer.trim() || (kit.intent === "change" ? "Let me look again with that in mind." : wish ? `Let me see how to make ${wish} from what's here.` : "Let me see what you've got.");
@@ -142,17 +156,20 @@ export function decideKit(kit: KitTurn, at: KitAt): KitDecision {
     }
     case "pick": {
       if (at.building) return say("You're building one already. Say what you'd like instead, and I'll look again.", true);
+      if (at.ideas.length === 0) return say("There's nothing on show to pick yet. Ask me what you can build.", true);
       const idea = at.ideas.find((i) => i.idea_id === kit.pick) ?? at.byName(kit.heard) ?? pickByPosition(kit.heard, at.ideas);
-      return idea && sure ? { kind: "start", ideaId: idea.idea_id, title: idea.title } : say(kit.answer.trim() || "Which one? Say its name, or the left, middle or right one.", true);
+      if (!idea) return say("Which one? Say its name, or the left, middle or right one.", true);
+      return sure ? { kind: "start", ideaId: idea.idea_id, title: idea.title } : say(`Do you want the ${idea.title.toLowerCase()}? Say its name to start it.`, true);
     }
     case "done": case "undo":
-      return kit.confidence >= KIT_CHANGE_MIN && !isQuestion(kit.heard) ? { kind: "command", phrase: kit.intent } : unsure;
+      return kit.confidence >= KIT_CHANGE_MIN && !isQuestion(kit.heard) ? { kind: "command", phrase: kit.intent } : askBack(kit.intent);
     case "next": case "back":
-      return sure ? { kind: "command", phrase: kit.intent } : unsure;
+      return sure ? { kind: "command", phrase: kit.intent } : askBack(kit.intent);
     case "open_e7":
-      return kit.confidence >= KIT_CHANGE_MIN ? { kind: "command", phrase: "build e7" } : unsure;
+      return kit.confidence >= KIT_CHANGE_MIN ? { kind: "command", phrase: "build e7" } : askBack("open_e7");
     default:
-      return unsure;
+      // Unclear: the model's answer is the question back (KIT_SYSTEM asks it for one).
+      return say(kit.answer.trim() || "Sorry, what would you like to do?", true);
   }
 }
 

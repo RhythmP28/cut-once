@@ -516,8 +516,9 @@ describe("build mode: Kit's turn", () => {
 
   it("'done' is the step command; with no build under way there is no step, and Kit says so", async () => {
     onTable();
-    kitHears({ heard: "I'm finished with that", intent: "done", answer: "", confidence: 0.95 });
+    kitHears({ heard: "I'm finished with that", intent: "done", answer: "Marked it done!", confidence: 0.95 });
     // Nothing is pointed at: the hologram is hidden while designs are chosen, so the headset sends no selection.
+    // The model's "Marked it done!" is never said: nothing was marked.
     const body = (await query({ mode: "build", selected_part_id: null, selection_source: "none" })).json();
     expect([body.action, body.answer_text, body.needs_clarification]).toEqual([null, "There's no step to do that to yet.", true]);
   });

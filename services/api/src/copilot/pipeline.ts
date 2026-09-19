@@ -271,7 +271,8 @@ async function kitTurn(
     case "command": {
       const command = matchFastPath(decision.phrase, fastInput);
       if (command) return respondFast(deps, input, g, command, kit.heard, turnId, timings, t0, recordTurn, log, said);
-      return quick(deps, turnId, kit.heard, kit.answer.trim() || "There's no step to do that to yet.", null, timings, t0, recordTurn, true, said);
+      // Not the model's answer: it says the command happened ("Marked it done!"), and nothing did.
+      return quick(deps, turnId, kit.heard, "There's no step to do that to yet.", null, timings, t0, recordTurn, true, said);
     }
     case "scan":
       build.expectScan(decision.wish);

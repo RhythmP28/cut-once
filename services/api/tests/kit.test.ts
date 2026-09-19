@@ -54,7 +54,31 @@ describe("decideKit", () => {
 
   it("asks back when it cannot tell, or is unsure of an action", () => {
     expect(decideKit(turn({ intent: "unclear", answer: "Do you want a design, or to know about this step?" }), at())).toEqual({ kind: "say", text: "Do you want a design, or to know about this step?", clarify: true });
-    expect(decideKit(turn({ intent: "ideas", confidence: 0.4, answer: "" }), at())).toEqual({ kind: "say", text: "Sorry, what would you like to do?", clarify: true });
+    expect(decideKit(turn({ intent: "unclear", answer: "" }), at())).toEqual({ kind: "say", text: "Sorry, what would you like to do?", clarify: true });
+    expect(decideKit(turn({ intent: "ideas", confidence: 0.4, answer: "" }), at())).toEqual({ kind: "say", text: "Do you want designs? Say what you'd like to build.", clarify: true });
+  });
+
+  // The model's answer to an action says the action ("Good choice.", "Marked it done."): spoken with no action, it
+  // tells the builder something happened that did not. Code asks for what it needs instead.
+  it("never speaks the model's words for an action it does not take", () => {
+    const claims = { answer: "Good choice, building it now." };
+    expect(decideKit(turn({ intent: "pick", heard: "I'll take the left one", ...claims }), at({ ideas: [] })))
+      .toEqual({ kind: "say", text: "There's nothing on show to pick yet. Ask me what you can build.", clarify: true });
+    expect(decideKit(turn({ intent: "pick", pick: null, heard: "that one", ...claims }), at()))
+      .toEqual({ kind: "say", text: "Which one? Say its name, or the left, middle or right one.", clarify: true });
+    expect(decideKit(turn({ intent: "pick", pick: "idea_c", confidence: 0.5, ...claims }), at()))
+      .toEqual({ kind: "say", text: "Do you want the can tower? Say its name to start it.", clarify: true });
+    const asks: [KitTurn["intent"], string][] = [
+      ["ideas", "Do you want designs? Say what you'd like to build."],
+      ["change", "Do you want different designs? Say what to change."],
+      ["done", "Is this step finished? Say done when it is."],
+      ["undo", "Do you want to undo the last change? Say undo."],
+      ["next", "Do you want the next step? Say next."],
+      ["back", "Do you want the step before? Say back."],
+      ["open_e7", "Do you want to see Engineering 7? Say build E7."],
+    ];
+    for (const [intent, text] of asks) expect(decideKit(turn({ intent, confidence: 0.4, ...claims }), at())).toEqual({ kind: "say", text, clarify: true });
+    expect(decideKit(turn({ intent: "done", heard: "is it done?", ...claims }), at())).toEqual({ kind: "say", text: "Is this step finished? Say done when it is.", clarify: true });
   });
 });
 
