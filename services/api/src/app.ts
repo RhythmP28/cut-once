@@ -15,7 +15,11 @@ import { TurnLog } from "./turns/turns.js";
 import { Hub } from "./ws/hub.js";
 
 /** Other modules (the copilot) plug optional behaviour in here without the core importing them. */
-export interface Hooks { promoteCache?: (turnId: string, scriptedQueryId: string) => Promise<void> }
+export interface Hooks {
+  promoteCache?: (turnId: string, scriptedQueryId: string) => Promise<void>;
+  /** Live PCM for a turn still being spoken; turns/routes.ts asks here before falling back to the finished file. */
+  audioStream?: (turnId: string) => { stream: NodeJS.ReadableStream; contentType: string } | null;
+}
 export interface Ctx { cfg: Config; store: Store; docs: DocumentStore; hub: Hub; hooks: Hooks; turns: TurnLog }
 export type Plugin = (app: FastifyInstance, ctx: Ctx) => void | Promise<void>;
 

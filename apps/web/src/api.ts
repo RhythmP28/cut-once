@@ -285,3 +285,26 @@ export async function fetchAnswerAudio(audioUrl: string): Promise<string> {
   if (!res.ok) throw new ApiError(res.status, "audio", `audio ${res.status}`);
   return URL.createObjectURL(await res.blob());
 }
+
+// ── copilot (owner: Rhythm) ──────────────────────────────────────────────────
+export interface LastCapture {
+  received_at?: string;
+  frame_bytes?: number;
+  audio_bytes?: number;
+  note?: string;
+  /** The CopilotContext the headset sent, so the panel can draw the projected boxes over the frame. */
+  context?: unknown;
+}
+export const getLastCapture = () => request<LastCapture>("GET", "/v1/copilot/debug/last");
+
+export interface CacheEntry { scripted_query_id: string; transcript: string; promoted_at: string; has_audio: boolean }
+export const getCopilotCache = async () =>
+  (await request<{ entries?: CacheEntry[] }>("GET", "/v1/copilot/cache")).entries ?? [];
+
+/** The last frame the copilot received. Needs the bearer, so it comes back as an object URL. */
+export async function fetchLastFrame(signal?: AbortSignal): Promise<string | null> {
+  const res = await fetch("/v1/copilot/debug/frame.jpg", { headers: authHeaders(), signal });
+  if (res.status === 404) return null;
+  if (!res.ok) return null;
+  return URL.createObjectURL(await res.blob());
+}

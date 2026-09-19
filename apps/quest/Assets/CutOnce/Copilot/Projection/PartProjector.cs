@@ -1,8 +1,16 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace CutOnce.Copilot
 {
+    /// <summary>One part's box in the captured JPEG (pixels, origin top-left): a VisiblePart for the server.</summary>
+    public struct ProjectedPart
+    {
+        public string PartId, State;
+        public float X, Y, W, H, InFrame, DistanceM;
+    }
+
     /// <summary>
     /// A part's box in JPEG pixels (top-left origin), computed with Meta's projection rather than our own camera maths.
     /// On device: worldToViewport = p => pca.WorldToViewportPoint(p, cachedPose), where cachedPose = pca.GetCameraPose()
@@ -11,6 +19,25 @@ namespace CutOnce.Copilot
     public static class PartProjector
     {
         const float Near = 0.1f; // metres; Meta's function does not reject points behind the camera, so we clip here
+
+        /// <summary>Every part that lands in the frame, projected with the frame's own camera.</summary>
+        public static List<ProjectedPart> Project(IReadOnlyList<IProjectablePart> parts, CameraFrame frame)
+        {
+            var visible = new List<ProjectedPart>();
+            if (!frame.IsValid || frame.WorldToViewport == null || parts == null) return visible;
+            Vector3 position = frame.Position, forward = frame.Rotation * Vector3.forward;
+            Func<Vector3, float> depth = p => Vector3.Dot(p - position, forward);
+            foreach (var part in parts)
+            {
+                if (!TryProject(part.WorldBounds, frame.WorldToViewport, depth, frame.Intrinsics.width, frame.Intrinsics.height, out Rect box, out float inFrame)) continue;
+                visible.Add(new ProjectedPart
+                {
+                    PartId = part.PartId, State = part.State, X = box.x, Y = box.y, W = box.width, H = box.height, InFrame = inFrame,
+                    DistanceM = Vector3.Distance(position, part.WorldBounds.ClosestPoint(position)),
+                });
+            }
+            return visible;
+        }
 
         public static bool TryProject(Bounds world, Func<Vector3, Vector3> worldToViewport, Func<Vector3, float> depth,
                                       int width, int height, out Rect boxPx, out float inFrame)

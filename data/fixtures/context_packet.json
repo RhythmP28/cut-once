@@ -1,0 +1,94 @@
+{
+  "context_id": "ctx_fixture_0001",
+  "assembly_id": "asm_fixture_desk",
+  "plan_revision": 1,
+  "state_version": 3,
+  "mode": "overlay",
+  "selected_part_id": "part_cable_tray",
+  "selection_source": "controller_ray",
+  "current_step_id": "step_07",
+  "visible_parts": [
+    {
+      "part_id": "part_tabletop",
+      "state": "built",
+      "bbox_px": [
+        180,
+        380,
+        900,
+        240
+      ],
+      "in_frame": 1,
+      "distance_m": 0.85
+    },
+    {
+      "part_id": "part_left_front_leg",
+      "state": "built",
+      "bbox_px": [
+        250,
+        200,
+        52,
+        190
+      ],
+      "in_frame": 1,
+      "distance_m": 0.92
+    },
+    {
+      "part_id": "part_right_front_leg",
+      "state": "built",
+      "bbox_px": [
+        958,
+        200,
+        52,
+        190
+      ],
+      "in_frame": 0.98,
+      "distance_m": 0.95
+    },
+    {
+      "part_id": "part_left_rear_leg",
+      "state": "missing",
+      "bbox_px": [
+        250,
+        470,
+        52,
+        190
+      ],
+      "in_frame": 1,
+      "distance_m": 1.12
+    },
+    {
+      "part_id": "part_right_rear_leg",
+      "state": "missing",
+      "bbox_px": [
+        958,
+        470,
+        52,
+        190
+      ],
+      "in_frame": 0.94,
+      "distance_m": 1.15
+    },
+    {
+      "part_id": "part_cable_tray",
+      "state": "missing",
+      "bbox_px": [
+        430,
+        470,
+        420,
+        46
+      ],
+      "in_frame": 1,
+      "distance_m": 0.88
+    }
+  ],
+  "camera": {
+    "width": 1280,
+    "height": 960,
+    "fx": 870.1,
+    "fy": 870.4,
+    "cx": 640.2,
+    "cy": 481.7
+  },
+  "scripted_query_id": null,
+  "client_sent_at": "2026-09-20T13:13:31.020Z"
+}

@@ -1,0 +1,33 @@
+{
+  "turn_id": "turn_fixture_0001",
+  "transcript": "where does this cable go",
+  "answer_text": "Run it through the cable tray to the right rear leg, then clip it down the leg. That is on sheet E-1.",
+  "highlight_parts": [
+    "part_power_cable",
+    "part_cable_tray",
+    "part_right_rear_leg"
+  ],
+  "highlight_style": "path",
+  "drawing_refs": [
+    {
+      "document_id": "doc_desk_drawings",
+      "sheet_id": "sheet_e1",
+      "page": 2,
+      "chunk_id": "chunk_0042",
+      "title": "E-1 Wiring"
+    }
+  ],
+  "action": null,
+  "confidence": 0.9,
+  "needs_clarification": false,
+  "audio_url": "/v1/audio/turn_fixture_0001",
+  "cached": false,
+  "timings_ms": {
+    "upload": 410,
+    "stt": 720,
+    "retrieve": 260,
+    "annotate": 90,
+    "llm": 2100,
+    "total_to_response": 3540
+  }
+}

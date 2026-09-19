@@ -1,4 +1,5 @@
 // Gate G0: can our key use the chosen model with an image and strict JSON output? Run: pnpm llm:smoke
+import "../env.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";

@@ -5,9 +5,15 @@ import { notFound } from "../errors.js";
 import { SAMPLE_RATE, wavToPcm } from "./wav.js";
 
 /** Answer audio and the answer log. Always on, whichever copilot (real or fake) is answering. */
-export function turnRoutes(app: FastifyInstance, { turns }: Ctx) {
+export function turnRoutes(app: FastifyInstance, { turns, hooks }: Ctx) {
   // The headset plays raw PCM (blueprint §14); a browser needs ?format=wav.
   app.get<{ Params: { turn_id: string }; Querystring: { format?: string } }>("/v1/audio/:turn_id", async (req, reply) => {
+    // A turn the live copilot is still speaking streams straight from memory, so first audio does not
+    // wait for ElevenLabs to finish. ?format=wav always reads the finished file (a browser can wait).
+    if (req.query.format !== "wav") {
+      const live = hooks.audioStream?.(req.params.turn_id);
+      if (live) return reply.header("cache-control", "no-store").type(live.contentType).send(live.stream);
+    }
     const file = turns.audioFile(req.params.turn_id);
     if (!file) throw notFound(`audio for ${req.params.turn_id}`);
     const wav = readFileSync(file);

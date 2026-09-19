@@ -28,6 +28,8 @@ export interface JsonCall<S extends ZodTypeAny> {
   images?: { data: Buffer; mime: "image/png" | "image/jpeg" }[]; timeoutMs?: number;
   /** A ready JSON Schema (for example one built per request with enums); sent as-is instead of converting the Zod schema. */
   jsonSchema?: Record<string, unknown>;
+  /** Overrides OPENAI_MODEL for this call, for example the copilot's OPENAI_COPILOT_MODEL. */
+  model?: string;
 }
 
 /** The schema actually sent to the model. */
@@ -38,7 +40,7 @@ export async function jsonCall<S extends ZodTypeAny>(cfg: Config, call: JsonCall
   if (!cfg.openaiKey) throw new Error("OPENAI_API_KEY is not set");
   const client = new OpenAI({ apiKey: cfg.openaiKey, timeout: call.timeoutMs ?? 120_000, maxRetries: 1 });
   const res = await client.chat.completions.create({
-    model: cfg.openaiModel,
+    model: call.model ?? cfg.openaiModel,
     messages: [
       { role: "system", content: call.system },
       { role: "user", content: [

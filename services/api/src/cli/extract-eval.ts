@@ -1,3 +1,4 @@
+import "../env.js";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import type { Plan } from "@cutonce/schemas";

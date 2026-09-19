@@ -244,3 +244,10 @@ a.link-card:hover { border-color: var(--accent); }
 .sim-answer .sim-transcript { color: #9aa7b5; font-size: 0.78rem; }
 .sim-answer .sim-source { display: inline-block; margin: 0 6px 0 0; padding: 1px 8px; border-radius: 6px; background: rgba(34, 211, 238, 0.15); color: #67e8f9; font-size: 0.75rem; }
 .sim-pointing { color: #e6edf5; font-weight: 600; }
+
+/* Copilot panel (owner: Rhythm) */
+.copilot-badges { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px; }
+.copilot-badges button { cursor: pointer; }
+.copilot-frame { position: relative; display: inline-block; max-width: 100%; margin-bottom: 12px; }
+.copilot-frame img { display: block; max-width: 100%; border-radius: 6px; }
+.copilot-frame svg { position: absolute; inset: 0; width: 100%; height: 100%; }
