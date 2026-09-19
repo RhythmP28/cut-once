@@ -251,11 +251,11 @@ a.link-card:hover h2 { color: var(--accent); }
 .viewer-reset { position: absolute; top: 10px; right: 10px; height: 24px; font-size: var(--fs-sm); }
 .viewer-legend { position: absolute; left: 10px; bottom: 10px; display: flex; gap: var(--s4); flex-wrap: wrap; font-size: var(--fs-sm); color: var(--text-muted); padding: 4px 10px; }
 
-/* The hologram's own views (/preview, /sim) stay a dark stage in both themes: they stand in for the headset,
-   and the palette is tuned to read over passthrough. Their panels are dark to match. */
+/* The hologram's own views (/preview, /sim) follow the theme like every other page. Only the part colours are
+   fixed: they come from HOLOGRAM_PALETTE, the same one the headset draws with. */
 .hologram-notice, .preview-hud, .sim-keys, .sim-status, .sim-answer {
-  background: rgba(13, 15, 19, 0.86); border: 1px solid rgba(255, 255, 255, 0.1); color: #f2f4f6; border-radius: 0;
-  font-size: var(--fs-md); backdrop-filter: blur(6px);
+  background: color-mix(in srgb, var(--bg-elevated) 90%, transparent); border: 1px solid var(--border); color: var(--text);
+  border-radius: 0; font-size: var(--fs-md); backdrop-filter: blur(6px);
 }
 .viewer-failed { position: absolute; inset: 0; display: grid; place-items: center; color: var(--st-warn); padding: var(--s5); text-align: center; }
 .swatch { display: inline-block; width: 8px; height: 8px; margin-right: 6px; }
@@ -270,39 +270,39 @@ a.link-card:hover h2 { color: var(--accent); }
 .history-viewer { height: calc(100vh - 330px); min-height: 380px; }
 
 /* ── /preview: the headset's view, full window ────────────────────────────────────────────────────────────── */
-.preview-page { position: fixed; inset: 0; background: #0b1017; overflow: hidden; }
+.preview-page { position: fixed; inset: 0; background: var(--bg-sunken); overflow: hidden; }
 .hologram-host { position: absolute; inset: 0; }
 .hologram-canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .hologram-notice { position: absolute; bottom: 12px; left: 12px; margin: 0; padding: 6px 10px; font-size: var(--fs-sm); }
-.preview-loading, .preview-error { position: absolute; top: 45%; width: 100%; text-align: center; color: #f2f4f6; }
-.preview-error { color: #f0736a; }
+.preview-loading, .preview-error { position: absolute; top: 45%; width: 100%; text-align: center; color: var(--text); }
+.preview-error { color: var(--st-bad); }
 .preview-hud { position: absolute; top: 16px; left: 16px; width: 240px; padding: 12px 14px; pointer-events: none; }
 .preview-hud p { margin: 0; }
-.preview-hud-title { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: #8b9199; }
+.preview-hud-title { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
 .preview-hud-progress { font-size: 20px; font-weight: var(--fw); letter-spacing: -0.02em; margin: 4px 0 8px !important; font-variant-numeric: tabular-nums; }
-.preview-hud-bar { height: 3px; background: rgba(255, 255, 255, 0.12); margin-bottom: 10px; }
-.preview-hud-bar div { height: 3px; background: #3fb950; }
+.preview-hud-bar { height: 3px; background: var(--border); margin-bottom: 10px; }
+.preview-hud-bar div { height: 3px; background: var(--st-ok); }
 .preview-hud-step { font-weight: var(--fw-med); }
-.preview-hud-muted { color: #8b9199; font-size: var(--fs-sm); }
-.preview-legend { list-style: none; padding: 10px 0 0; margin: 10px 0 0; border-top: 1px solid rgba(255, 255, 255, 0.1); display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: var(--fs-sm); color: #c2c6cc; }
+.preview-hud-muted { color: var(--text-muted); font-size: var(--fs-sm); }
+.preview-legend { list-style: none; padding: 10px 0 0; margin: 10px 0 0; border-top: 1px solid var(--border); display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: var(--fs-sm); color: var(--text-muted); }
 .preview-legend i { display: inline-block; width: 8px; height: 8px; border: 1.5px solid; margin-right: 6px; vertical-align: 0; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* ── /sim: the pretend headset ────────────────────────────────────────────────────────────────────────────── */
-.sim-keys { position: absolute; top: 16px; right: 16px; width: 260px; padding: 12px 14px; color: #c2c6cc; font-size: var(--fs-sm); pointer-events: none; }
+.sim-keys { position: absolute; top: 16px; right: 16px; width: 260px; padding: 12px 14px; color: var(--text-muted); font-size: var(--fs-sm); pointer-events: none; }
 .sim-keys p { margin: 0 0 6px; }
-.sim-keys kbd { display: inline-block; min-width: 20px; padding: 1px 5px; margin-right: 8px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.16); color: #f2f4f6; font: var(--fw-med) 11px var(--mono); text-align: center; }
+.sim-keys kbd { display: inline-block; min-width: 20px; padding: 1px 5px; margin-right: 8px; background: var(--bg-sunken); border: 1px solid var(--border-strong); color: var(--text); font: var(--fw-med) 11px var(--mono); text-align: center; }
 .sim-status { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); padding: 6px 14px; pointer-events: none; }
-.sim-status::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 8px; background: #8b9199; vertical-align: 1px; }
-.sim-status.listening { border-color: rgba(76, 144, 240, 0.6); }
-.sim-status.listening::before, .sim-status.thinking::before { background: #4c90f0; }
-.sim-status.error { border-color: rgba(240, 115, 106, 0.6); color: #f0736a; }
-.sim-status.error::before { background: #f0736a; }
+.sim-status::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 8px; background: var(--text-muted); vertical-align: 1px; }
+.sim-status.listening { border-color: var(--accent); }
+.sim-status.listening::before, .sim-status.thinking::before { background: var(--accent); }
+.sim-status.error { border-color: var(--st-bad); color: var(--st-bad); }
+.sim-status.error::before { background: var(--st-bad); }
 .sim-answer { position: absolute; bottom: 64px; left: 16px; width: 400px; padding: 12px 14px; border-left: 3px solid #ffd84d; pointer-events: none; }
 .sim-answer p { margin: 0 0 6px; }
-.sim-answer .sim-transcript { color: #8b9199; font-size: var(--fs-sm); font-style: italic; }
-.sim-answer .sim-source { display: inline-flex; align-items: center; gap: 6px; margin: 0 6px 0 0; padding: 1px 8px; background: rgba(76, 144, 240, 0.16); color: #7fb0f5; font-size: var(--fs-sm); }
-.sim-pointing { color: #f2f4f6; font-weight: var(--fw-med); }
+.sim-answer .sim-transcript { color: var(--text-muted); font-size: var(--fs-sm); font-style: italic; }
+.sim-answer .sim-source { display: inline-flex; align-items: center; gap: 6px; margin: 0 6px 0 0; padding: 1px 8px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); font-size: var(--fs-sm); }
+.sim-pointing { color: var(--text); font-weight: var(--fw-med); }
 @media (max-width: 900px) { .sim-keys { top: auto; bottom: 64px; right: 16px; } .sim-answer { bottom: 250px; } }
 
 /* Copilot panel (owner: Rhythm) */
