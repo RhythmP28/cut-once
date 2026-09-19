@@ -1,0 +1,5 @@
+{
+  "name": "CutOnce.Placement.Editor",
+  "references": ["CutOnce.Placement", "CutOnce.Diagnostics", "Oculus.VR"],
+  "includePlatforms": ["Editor"]
+}

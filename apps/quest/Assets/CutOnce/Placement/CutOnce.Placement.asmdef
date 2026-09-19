@@ -1,0 +1,5 @@
+{
+  "name": "CutOnce.Placement",
+  "references": ["CutOnce.AR", "Oculus.VR"],
+  "autoReferenced": true
+}
