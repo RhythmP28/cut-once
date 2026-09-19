@@ -39,6 +39,7 @@ namespace CutOnce.DeviceEditor
             }
 
             new GameObject("[App]").AddComponent<CutOnceApp>();
+            new GameObject("[Budget]").AddComponent<CutOnce.Diagnostics.BudgetProbe>();   // measures what the plan draws against the Quest 3 budget
 
             if (!AssetDatabase.IsValidFolder("Assets/CutOnce/Scenes")) AssetDatabase.CreateFolder("Assets/CutOnce", "Scenes");
             EditorSceneManager.SaveScene(scene, ScenePath);
