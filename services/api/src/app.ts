@@ -11,11 +11,12 @@ import { directorRoutes } from "./routes/director.js";
 import { streamRoutes } from "./routes/stream.js";
 import { DocumentStore } from "./store/documents.js";
 import { Store } from "./store/store.js";
+import { TurnLog } from "./turns/turns.js";
 import { Hub } from "./ws/hub.js";
 
 /** Other modules (the copilot) plug optional behaviour in here without the core importing them. */
 export interface Hooks { promoteCache?: (turnId: string, scriptedQueryId: string) => Promise<void> }
-export interface Ctx { cfg: Config; store: Store; docs: DocumentStore; hub: Hub; hooks: Hooks }
+export interface Ctx { cfg: Config; store: Store; docs: DocumentStore; hub: Hub; hooks: Hooks; turns: TurnLog }
 export type Plugin = (app: FastifyInstance, ctx: Ctx) => void | Promise<void>;
 
 declare module "fastify" {
@@ -25,7 +26,7 @@ declare module "fastify" {
 export async function buildApp(cfg: Config, plugins: Plugin[] = []): Promise<FastifyInstance> {
   const app = Fastify({ logger: cfg.logLevel === "silent" ? false : { level: cfg.logLevel }, bodyLimit: 2 * 1024 * 1024 });
   const store = new Store(cfg.dataDir);
-  const ctx: Ctx = { cfg, store, docs: new DocumentStore(cfg.dataDir), hub: new Hub(store), hooks: {} };
+  const ctx: Ctx = { cfg, store, docs: new DocumentStore(cfg.dataDir), hub: new Hub(store), hooks: {}, turns: new TurnLog(cfg.dataDir, store.bus) };
   app.decorate("ctx", ctx);
 
   await app.register(cors, { origin: true });

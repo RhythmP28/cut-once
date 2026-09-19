@@ -9,7 +9,7 @@ try { version = execSync("git rev-parse --short HEAD", { stdio: ["ignore", "pipe
 export function healthRoutes(app: FastifyInstance, { cfg, store, hub }: Ctx) {
   app.get("/health", async () => ({
     ok: true, version, es: await esStatus(cfg), openai: cfg.openaiKey ? "set" : "unset", tts: cfg.elevenKey ? "set" : "unset",
-    search_mode: cfg.searchMode, reconstruction: cfg.reconstruction ? "on" : "off",
+    search_mode: cfg.searchMode, reconstruction: cfg.reconstruction ? "on" : "off", copilot: cfg.copilotMode,
     current_assembly: store.currentAssembly()?.assembly_id ?? null, clients: hub.presence().length,
   }));
 }

@@ -7,6 +7,8 @@ export interface Config {
   esUrl: string; esApiKey: string; kibanaUrl: string; mcpUrl: string; jinaEmbedId: string; jinaRerankId: string;
   searchMode: "bm25" | "hybrid"; openaiKey: string; openaiModel: string; elevenKey: string; reconstruction: boolean;
   repoRoot: string; webDist: string; projectId: string; logLevel: string;
+  /** off: no copilot route. fake: canned answers, no keys (turns/fake.ts). live: Rhythm's real copilot. */
+  copilotMode: "off" | "fake" | "live"; fakeCopilotDelayMs: number;
 }
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -25,6 +27,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     openaiKey: env.OPENAI_API_KEY ?? "", openaiModel: env.OPENAI_MODEL || "gpt-5.6-luna", elevenKey: env.ELEVENLABS_API_KEY ?? "",
     reconstruction: env.RECONSTRUCTION === "on", repoRoot: REPO_ROOT, webDist: join(REPO_ROOT, "apps", "web", "dist"),
     projectId: env.PROJECT_ID || "proj_cutonce_demo", logLevel: env.LOG_LEVEL ?? "info",
+    copilotMode: env.COPILOT_MODE === "fake" || env.COPILOT_MODE === "live" ? env.COPILOT_MODE : "off",
+    fakeCopilotDelayMs: Number(env.FAKE_COPILOT_DELAY_MS ?? 1200),
     ...overrides,
   };
   if (!env.API_TOKEN && !overrides.apiToken && env.NODE_ENV === "production") throw new Error("API_TOKEN must be set in production");

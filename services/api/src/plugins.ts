@@ -3,6 +3,8 @@ import { documentRoutes } from "./routes/documents.js";
 import { healthRoutes } from "./routes/health.js";
 import { knowledgeRoutes } from "./routes/knowledge.js";
 import { staticRoutes } from "./routes/static.js";
+import { fakeCopilotRoutes } from "./turns/fake.js";
+import { turnRoutes } from "./turns/routes.js";
 
 /** Everything beyond the core. The static web app goes last: its not-found handler is the catch-all. */
-export const plugins: Plugin[] = [healthRoutes, documentRoutes, knowledgeRoutes, staticRoutes];
+export const plugins: Plugin[] = [healthRoutes, documentRoutes, knowledgeRoutes, turnRoutes, fakeCopilotRoutes, staticRoutes];
