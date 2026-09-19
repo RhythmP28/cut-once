@@ -18,8 +18,10 @@ import { solve } from "./solver.js";
 import { checkStability } from "./stability.js";
 
 export interface IdeasDeps {
+  cfg: Config; vocab: Vocab; rules: Rule[];
   /** The designing job's model call, or null when no provider has a key (then: the cache, then the rules). */
-  cfg: Config; vocab: Vocab; rules: Rule[]; call: ModelCall | null; model: string; cacheDir: string; timeoutMs: number;
+  call: ModelCall | null;
+  model: string; cacheDir: string; timeoutMs: number;
   /** How long the live answer is waited for before the rehearsal cache is shown (BUILD_LIVE_MS). */
   liveMs: number;
   log: { warn: (o: object, m: string) => void };

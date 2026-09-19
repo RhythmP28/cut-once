@@ -84,7 +84,8 @@ export function pickIdea<T extends { title: string }>(transcript: string, ideas:
 
 /**
  * One build session at a time (one headset). A scan is saved, answered at once (202), then processed in order:
- * outlines → names → sizes → rule ideas → AI ideas. Every step is broadcast, so the headset and /director update live.
+ * outlines → names → sizes → designs (live, then the rehearsal cache, then the rules). Every step is broadcast, so the
+ * headset and /director update live.
  */
 export class BuildSessions {
   readonly files: BuildFiles;

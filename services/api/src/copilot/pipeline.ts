@@ -85,7 +85,7 @@ export async function answerQuery(deps: Deps, input: QueryInput, log: Log): Prom
   }
 
   // Build mode: one Kit turn hears, sees and answers (OMNI by default, OpenAI behind a switch). E7 and the desk go on
-  // below, exactly as before. With no provider at all, build mode falls through to the same 503 as they do.
+  // below, on OpenAI, as they did before Kit. With no provider at all, build mode falls through to the same 503.
   if (input.context.mode === "build" && ctx.hooks.build) {
     const kit = await kitTurn(deps, input, g, turnId, timings, t0, recordTurn, log);
     if (kit) return kit;
