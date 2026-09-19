@@ -195,6 +195,10 @@ namespace CutOnce.QuestTools
             config.targetDeviceTypes = new List<OVRProjectConfig.DeviceType> { OVRProjectConfig.DeviceType.Quest3, OVRProjectConfig.DeviceType.Quest3S };
             config.insightPassthroughSupport = OVRProjectConfig.FeatureSupport.Required; // the whole app is mixed reality
             config.isPassthroughCameraAccessEnabled = true; // the copilot's photo: horizonos.permission.HEADSET_CAMERA
+            // Depth rays (build mode's scan, placing on a real table): com.oculus.permission.USE_SCENE. Required rather than
+            // Supported: both declare the same permission, and Required is what MRUK's and the Depth API's setup rules write,
+            // so pnpm quest:setup (Meta's fixes, then ours) and this file agree.
+            config.sceneSupport = OVRProjectConfig.FeatureSupport.Required;
             config.anchorSupport = OVRProjectConfig.AnchorSupport.Enabled; // the aligned desk is kept with a spatial anchor
             config.handTrackingSupport = OVRProjectConfig.HandTrackingSupport.ControllersAndHands;
             OVRProjectConfig.CommitProjectConfig(config);

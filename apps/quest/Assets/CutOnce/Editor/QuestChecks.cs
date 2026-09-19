@@ -138,6 +138,8 @@ namespace CutOnce.QuestTools
                 "Passthrough must be supported, or the headset shows black instead of the room.");
             Expect(f, "meta", config.isPassthroughCameraAccessEnabled,
                 "Passthrough camera access must be on, or the copilot gets no photo on the headset.");
+            Expect(f, "meta", config.sceneSupport != OVRProjectConfig.FeatureSupport.None,
+                "Scene support must be on, or USE_SCENE is missing from the manifest and depth rays never start (EnvironmentRaycastManager waits for it).");
         }
 
         static void CheckScenes(List<Finding> f)

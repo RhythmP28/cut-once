@@ -83,8 +83,11 @@ namespace CutOnce.Device
             // AGENTS rule 3: any copilot, built here or placed in the scene (Rhythm's [Copilot] prefab), needs the camera
             // and microphone. Ask on the headset before first use (the Editor grants at once). The camera waits for its
             // grant by itself; a refusal only costs the copilot its eyes or ears, so the HUD says what still works.
-            if (FindAnyObjectByType<CopilotController>() != null)
-                QuestPermissions.Request(new[] { QuestPermissions.Camera, QuestPermissions.Microphone }, (p, ok) => _permissionAnswers.Enqueue((p, ok)));
+            // Depth rays (build mode, and pointing at a real table to place a build) need spatial data, copilot or not.
+            var wanted = FindAnyObjectByType<CopilotController>() != null
+                ? new[] { QuestPermissions.Camera, QuestPermissions.Microphone, QuestPermissions.Scene }
+                : new[] { QuestPermissions.Scene };
+            QuestPermissions.Request(wanted, (p, ok) => _permissionAnswers.Enqueue((p, ok)));
         }
 
         void OnDestroy()
@@ -208,6 +211,8 @@ namespace CutOnce.Device
             while (_permissionAnswers.TryDequeue(out var answer))
                 if (!answer.granted) _hud.Toast(answer.permission == QuestPermissions.Camera
                     ? "Camera not allowed: the copilot answers without seeing the desk. Allow it in Settings > Privacy."
+                    : answer.permission == QuestPermissions.Scene
+                    ? "Spatial data not allowed: build mode can't measure objects. Allow it in Settings > Privacy."
                     : "Microphone not allowed: use the question buttons, or allow it in Settings > Privacy.", 6f);
             if (_dirty) Refresh();
         }

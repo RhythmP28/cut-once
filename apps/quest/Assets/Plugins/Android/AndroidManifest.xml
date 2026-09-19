@@ -24,4 +24,7 @@
   <uses-permission android:name="horizonos.permission.HEADSET_CAMERA" />
   <!-- The copilot's push-to-talk. Declared explicitly: a runtime request for an undeclared permission is refused without a dialog. -->
   <uses-permission android:name="android.permission.RECORD_AUDIO" />
+  <!-- Spatial data, for depth rays (build mode's scan, placing on a real table). Meta's build step adds it too while scene support is on
+       (OculusProjectConfig); declared here as well so every permission the app asks for at runtime is in plain sight. -->
+  <uses-permission android:name="com.oculus.permission.USE_SCENE" />
 </manifest>
