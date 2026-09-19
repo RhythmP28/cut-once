@@ -52,6 +52,12 @@ describe("reading Unity's output", () => {
     expect(lines[2]).toBe("1 compile error(s):");
   });
 
+  it("points at the missing Android piece, and stays quiet about a healthy log", () => {
+    expect(explain("Android NDK not found. Set the NDK path in Preferences.")[0]).toMatch(/Android SDK & NDK Tools/);
+    expect(explain("Unable to find JDK: JDK not found")[0]).toMatch(/OpenJDK/);
+    expect(explain("[CutOnce] check done: 0 error(s), 1 warning(s)")).toEqual([]);
+  });
+
   it("summarises an NUnit result file, with the failing test's message", () => {
     const xml = `<?xml version="1.0"?>
 <test-run id="2" testcasecount="3" result="Failed(Child)" total="3" passed="2" failed="1" inconclusive="0" skipped="0">

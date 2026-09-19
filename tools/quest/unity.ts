@@ -11,7 +11,7 @@
  * same code. Logs land in apps/quest/Logs/cli/.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { dirname, join, posix, resolve, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -55,6 +55,10 @@ export function explain(log: string): string[] {
     out.push("The Unity Editor has apps/quest open. Close it, or use the Cut Once menu inside it.");
   if (/AndroidExternalToolsSettings/.test(log))
     out.push("Unity's Android module is missing or half installed. Unity Hub > Installs > the gear > Add modules > Android Build Support, with OpenJDK and Android SDK & NDK Tools.");
+  if (/\bNDK\b[^\n]*(not found|missing|not installed|is not set)|(not find|cannot find|missing)[^\n]*\bNDK\b/i.test(log))
+    out.push("APK builds need the Android NDK: Unity Hub > Installs > the gear > Add modules > Android SDK & NDK Tools. The simulator does not need it.");
+  if (/\bJDK\b[^\n]*(not found|missing|not installed|is not set)|(not find|cannot find|missing)[^\n]*\bJDK\b/i.test(log))
+    out.push("Unity cannot find Java: Unity Hub > Installs > the gear > Add modules > OpenJDK.");
   if (/No valid Unity Editor license|License is not active|com\.unity\.editor\.headless/i.test(log))
     out.push("Unity has no licence on this machine. Open Unity Hub and sign in once.");
   const errors = [...new Set(log.split("\n").filter((l) => /error CS\d+/.test(l)).map((l) => l.trim()))];
@@ -108,7 +112,7 @@ const SES_PORT = 33792; // where a room server listens; the simulator shows a ch
 
 /**
  * Starts the simulator window and a room (macOS). A session only reaches FOCUSED with the window running, and
- * passthrough and the camera show the room only while a room server listens.
+ * passthrough shows the room only while a room server listens (a checkerboard otherwise).
  */
 function startSimulator(dir: string, room: string): boolean {
   if (platform() !== "darwin") {
@@ -128,20 +132,6 @@ function startSimulator(dir: string, room: string): boolean {
   return true;
 }
 
-/**
- * Meta's default simulator configuration, with its relative file paths made absolute (they are relative to Meta's
- * config folder, and ours lives elsewhere) and any overrides applied.
- */
-export function simulatorConfig(defaults: Record<string, unknown>, configDir: string, overrides: Record<string, unknown>, os: NodeJS.Platform = platform()): Record<string, unknown> {
-  const p = os === "win32" ? win32 : posix;
-  const fix = (v: unknown): unknown => {
-    if (typeof v === "string" && !p.isAbsolute(v) && /\.(json|bin)$/.test(v)) return p.join(configDir, v);
-    if (v && typeof v === "object" && !Array.isArray(v)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, fix(x)]));
-    return v;
-  };
-  return { ...(fix(defaults) as Record<string, unknown>), ...overrides };
-}
-
 /** What Meta's "Activate" menu item sets. (Meta's CI configuration does not start a session on macOS.) */
 export function simulatorEnv(dir: string, os: NodeJS.Platform = platform()): Record<string, string> {
   const p = os === "win32" ? win32 : posix;
@@ -149,7 +139,13 @@ export function simulatorEnv(dir: string, os: NodeJS.Platform = platform()): Rec
   return { XR_RUNTIME_JSON: json, XR_SELECTED_RUNTIME_JSON: json, META_XRSIM_CONFIG_JSON: p.join(dir, "config", "sim_core_configuration.json") };
 }
 
-function unity(label: string, args: string[], opts: { graphics?: boolean; window?: boolean; env?: Record<string, string> } = {}): { code: number; log: string } {
+const MINUTE = 60_000;
+
+/**
+ * Runs Unity once. Every run has a time limit, so a hung Editor ends the command instead of the night; the limit is
+ * reported, and so is the reason Unity gave for any other failure.
+ */
+function unity(label: string, args: string[], opts: { graphics?: boolean; window?: boolean; env?: Record<string, string>; minutes?: number } = {}): { code: number; log: string } {
   mkdirSync(LOGS, { recursive: true });
   const logFile = join(LOGS, `${label}.log`);
   const exe = unityPath(editorVersion(readFileSync(join(PROJECT, "ProjectSettings", "ProjectVersion.txt"), "utf8")));
@@ -160,9 +156,19 @@ function unity(label: string, args: string[], opts: { graphics?: boolean; window
   console.log(`▸ ${label}: Unity ${args.find((a) => a.startsWith("CutOnce.")) ?? args.join(" ")} (log: ${logFile})`);
   const mode = opts.window ? [] : ["-batchmode", ...(opts.graphics ? [] : ["-nographics"])];
   const base = [...mode, "-projectPath", PROJECT, "-buildTarget", "Android", "-logFile", logFile];
-  const r = spawnSync(exe, [...base, ...args], { stdio: "inherit", env: { ...process.env, ...opts.env } });
+  const minutes = opts.minutes ?? 30;
+  rmSync(logFile, { force: true }); // a run that never starts must not be explained by the last run's log
+  const r = spawnSync(exe, [...base, ...args], { stdio: "inherit", env: { ...process.env, ...opts.env }, timeout: minutes * MINUTE });
   const log = existsSync(logFile) ? readFileSync(logFile, "utf8") : "";
-  return { code: r.status ?? 1, log };
+  if (r.error && (r.error as NodeJS.ErrnoException).code === "ETIMEDOUT") console.error(`Unity did not finish within ${minutes} minutes and was stopped.`);
+  const code = r.status ?? 1;
+  if (code !== 0) explain(log).forEach((l) => console.error(l));
+  return { code, log };
+}
+
+/** Deletes results from an earlier run, so a failed run can never print them as its own. */
+function fresh(...paths: string[]) {
+  for (const p of paths) rmSync(p, { force: true });
 }
 
 function syncFixtures() {
@@ -170,69 +176,62 @@ function syncFixtures() {
 }
 
 function setup(): number {
-  const r = unity("setup", ["-executeMethod", "CutOnce.QuestTools.Batch.Setup"]);
-  if (r.code !== 0) explain(r.log).forEach((l) => console.error(l));
-  return r.code;
+  return unity("setup", ["-executeMethod", "CutOnce.QuestTools.Batch.Setup"]).code;
 }
 
 function check(): number {
   syncFixtures();
   const reportPath = join(LOGS, "quest-check.json");
   const metaReport = join(LOGS, "meta-setup-report.json");
+  const xml = join(LOGS, "editmode-results.xml");
+  fresh(reportPath, metaReport, xml);
+
   const c = unity("check", ["-executeMethod", "CutOnce.QuestTools.Batch.Check", "-cutonceReport", reportPath, "-reportFile", metaReport]);
-  let findings: Finding[] = [];
-  if (existsSync(reportPath) && statSync(reportPath).mtimeMs > Date.now() - 3_600_000) {
-    findings = (JSON.parse(readFileSync(reportPath, "utf8")) as { findings: Finding[] }).findings;
-  }
+  const findings: Finding[] = existsSync(reportPath) ? (JSON.parse(readFileSync(reportPath, "utf8")) as { findings: Finding[] }).findings : [];
   const errors = findings.filter((f) => f.level === "Error");
   const warnings = findings.filter((f) => f.level === "Warning");
   for (const f of errors) console.log(`  ✗ ${f.area}: ${f.message}`);
   for (const f of warnings) console.log(`  ! ${f.area}: ${f.message}`);
-  if (c.code !== 0 && findings.length === 0) explain(c.log).forEach((l) => console.error(l));
 
-  const xml = join(LOGS, "editmode-results.xml");
   const t = unity("tests", ["-runTests", "-testPlatform", "EditMode", "-testResults", xml]);
   const summary = existsSync(xml) ? readTestResults(readFileSync(xml, "utf8")) : null;
   if (summary) {
     console.log(`  EditMode tests: ${summary.passed}/${summary.total} passed`);
     for (const f of summary.failures) console.log(`  ✗ ${f.name}\n      ${f.message.split("\n")[0]}`);
-  } else explain(t.log).forEach((l) => console.error(l));
+  }
 
   const ok = c.code === 0 && t.code === 0 && summary !== null && summary.failed === 0;
   console.log(ok
     ? `✓ Ready for the Quest 3 (${warnings.length} warning(s)).`
-    : `✗ Not ready: ${errors.length} error(s), ${summary?.failed ?? "?"} failing test(s).`);
+    : `✗ Not ready: ${errors.length} error(s), ${summary ? `${summary.failed} failing test(s)` : "the tests did not run"}. See above and Logs/cli/.`);
   return ok ? 0 : 1;
 }
 
 /**
- * Runs the baseline scene in Meta XR Simulator (Quest 3 profile) with nobody at the keyboard, and reports what the
- * simulator provides on this machine: eye buffer, field of view, refresh rate, passthrough, the passthrough camera's
- * frames and lens, and the draw calls and triangles against the Quest 3 budget.
+ * Runs the baseline scene in Meta XR Simulator (Quest 3 profile) and reports what the simulator provides on this
+ * machine: eye buffer, field of view, refresh rate, passthrough, the passthrough camera's lens and pixels, and the
+ * draw calls and triangles against the Quest 3 budget. The session only starts from the Editor window (not batch
+ * mode) with the simulator app running, so this opens both.
  */
 function sim(): number {
   const dir = simulatorDir();
   const env = dir ? simulatorEnv(dir) : null;
-  if (!env || !existsSync(env.XR_RUNTIME_JSON)) {
+  if (!dir || !env || !existsSync(env.XR_RUNTIME_JSON)) {
     console.error("Meta XR Simulator is not installed. Mac: https://developers.meta.com/horizon/downloads/package/meta-xr-simulator-mac-arm/ "
       + "(it must end up in /Applications/MetaXRSimulator.app). Windows: https://developers.meta.com/horizon/downloads/package/meta-xr-simulator-windows/");
     return 1;
   }
   const roomArg = process.argv.indexOf("--room");
-  if (!startSimulator(dir!, roomArg > 0 ? process.argv[roomArg + 1] : "office")) return 1;
-  // Uncompressed room frames: with Meta's default (GPU handles), the passthrough camera gets no pixels from a room on macOS.
-  const configDir = dirname(env.META_XRSIM_CONFIG_JSON);
-  const config = simulatorConfig(JSON.parse(readFileSync(env.META_XRSIM_CONFIG_JSON, "utf8")), configDir, { ses_texture_format: "rgba" });
-  mkdirSync(join(LOGS, "sim"), { recursive: true });
-  env.META_XRSIM_CONFIG_JSON = join(LOGS, "sim", "xrsim-config.json");
-  writeFileSync(env.META_XRSIM_CONFIG_JSON, JSON.stringify(config, null, 2));
+  if (!startSimulator(dir, roomArg > 0 ? process.argv[roomArg + 1] : "office")) return 1;
   const xml = join(LOGS, "sim-results.xml");
-  const r = unity("sim", ["-runTests", "-testPlatform", "PlayMode", "-testFilter", "CutOnce.Sim.Tests", "-testResults", xml], { window: true, env });
   const reportPath = join(LOGS, "sim", "sim-report.json");
+  fresh(xml, reportPath, join(LOGS, "sim", "camera-frame.jpg"));
+
+  const r = unity("sim", ["-runTests", "-testPlatform", "PlayMode", "-testFilter", "CutOnce.Sim.Tests", "-testResults", xml], { window: true, env, minutes: 15 });
   if (existsSync(reportPath)) {
     const s = JSON.parse(readFileSync(reportPath, "utf8"));
     console.log(`  headset profile: ${s.headset}, eye buffer ${s.eyeWidth}x${s.eyeHeight}, ${s.refreshHz} Hz`);
-    console.log(`  field of view (left eye): ${(s.fovLeftDeg + s.fovRightDeg).toFixed(1)}° wide, ${(s.fovUpDeg + s.fovDownDeg).toFixed(1)}° tall`);
+    console.log(`  field of view (left eye): ${s.fovLeftDeg.toFixed(0)}° out, ${s.fovRightDeg.toFixed(0)}° in, ${s.fovUpDeg.toFixed(0)}° up, ${s.fovDownDeg.toFixed(0)}° down`);
     console.log(`  passthrough: ${s.passthrough ? "running" : "NOT running"}`);
     const lens = s.cameraLensOffset;
     console.log(s.cameraFocalLength.x > 0
@@ -243,22 +242,24 @@ function sim(): number {
   }
   const summary = existsSync(xml) ? readTestResults(readFileSync(xml, "utf8")) : null;
   if (summary) for (const f of summary.failures) console.log(`  ✗ ${f.message.split("\n").slice(0, 6).join("\n    ")}`);
-  else explain(r.log).forEach((l) => console.error(l));
   const ok = r.code === 0 && summary !== null && summary.failed === 0 && summary.passed > 0;
   console.log(ok ? "✓ The simulator stands in for the Quest 3 on this machine." : "✗ The simulator run failed; see above and Logs/cli/sim.log.");
   return ok ? 0 : 1;
 }
 
+/** Optional: the simulator does not need it. The APK build needs the NDK (Unity Hub: Android SDK & NDK Tools). */
 function build(): number {
   syncFixtures();
+  fresh(APK);
   const args = ["-executeMethod", "CutOnce.QuestTools.Batch.Build", "-cutonceOutput", APK];
   if (process.argv.includes("--release")) args.push("-cutonceRelease");
-  const r = unity("build", args);
-  if (r.code !== 0) { explain(r.log).forEach((l) => console.error(l)); return r.code; }
+  const r = unity("build", args, { minutes: 60 });
+  if (r.code !== 0 || !existsSync(APK)) return r.code || 1;
   console.log(`✓ ${APK} (${(statSync(APK).size / 1048576).toFixed(1)} MB). Next: pnpm quest:install`);
   return 0;
 }
 
+/** Installs without pre-granting permissions, so the headset asks for the camera and microphone as it will at the demo. */
 function install(): number {
   if (!existsSync(APK)) { console.error("No APK yet. Run pnpm quest:build first."); return 1; }
   const adb = adbPath(unityPath(editorVersion(readFileSync(join(PROJECT, "ProjectSettings", "ProjectVersion.txt"), "utf8"))));
@@ -267,10 +268,11 @@ function install(): number {
   const lines = devices.split("\n").slice(1).filter((l) => l.trim());
   if (lines.some((l) => /\bunauthorized\b/.test(l))) { console.error("Put the Quest on and allow USB debugging, then run this again."); return 1; }
   if (!lines.some((l) => /\bdevice\b/.test(l))) { console.error("No Quest found. Plug it in with USB-C, and turn on developer mode in the Meta Horizon phone app."); return 1; }
-  const r = spawnSync(adb, ["install", "-r", "-g", APK], { stdio: "inherit" });
+  const r = spawnSync(adb, ["install", "-r", APK], { stdio: "inherit" });
   if (r.status !== 0) return r.status ?? 1;
-  spawnSync(adb, ["shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1"], { stdio: "ignore" });
-  console.log(`✓ Installed and started. Frame budget: ${adb} logcat -s Unity | grep Budget`);
+  const launch = spawnSync(adb, ["shell", "monkey", "-p", PACKAGE, "-c", "android.intent.category.LAUNCHER", "1"], { encoding: "utf8" });
+  if (launch.status !== 0) { console.error(`Installed, but the app did not start: ${(launch.stdout ?? "") + (launch.stderr ?? "")}`.trim()); return 1; }
+  console.log(`✓ Installed and started. Budget lines: "${adb}" logcat -s Unity   (look for [Budget])`);
   return 0;
 }
 

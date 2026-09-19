@@ -41,7 +41,8 @@ namespace CutOnce.QuestTools
             var setup = EditorSceneManager.GetSceneManagerSetup();
             List<Finding> findings;
             try { findings = Run(includeScenes: true); }
-            finally { EditorSceneManager.RestoreSceneManagerSetup(setup); }
+            // An empty setup (only an unsaved Untitled scene was open) cannot be restored; the last scan stays open.
+            finally { if (setup.Length > 0) EditorSceneManager.RestoreSceneManagerSetup(setup); }
             foreach (var f in findings) { if (f.IsError) Debug.LogError(f); else Debug.LogWarning(f); }
             int errors = findings.Count(f => f.IsError);
             EditorUtility.DisplayDialog("Cut Once",
@@ -79,6 +80,10 @@ namespace CutOnce.QuestTools
                 "Plain http must be allowed, or the headset cannot reach the laptop server over Wi-Fi (the Editor can, so this only fails on the Quest).");
             Expect(f, "simulator", PlayerSettings.runInBackground,
                 "Run In Background must be on, or Play mode pauses whenever the simulator window has focus.");
+            Expect(f, "android", PlayerSettings.GetApplicationIdentifier(android) == QuestSetup.ApplicationId,
+                $"The package name must be {QuestSetup.ApplicationId}: pnpm quest:install and the demo notes launch it by that name.");
+            Expect(f, "budget", PlayerSettings.enableFrameTimingStats,
+                "Frame timing stats must be on, or BudgetProbe reads 0 ms on the headset and never warns.");
         }
 
         static void CheckXR(List<Finding> f)
@@ -99,8 +104,13 @@ namespace CutOnce.QuestTools
                 Expect(f, "xr", settings.renderMode == OpenXRSettings.RenderMode.SinglePassInstanced,
                     $"Render mode must be Single Pass Instanced for {who}: multi-pass draws everything twice.");
                 if (group == BuildTargetGroup.Android)
-                    Expect(f, "xr", settings.GetFeatures().Any(x => x.enabled && x is MetaQuestFeature),
-                        "The Meta Quest Support feature must be on for Android.");
+                {
+                    var quest = settings.GetFeatures().OfType<MetaQuestFeature>().FirstOrDefault(x => x.enabled);
+                    Expect(f, "xr", quest != null, "The Meta Quest Support feature must be on for Android.");
+                    var quest3 = quest != null ? QuestSetup.TargetDevice(new SerializedObject(quest), QuestSetup.Quest3ManifestName) : null;
+                    Expect(f, "xr", quest3 != null && quest3.FindPropertyRelative("enabled").boolValue,
+                        "Quest 3 must be ticked as a target device in the Meta Quest Support feature.");
+                }
             }
         }
 
@@ -118,6 +128,9 @@ namespace CutOnce.QuestTools
             Expect(f, "render", urp.msaaSampleCount == QuestSetup.Msaa, $"MSAA should be {QuestSetup.Msaa}x: thin edge lines shimmer on the headset without it.", Level.Warning);
             Expect(f, "render", !urp.supportsCameraOpaqueTexture && !urp.supportsCameraDepthTexture,
                 "The opaque and depth textures cost an extra copy per eye per frame. Turn them off unless a shader needs them.", Level.Warning);
+            var renderer = AssetDatabase.LoadAssetAtPath<UniversalRendererData>(QuestSetup.UrpRendererPath);
+            Expect(f, "render", renderer != null && renderer.renderingMode == RenderingMode.Forward && renderer.postProcessData == null,
+                "The URP renderer must be Forward with post-processing off, as Cut Once > Apply Quest 3 settings sets it.", Level.Warning);
         }
 
         static void CheckMetaConfig(List<Finding> f)

@@ -24,10 +24,11 @@ These all behave correctly in the Editor and fail only on the headset, which is 
 1. **Anything that differs between the headset and the laptop goes behind an interface with two implementations.**
    The rest of the code must run identically in both. `#if UNITY_ANDROID && !UNITY_EDITOR` is allowed only inside
    the headset-side implementation.
-   - **Camera photo:** use MRUK's `PassthroughCameraAccess` (`Meta.XR`), not `WebCamTexture`. It is the same
-     component on the headset and in Meta XR Simulator (v85 or newer), and it gives the lens's real pose and focal
-     length, which `PartProjector` needs. `WebCamTexture` in the Editor is the laptop's webcam: the wrong camera,
-     in the wrong place.
+   - **Camera photo:** `ICameraFrameSource`. On the headset, `Device/PcaFrameSource` uses MRUK's
+     `PassthroughCameraAccess` (`Meta.XR`), never `WebCamTexture`, which in the Editor is the laptop's webcam, the
+     wrong camera in the wrong place. In Meta XR Simulator on a Mac, `PassthroughCameraAccess` starts and gives the
+     Quest 3 lens's pose and focal length (what `PartProjector` needs) but no pixels, so the Editor uses
+     `FixtureFrameSource`, a stored photo. Never assume a live camera frame in the Editor.
    - **Server address:** read it from one config (`localhost` in the Editor; the laptop's Wi-Fi IP or the tunnel on
      the headset). Never hard-code `localhost` or `127.0.0.1`.
 2. **StreamingAssets is not a folder on Android.** `File.ReadAllText(Application.streamingAssetsPath + ...)` works
@@ -64,6 +65,8 @@ These come from Meta's Quest 3 guidance. The numbers live in `Assets/CutOnce/Dia
 | Textures | ≤ 2048 px | Scene check |
 
 Every scene has a `BudgetProbe`. It warns in the Console when the plan loaded at runtime goes over budget.
+Dynamic resolution stays off: the simulator cannot show it, and it softens the thin edge lines. Change that only
+if the headset misses 72 fps.
 
 ## Before you push: the verification ladder
 
@@ -75,7 +78,8 @@ Say which step you reached. "Compiles in the Editor" is not "works on the Quest"
    scene against the budget.
 3. **Ready for the Quest.** **Cut Once > Check Quest readiness** reports 0 errors.
 4. **Seen in the simulator.** Press Play with Meta XR Simulator active (Quest 3 profile, a synthetic room). Look at
-   the change. `BudgetProbe` shows no warning.
+   the change. `BudgetProbe` shows no warning. `pnpm quest:sim` (Editor closed) checks the simulator itself still
+   stands in for the Quest 3: profile, eye buffer, passthrough, camera lens, budget.
 5. **Seen on the headset.** Needed if the change touches anything in README's "only on the headset" list:
    permissions, network, frame time, or how it looks over real passthrough. On Windows, use Quest Link.
 

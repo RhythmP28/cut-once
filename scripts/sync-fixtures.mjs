@@ -12,9 +12,11 @@ const streaming = join(quest, "StreamingAssets");
 mkdirSync(fixtures, { recursive: true }); mkdirSync(streaming, { recursive: true });
 cpSync(join(root, "data", "fixtures"), fixtures, { recursive: true });
 let copied = 0;
-for (const dir of ["data/demo", "data/e7/out"]) {
+// Plans and models for the app, and the stored camera frame the copilot's FixtureFrameSource reads in the Editor.
+const wanted = [["data/demo", /\.(plan|events)\.json$|\.glb$/], ["data/e7/out", /\.(plan|events)\.json$|\.glb$/], ["data/fixtures", /^frame_.*\.(jpg|pose\.json)$/]];
+for (const [dir, pattern] of wanted) {
   const abs = join(root, dir);
   if (!existsSync(abs)) continue;
-  for (const f of readdirSync(abs).filter((f) => /\.(plan|events)\.json$|\.glb$/.test(f))) { cpSync(join(abs, f), join(streaming, f)); copied++; }
+  for (const f of readdirSync(abs).filter((f) => pattern.test(f))) { cpSync(join(abs, f), join(streaming, f)); copied++; }
 }
-console.log(`synced fixtures to ${fixtures} and ${copied} plan files to ${streaming}`);
+console.log(`synced fixtures to ${fixtures} and ${copied} files to ${streaming}`);

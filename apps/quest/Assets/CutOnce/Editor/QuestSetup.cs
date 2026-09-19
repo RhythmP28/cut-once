@@ -32,7 +32,7 @@ namespace CutOnce.QuestTools
         public const string XRSettingsPath = "Assets/XR/XRGeneralSettingsPerBuildTarget.asset";
         public const string OpenXRLoader = "UnityEngine.XR.OpenXR.OpenXRLoader";
         public const string MetaXRFeature = "Meta.XR.MetaXRFeature";
-        const string Quest3ManifestName = "eureka"; // Quest 3's name in the Android manifest
+        internal const string Quest3ManifestName = "eureka"; // Quest 3's name in the Android manifest
 
         [MenuItem("Cut Once/Apply Quest 3 settings", priority = 1)]
         static void ApplyFromMenu()
@@ -121,7 +121,8 @@ namespace CutOnce.QuestTools
             {
                 QualitySettings.SetQualityLevel(i, false);
                 QualitySettings.renderPipeline = asset;
-                QualitySettings.antiAliasing = 0; // the URP asset's MSAA is the one that counts
+                // Ignored under URP (the asset's MSAA decides), but Meta's Project Setup Tool sets it to 4; agree with it.
+                QualitySettings.antiAliasing = Msaa;
                 QualitySettings.shadows = UnityEngine.ShadowQuality.Disable;
                 QualitySettings.vSyncCount = 0;
             }
@@ -150,11 +151,31 @@ namespace CutOnce.QuestTools
                 if (feature is MetaQuestFeature quest)
                 {
                     quest.enabled = true;
+                    // AddTargetDevice adds a missing entry but leaves an existing, unticked one unticked.
                     quest.AddTargetDevice(Quest3ManifestName, "Quest 3", true);
+                    var serialized = new SerializedObject(quest);
+                    var quest3 = TargetDevice(serialized, Quest3ManifestName);
+                    if (quest3 != null)
+                    {
+                        quest3.FindPropertyRelative("enabled").boolValue = true;
+                        serialized.ApplyModifiedPropertiesWithoutUndo();
+                    }
                 }
                 EditorUtility.SetDirty(feature);
             }
             EditorUtility.SetDirty(openxr);
+        }
+
+        /// <summary>The serialized entry for one target device of the Meta Quest feature (its list is not public).</summary>
+        internal static SerializedProperty TargetDevice(SerializedObject quest, string manifestName)
+        {
+            var devices = quest.FindProperty("targetDevices");
+            for (int i = 0; devices != null && i < devices.arraySize; i++)
+            {
+                var device = devices.GetArrayElementAtIndex(i);
+                if (device.FindPropertyRelative("manifestName").stringValue == manifestName) return device;
+            }
+            return null;
         }
 
         internal static XRGeneralSettingsPerBuildTarget XRSettingsPerTarget(bool create)

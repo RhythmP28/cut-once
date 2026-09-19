@@ -15,6 +15,12 @@ namespace CutOnce.QuestTools
     /// </summary>
     public static class Batch
     {
+        // Setup's progress lives in SessionState, which survives the domain reload a Meta fix can trigger (a changed
+        // scripting define recompiles the scripts and drops every delegate, the polling one included).
+        const string SetupStep = "CutOnce.Setup.Step";       // 1 = Meta's Android fixes, 2 = Standalone fixes, 3 = finish
+        const string SetupStarted = "CutOnce.Setup.Started";
+        const double SetupTimeoutSeconds = 15 * 60;
+
         /// <summary>Applies our settings, lets Meta's Project Setup Tool fix what it knows about, then applies ours again.</summary>
         public static void Setup()
         {
@@ -22,13 +28,38 @@ namespace CutOnce.QuestTools
             {
                 QuestSetup.Apply();
                 QuestBaselineScene.EnsureExists();
-                FixWithMeta(BuildTargetGroup.Android, () => FixWithMeta(BuildTargetGroup.Standalone, () =>
-                {
+                SessionState.SetFloat(SetupStarted, (float)EditorApplication.timeSinceStartup);
+                SessionState.SetInt(SetupStep, 1);
+                ContinueSetup();
+            });
+        }
+
+        [InitializeOnLoadMethod]
+        static void ResumeSetupAfterReload()
+        {
+            if (Application.isBatchMode && SessionState.GetInt(SetupStep, 0) > 0)
+                EditorApplication.delayCall += () => Guard(ContinueSetup);
+        }
+
+        static void ContinueSetup()
+        {
+            if (EditorApplication.timeSinceStartup - SessionState.GetFloat(SetupStarted, 0f) > SetupTimeoutSeconds)
+            {
+                Debug.LogError("[CutOnce] setup did not finish in 15 minutes");
+                EditorApplication.Exit(1);
+                return;
+            }
+            switch (SessionState.GetInt(SetupStep, 0))
+            {
+                case 1: FixWithMeta(BuildTargetGroup.Android, () => { SessionState.SetInt(SetupStep, 2); ContinueSetup(); }); break;
+                case 2: FixWithMeta(BuildTargetGroup.Standalone, () => { SessionState.SetInt(SetupStep, 3); ContinueSetup(); }); break;
+                case 3:
                     QuestSetup.Apply(); // ours win where the two disagree; the check then shows what Meta still wants
+                    SessionState.EraseInt(SetupStep);
                     Debug.Log("[CutOnce] setup done");
                     EditorApplication.Exit(0);
-                }));
-            });
+                    break;
+            }
         }
 
         /// <summary>
@@ -157,9 +188,15 @@ namespace CutOnce.QuestTools
                 bool timedOut = EditorApplication.timeSinceStartup - started > 300;
                 if (!task.IsCompleted && !timedOut) return;
                 EditorApplication.update -= Poll;
-                if (timedOut) Debug.LogError($"[CutOnce] Meta's fixes for {group} did not finish in 5 minutes");
-                else if (task.IsFaulted) Debug.LogError($"[CutOnce] Meta's fixes for {group} failed: {task.Exception}");
-                else Debug.Log($"[CutOnce] Meta's fixes applied for {group}");
+                if (timedOut || task.IsFaulted)
+                {
+                    Debug.LogError(timedOut ? $"[CutOnce] Meta's fixes for {group} did not finish in 5 minutes"
+                                            : $"[CutOnce] Meta's fixes for {group} failed: {task.Exception}");
+                    SessionState.EraseInt(SetupStep);
+                    EditorApplication.Exit(1);
+                    return;
+                }
+                Debug.Log($"[CutOnce] Meta's fixes applied for {group}");
                 Guard(then);
             }
             EditorApplication.update += Poll;
