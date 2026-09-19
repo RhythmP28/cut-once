@@ -140,7 +140,7 @@ describe("Agent Builder over real MCP", () => {
     expect(es.searches.length).toBe(before + 1);
   });
 
-  it("log_issue: MCP times out, the fallback logs it, the Workflow's late webhook is ignored", async () => {
+  it("log_issue: recorded locally first, the Workflow still runs, and its late webhook is ignored", async () => {
     const r = await callKnowledgeTool(t.app.ctx, "log_issue", { part_id: "part_left_rear_leg", note: "Thread is damaged" }, { timeoutMs: 150 });
     expect(r).toMatchObject({ ok: true, via: "direct" });
     const issueId = (r as any).data.issue_id as string;
@@ -149,7 +149,8 @@ describe("Agent Builder over real MCP", () => {
     expect(kibana.webhookReplies).toEqual([{ ok: true, issue_id: issueId, duplicate: true }]); // the webhook really arrived, and was ignored
     const aid = t.app.ctx.store.currentAssembly()!.assembly_id;
     expect(t.app.ctx.store.getEvents(aid).events.filter((e) => e.note?.startsWith(`${issueId}:`))).toHaveLength(1);
-    expect(es.indexed.filter((p) => p.endsWith(`/cutonce-issues/_doc/${issueId}`))).toHaveLength(1);
+    // Written twice on purpose, same id: our local record, then again when the webhook arrives, so ours is the last write.
+    expect(es.indexed.filter((p) => p.endsWith(`/cutonce-issues/_doc/${issueId}`))).toHaveLength(2);
   });
 });
 

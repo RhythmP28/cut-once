@@ -6,7 +6,7 @@ import { mcpCall } from "./mcp.js";
 export type ToolResult = { ok: true; data: unknown; via: "mcp" | "direct" } | { ok: false; error: string };
 type Remote = (name: string, args: Record<string, unknown>) => Promise<unknown>;
 
-const timeout = <T>(p: Promise<T>, ms: number) => new Promise<T>((resolve, reject) => {
+export const timeout = <T>(p: Promise<T>, ms: number) => new Promise<T>((resolve, reject) => {
   const t = setTimeout(() => reject(new Error(`timed out after ${ms} ms`)), ms);
   p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
 });
@@ -44,6 +44,15 @@ export async function callKnowledgeTool(ctx: Ctx, name: ToolName, args: Record<s
   // A mutating tool gets its id once, so the MCP path and the fallback describe the same issue.
   if (name === "log_issue" && typeof args.issue_id !== "string") args = { ...args, issue_id: `issue_${ulid().toLowerCase()}` };
   const remote: Remote | null = opts.remote ?? (ctx.cfg.mcpUrl && ctx.cfg.esApiKey ? (n, a) => mcpCall(ctx.cfg, n, a) : null);
+  if (name === "log_issue") {
+    // Record locally first: the Workflow reaches us only through a webhook URL that changes with the tunnel.
+    // Then let the Elastic Workflow act as well; its webhook arrives later and is ignored as a duplicate.
+    try {
+      const data = await directTools.log_issue(ctx, args);
+      if (remote) void timeout(remote(REMOTE_NAME[name], remoteArgs(ctx, name, args)), opts.timeoutMs ?? 2000).catch(() => undefined);
+      return { ok: true, data, via: "direct" };
+    } catch (err) { return { ok: false, error: (err as Error).message }; }
+  }
   if (remote) {
     const sent = remoteArgs(ctx, name, args);
     try { return { ok: true, data: REMOTE_SHAPE[name](await timeout(remote(REMOTE_NAME[name], sent), opts.timeoutMs ?? 2000), sent), via: "mcp" }; }

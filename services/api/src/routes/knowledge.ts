@@ -24,10 +24,10 @@ export function knowledgeRoutes(app: FastifyInstance, ctx: Ctx) {
     catch (err) { throw new ApiError(503, "search_unavailable", (err as Error).message); }
   });
 
-  // Called by the Workflow after it has indexed the issue; also used by the Director page's test button.
+  // Called by the Workflow (an empty part_id means no part); also used by the Director page's test button.
   app.post("/v1/webhooks/issue", async (req) => {
-    const body = z.object({ issue_id: z.string().regex(/^issue_[a-z0-9_]+$/), part_id: z.string().regex(/^part_[a-z0-9_]+$/).nullable().optional(), note: z.string().min(1).max(500), photo_ref: z.string().optional(), indexed: z.boolean().optional() }).safeParse(req.body);
+    const body = z.object({ issue_id: z.string().regex(/^issue_[a-z0-9_]+$/), part_id: z.preprocess((v) => (v === "" ? null : v), z.string().regex(/^part_[a-z0-9_]+$/).nullable().optional()), note: z.string().min(1).max(500), photo_ref: z.string().optional() }).safeParse(req.body);
     if (!body.success) throw badRequest("body must be { issue_id, part_id?, note }", body.error.issues);
-    return logIssue(ctx, { issue_id: body.data.issue_id, part_id: body.data.part_id ?? null, note: body.data.note, photo_ref: body.data.photo_ref }, body.data.indexed ?? false);
+    return logIssue(ctx, { issue_id: body.data.issue_id, part_id: body.data.part_id ?? null, note: body.data.note, photo_ref: body.data.photo_ref });
   });
 }

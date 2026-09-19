@@ -61,26 +61,32 @@ const issuesSeen = new Set<string>();
 
 /**
  * Records an issue: an annotation on the current run, a document in cutonce-issues, and a toast on every screen.
- * Idempotent on issue_id: the Workflow's HTTP step retries, and the MCP fallback may race it.
+ * Idempotent on issue_id: the Workflow's HTTP step retries, and it arrives after our own local record.
  * The check and the mark are synchronous, so two calls cannot interleave between them.
  */
-export async function logIssue(ctx: Ctx, issue: { issue_id: string; part_id: string | null; note: string; photo_ref?: string }, alreadyIndexed = false) {
+export async function logIssue(ctx: Ctx, issue: { issue_id: string; part_id: string | null; note: string; photo_ref?: string }) {
   const current = ctx.store.currentAssembly();
   const onDisk = current ? ctx.store.getEvents(current.assembly_id).events.some((e) => e.kind === "annotation" && e.note?.startsWith(`${issue.issue_id}:`)) : false;
-  if (issuesSeen.has(issue.issue_id) || onDisk) return { ok: true, issue_id: issue.issue_id, duplicate: true };
-  issuesSeen.add(issue.issue_id);
+  const duplicate = issuesSeen.has(issue.issue_id) || onDisk;
   const now = new Date().toISOString();
-  if (current) {
-    await ctx.store.appendEvent(current.assembly_id, {
-      event_id: `evt_${ulid()}`, assembly_id: current.assembly_id, version: null, timestamp: now, client_timestamp: now, kind: "annotation",
-      ...(issue.part_id && ctx.store.getState(current.assembly_id).parts[issue.part_id] ? { part_id: issue.part_id } : {}),
-      source: "system", confidence: 1, actor: "workflow", note: `${issue.issue_id}: ${issue.note}`,
-    });
+  if (!duplicate) {
+    issuesSeen.add(issue.issue_id);
+    try {
+      if (current) {
+        await ctx.store.appendEvent(current.assembly_id, {
+          event_id: `evt_${ulid()}`, assembly_id: current.assembly_id, version: null, timestamp: now, client_timestamp: now, kind: "annotation",
+          ...(issue.part_id && ctx.store.getState(current.assembly_id).parts[issue.part_id] ? { part_id: issue.part_id } : {}),
+          source: "system", confidence: 1, actor: "workflow", note: `${issue.issue_id}: ${issue.note}`,
+        });
+      }
+    } catch (err) { issuesSeen.delete(issue.issue_id); throw err; } // not recorded, so a retry must not count as a duplicate
   }
+  // Always (re)write the full record: the Workflow indexes a partial copy before it calls us, so the last write must be ours.
   const es = getEs(ctx.cfg);
-  if (es && !alreadyIndexed) {
+  if (es) {
     await es.index({ index: INDEX.issues, id: issue.issue_id, document: { "@timestamp": now, ...issue, assembly_id: current?.assembly_id, status: "open" } }).catch(() => undefined);
   }
+  if (duplicate) return { ok: true, issue_id: issue.issue_id, duplicate: true };
   ctx.store.bus.emit("broadcast", { type: "issue_logged", issue_id: issue.issue_id, part_id: issue.part_id, note: issue.note });
   return { ok: true, issue_id: issue.issue_id };
 }

@@ -134,3 +134,24 @@ describe("log_issue is idempotent", () => {
     expect(t.app.ctx.store.getEvents(aid).events.filter((e) => e.note?.startsWith("issue_dup_2:"))).toHaveLength(1);
   });
 });
+
+describe("review fixes: log_issue never depends on the webhook", () => {
+  it("records locally even when the MCP call 'succeeds' but the Workflow never calls back", async () => {
+    const r = await callKnowledgeTool(t.app.ctx, "log_issue", { note: "desk wobbles" }, { remote: async () => ({ results: [{ type: "other", data: {} }] }) });
+    const aid = t.app.ctx.store.currentAssembly()!.assembly_id;
+    expect(r).toMatchObject({ ok: true });
+    expect(t.app.ctx.store.getEvents(aid).events.filter((e) => e.note?.startsWith(`${(r as any).data.issue_id}:`))).toHaveLength(1);
+  });
+  it("the webhook accepts an issue with no part (the Workflow sends an empty string)", async () => {
+    const res = await post("/v1/webhooks/issue", { issue_id: "issue_no_part_1", part_id: "", note: "desk wobbles" });
+    expect(res.statusCode).toBe(200);
+  });
+  it("a failed write does not mark the issue as seen", async () => {
+    const store = t.app.ctx.store as any;
+    const original = store.appendEvent.bind(store);
+    store.appendEvent = async () => { throw new Error("disk full"); };
+    await expect(logIssue(t.app.ctx, { issue_id: "issue_retry_1", part_id: null, note: "n" })).rejects.toThrow(/disk full/);
+    store.appendEvent = original;
+    expect(await logIssue(t.app.ctx, { issue_id: "issue_retry_1", part_id: null, note: "n" })).not.toHaveProperty("duplicate");
+  });
+});
