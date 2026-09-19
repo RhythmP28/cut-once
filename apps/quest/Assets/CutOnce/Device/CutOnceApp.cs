@@ -37,6 +37,7 @@ namespace CutOnce.Device
         float _highlightUntil, _nextRetry, _markHeldFor;
         bool _markUsed, _dirty = true, _hudInFront;
         int _seenConnects; string _lastEventId, _toastRun;
+        Action<WsMessageDto> _handleMessage;                          // cached: a method group in Update would allocate a delegate every frame
         bool _waitForMarkRelease;
 
         // ── start-up ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -54,6 +55,7 @@ namespace CutOnce.Device
             _sync.PlanReady += (planId, revision) => _hud.Toast($"New plan ready: {planId} revision {revision}", 4f);
             _sync.DirectorCommand += OnDirectorCommand;
             _stream = new StreamClient(() => new NetSocket(), _config);
+            _handleMessage = _sync.Handle;
 
             _input = gameObject.AddComponent<QuestInput>();
             _assembly = new GameObject("AssemblyRoot").AddComponent<AssemblyView>();
@@ -63,7 +65,7 @@ namespace CutOnce.Device
             _proof = gameObject.AddComponent<ProofOverlay>();
             _proof.Init(_alignment, _input);
             _selection = new GameObject("[Pointer]").AddComponent<SelectionController>();
-            _selection.Init(_input, () => _alignment.State == AlignmentState.Locked, _material);
+            _selection.Init(_input, _assembly, () => _alignment.State == AlignmentState.Locked, _material);
             _selection.Changed += _ => _dirty = true;
             _hud = HudController.Create(null);
             _hud.ShowStatus("Starting…", _alignment.Hint);
@@ -167,7 +169,7 @@ namespace CutOnce.Device
         // ── every frame ──────────────────────────────────────────────────────────────────────────────────────────
         void Update()
         {
-            _stream.Drain(_sync.Handle);
+            _stream.Drain(_handleMessage);
 
             if (_stream.Connects != _seenConnects) { _seenConnects = _stream.Connects; Run(_sync.CatchUp()); }        // (re)connected: fetch what was missed
             else if (!_sync.Online && Time.time > _nextRetry) { _nextRetry = Time.time + RetrySeconds; Run(_sync.CatchUp()); }

@@ -17,7 +17,7 @@ namespace CutOnce.AR
 
         AlignmentController _alignment; IOperatorInput _input;
         readonly List<GameObject> _owned = new List<GameObject>();
-        Transform _tip; float _hideAt;
+        Transform _tip; float _hideAt; bool _shown = true, _tipShown = true;
 
         public void Init(AlignmentController alignment, IOperatorInput input) { _alignment = alignment; _input = input; }
 
@@ -38,6 +38,7 @@ namespace CutOnce.AR
 
             _tip = AddBox(null, material, Vector3.zero, Vector3.one * MarkerSize * 0.7f, Marker).transform;
             _tip.name = "controller tip";
+            _shown = _tipShown = true;                                       // everything just built is active
         }
 
         GameObject AddBox(Transform parent, Material material, Vector3 localPosition, Vector3 size, VisualStyle style)
@@ -55,12 +56,15 @@ namespace CutOnce.AR
             if (_alignment == null) return;
             if (_alignment.State == AlignmentState.Placing) _hideAt = Time.time + LingerSeconds;
             bool show = _alignment.State == AlignmentState.Placing ? _alignment.HasSurfaceHit || _alignment.TouchesRecorded > 0 : Time.time < _hideAt;
-            foreach (var go in _owned) if (go != null && go.transform != _tip) go.SetActive(show);
-            if (_tip != null)
+            if (show != _shown)                                              // only on a change: SetActive every frame is wasted work
             {
-                _tip.gameObject.SetActive(_alignment.State == AlignmentState.Placing && _input != null);
-                if (_input != null) _tip.position = _input.TipWorld;
+                _shown = show;
+                foreach (var go in _owned) if (go != null && go.transform != _tip) go.SetActive(show);
             }
+            if (_tip == null) return;
+            bool tip = _alignment.State == AlignmentState.Placing && _input != null;
+            if (tip != _tipShown) { _tipShown = tip; _tip.gameObject.SetActive(tip); }
+            if (tip) _tip.position = _input.TipWorld;
         }
     }
 }

@@ -1,4 +1,4 @@
-// Cut Once hologram: see-through fill, crisp edges of a constant width in pixels, optional grid, corner brackets,
+// Cut Once hologram: see-through fill, crisp edges (a physical width with a floor in pixels), optional grid, corner brackets,
 // dashes for estimated parts, a pulse, and a bottom-up reveal. One pass, unlit, no post-processing: the Quest has no
 // budget for bloom, so the glow is a soft falloff around the edge line itself.
 //
@@ -109,8 +109,11 @@ Shader "CutOnce/Hologram"
                 {
                     float toEdge, alongEdge;
                     EdgeDistances(input.positionOS, toEdge, alongEdge);
+                    // The palette gives widths in pixels. One Quest 3 pixel is about 0.66 mm at 80 cm (the figure QuestBaselineScene
+                    // uses), so that is the line's physical width: lean in and the line keeps its size instead of thinning to a hair.
+                    // The pixel width is the floor: across the room the line never drops below what the display can draw steadily.
                     float pixel = max(fwidth(toEdge), 1e-6);
-                    float width = pixel * max(_EdgeWidthPx, 0.5);
+                    float width = max(pixel, 0.00066) * max(_EdgeWidthPx, 0.5);
                     edge = 1.0 - smoothstep(width * 0.5, width, toEdge);
                     edge = max(edge, 0.35 * exp(-toEdge / (width * 2.5)));
                     if (_Brackets > 0.5)

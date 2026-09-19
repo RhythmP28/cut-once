@@ -13,7 +13,7 @@ namespace CutOnce.AR
         public const float Reach = 6f, NearTie = 0.03f;
         static readonly RaycastHit[] Hits = new RaycastHit[16];
 
-        IOperatorInput _input;
+        IOperatorInput _input; AssemblyView _assembly;
         Func<bool> _enabled;
         Transform _beam, _dot;
 
@@ -21,9 +21,9 @@ namespace CutOnce.AR
         public Vector3 HitPoint { get; private set; }
         public event Action<string> Changed;
 
-        public void Init(IOperatorInput input, Func<bool> enabled, Material material)
+        public void Init(IOperatorInput input, AssemblyView assembly, Func<bool> enabled, Material material)
         {
-            _input = input; _enabled = enabled;
+            _input = input; _assembly = assembly; _enabled = enabled;
             _beam = Marker("pointer beam", material, new Vector3(0.002f, 0.002f, 1f), 0.5);
             _dot = Marker("pointer dot", material, Vector3.one * 0.01f, 0.95);
         }
@@ -47,11 +47,11 @@ namespace CutOnce.AR
             {
                 int n = Physics.RaycastNonAlloc(ray, Hits, Reach);
                 float nearest = float.MaxValue;
-                for (int i = 0; i < n; i++) if (Hits[i].collider.GetComponent<PartView>() != null) nearest = Mathf.Min(nearest, Hits[i].distance);
+                for (int i = 0; i < n; i++) if (_assembly.ViewOf(Hits[i].collider) != null) nearest = Mathf.Min(nearest, Hits[i].distance);
                 float bestVolume = float.MaxValue;
                 for (int i = 0; i < n; i++)
                 {
-                    var view = Hits[i].collider.GetComponent<PartView>();
+                    var view = _assembly.ViewOf(Hits[i].collider);
                     if (view == null || Hits[i].distance > nearest + NearTie) continue;
                     var size = view.WorldBounds.size; float volume = size.x * size.y * size.z;
                     if (volume < bestVolume) { bestVolume = volume; picked = view.PartId; HitPoint = Hits[i].point; length = Hits[i].distance; }

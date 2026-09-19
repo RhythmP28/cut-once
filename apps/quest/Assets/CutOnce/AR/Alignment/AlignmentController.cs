@@ -171,23 +171,7 @@ namespace CutOnce.AR
             transform.localRotation = saved.rotation.normalized;
         }
 
-        /// <summary>The model's bounds in AssemblyRoot's own frame, from the parts' meshes (so it works before anything is visible).</summary>
-        public Bounds LocalBounds()
-        {
-            bool any = false; var total = new Bounds();
-            foreach (var view in _assembly.Views.Values)
-            {
-                var filter = view.GetComponent<MeshFilter>();
-                if (filter == null || filter.sharedMesh == null) continue;
-                var b = filter.sharedMesh.bounds;
-                for (int i = 0; i < 8; i++)
-                {
-                    var corner = b.center + Vector3.Scale(b.extents, new Vector3((i & 1) == 0 ? -1 : 1, (i & 2) == 0 ? -1 : 1, (i & 4) == 0 ? -1 : 1));
-                    var p = view.transform.localPosition + view.transform.localRotation * corner;
-                    if (!any) { total = new Bounds(p, Vector3.zero); any = true; } else total.Encapsulate(p);
-                }
-            }
-            return total;
-        }
+        /// <summary>The model's bounds in AssemblyRoot's own frame (cached by AssemblyView when the plan is built).</summary>
+        public Bounds LocalBounds() => _assembly.LocalBounds;
     }
 }
