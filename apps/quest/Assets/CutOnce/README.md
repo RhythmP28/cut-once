@@ -13,7 +13,8 @@ app, and makes it the first scene in the build. There are no prefabs and no insp
    With neither, the app uses `http://127.0.0.1:8080`: fine in the Editor next to `pnpm dev`, useless on a headset.
    Use the `https://` tunnel address on the headset: Android blocks plain `http://` unless the app allows cleartext.
 2. **Cut Once > Rebuild main scene**, then Play (Meta XR Simulator on a laptop, or build to the Quest).
-3. With no server at all the app still runs: it loads the last run from its journal, or the bundled desk plan.
+3. With no server at all the app still runs: it loads the last run from its journal, or the bundled E7 plan (the
+   default run; the Director page's **New run** switches to the desk).
 
 ## Controls (right controller)
 
@@ -77,6 +78,14 @@ Decisions worth knowing before you change something:
 - **Placement stands the model on the surface**: the footprint's centre goes to the pointed spot and the lowest face
   rests on it (the desk's tabletop extends below y = 0). It uses the Quest 3's depth raycast when there is one and the
   floor plane otherwise, so it works in the simulator and needs no room scan.
+- **Buildings are tabletop models.** A plan wider than 4 m is shown at the largest architectural scale that keeps it
+  under 80 cm (E7, 91 m long, at 1:200). Everything scale-dependent (placement, nudge, collider padding, line width,
+  dashes, the proof overlay) is sized for the room, not the model. The HUD title shows the scale. Touch points are
+  refused at tabletop scale; they are for overlaying at full size.
+- **Model files are read by our own `GlbReader`** (Core, tested under dotnet): a plan's mesh parts come from its `.glb`,
+  fetched from the server's plan assets, else the bundled copy in `Resources/CutOnce/<file>.bytes`, else drawn as
+  their bounds box. No extra Unity package. `GlbMeshes` mirrors X and swaps each triangle's winding (a reflection
+  turns a mesh inside out; the signed-volume test holds it), and draws crease lines as thin crossed quads.
 - **Selection prefers the smallest part among near-equal hits**, because colliders are padded by 1 cm and parts nest (a
   power strip inside its tray can only be reached that way).
 
@@ -93,5 +102,5 @@ depth raycast while placing, the anchor coming back after a restart, and the poi
 
 ## Not done here
 
-`TimelineController` (history scrub on the headset), loading GLB parts (a mesh part draws as its bounds box until
-glTFast is added), depth occlusion, and the camera check's "suggests; you confirm" screen.
+`TimelineController` (history scrub on the headset), depth occlusion, a 1:1 walk-in mode for buildings, and the
+camera check's "suggests; you confirm" screen.

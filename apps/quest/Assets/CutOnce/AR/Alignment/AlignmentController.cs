@@ -53,7 +53,7 @@ namespace CutOnce.AR
         public void BeginPlacing()
         {
             State = AlignmentState.Placing; _touches.Clear(); _yawChosen = false;
-            Hint = "Point at where the build stands · stick turns it · trigger locks";
+            Hint = (_assembly != null && _assembly.DisplayScale < 1f ? $"Tabletop model at {_assembly.ScaleLabel} · " : "") + "Point at where the build stands · stick turns it · trigger locks";
             Changed?.Invoke();
         }
 
@@ -78,7 +78,7 @@ namespace CutOnce.AR
             if (!_yawChosen) { _yaw = PlacementMath.YawToward(point, ray.origin); _yawChosen = true; }     // first frame: face the operator
             _yaw += _input.Stick.x * PlacingYawDegreesPerSecond * Time.deltaTime;
 
-            var pose = PlacementMath.StandOn(point, _yaw, LocalBounds());
+            var pose = PlacementMath.StandOn(point, _yaw, LocalBounds(), _assembly.DisplayScale);
             transform.SetParent(null, true);
             transform.SetPositionAndRotation(pose.position, pose.rotation);
             if (_input.TriggerDown) Lock("pointed");
@@ -88,6 +88,7 @@ namespace CutOnce.AR
         {
             var points = _assembly.Plan.touch_points;
             if (points == null || points.Count < 2) { Hint = "This plan has no touch points · point and pull the trigger instead"; Changed?.Invoke(); return; }
+            if (_assembly.DisplayScale < 1f) { Hint = $"Touch points need the plan at full size; this one is shown at {_assembly.ScaleLabel} · pull the trigger to place it"; Changed?.Invoke(); return; }
 
             _touches.Add(_input.TipWorld);
             if (_touches.Count == 1) { Hint = $"Now touch: {points[1].name}"; Changed?.Invoke(); return; }
@@ -146,7 +147,7 @@ namespace CutOnce.AR
             Vector2 stick = _input.Stick;
             if (stick.sqrMagnitude < 0.04f) return;                    // dead zone
             var bounds = LocalBounds();
-            var pivot = new Vector3(bounds.center.x, bounds.min.y, bounds.center.z);
+            var pivot = new Vector3(bounds.center.x, bounds.min.y, bounds.center.z) * _assembly.DisplayScale;
             var pose = _input.TriggerHeld
                 ? PlacementMath.Nudge(new Pose(transform.position, transform.rotation), new Vector3(0, stick.y * LiftMetresPerSecond * Time.deltaTime, 0), stick.x * YawDegreesPerSecond * Time.deltaTime, pivot)
                 : PlacementMath.Nudge(new Pose(transform.position, transform.rotation), new Vector3(stick.x, 0, stick.y) * (NudgeMetresPerSecond * Time.deltaTime), 0f, pivot);

@@ -21,9 +21,15 @@ namespace CutOnce.AR
             public Quaternion LocalRotation = Quaternion.identity;
             public Vector3 HalfSize;             // object-space half extents, for the edge maths
             public int EdgeMode;
+            /// <summary>For a part drawn from the plan's model file: the crease lines, drawn by a child renderer (GlbMeshes.EdgeLines).</summary>
+            public Mesh EdgeLines;
+            /// <summary>The mesh read from the model file, kept so the edge lines can be made once the display scale is known.</summary>
+            public GlbMesh Source;
         }
 
-        public static Built Build(PartDto part)
+        /// <param name="models">Meshes read from the plan's model files, by node name. A mesh part whose node is missing
+        /// is drawn as its declared bounds, so a plan still shows (as boxes) when its model file cannot be loaded.</param>
+        public static Built Build(PartDto part, IReadOnlyDictionary<string, GlbMesh> models = null)
         {
             var s = part.shape;
             var rotation = ModelSpace.Rotation(part.rotation_quat);
@@ -43,7 +49,10 @@ namespace CutOnce.AR
                     // the validator's bounds (geometry.ts). A mirrored offset is still an offset, so Point() serves for both.
                     return new Built { Mesh = Tube(points, (float)s.diameter * 0.5f, TubeSides), LocalPosition = ModelSpace.Point(part.position), LocalRotation = rotation, HalfSize = Vector3.one, EdgeMode = EdgeNone };
                 case "mesh":
-                    // A GLB-backed part (E7). Until the model loader lands, its declared bounds stand in for it.
+                    if (models != null && models.TryGetValue(s.node ?? part.part_id, out var model) && model.TriangleCount > 0)
+                        return new Built { Mesh = GlbMeshes.Surface(model), LocalPosition = ModelSpace.Point(part.position), LocalRotation = rotation,
+                                           HalfSize = Vector3.one, EdgeMode = EdgeNone, Source = model };
+                    // No model file: the declared bounds stand in for the part.
                     if (s.bounds?.min == null || s.bounds.max == null) return null;
                     Vector3 a = ModelSpace.Point(s.bounds.min), b = ModelSpace.Point(s.bounds.max);
                     var extent = new Vector3(Mathf.Abs(b.x - a.x), Mathf.Abs(b.y - a.y), Mathf.Abs(b.z - a.z));

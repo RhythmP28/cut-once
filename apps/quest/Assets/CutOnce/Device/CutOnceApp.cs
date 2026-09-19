@@ -29,7 +29,7 @@ namespace CutOnce.Device
         [Tooltip("Create the copilot (push-to-talk on A) if the scene has none.")]
         public bool createCopilot = true;
 
-        ServerConfig _config; HologramPalette _palette;
+        ServerConfig _config; HologramPalette _palette; ApiClient _api;
         BuildStateStore _store; SyncEngine _sync; StreamClient _stream;
         AssemblyView _assembly; AlignmentController _alignment; ProofOverlay _proof; SelectionController _selection; HudController _hud; QuestInput _input;
         Material _material;
@@ -49,8 +49,9 @@ namespace CutOnce.Device
 
             _store = new BuildStateStore();
             _store.Changed += OnStateChanged;
-            var api = new ApiClient(new UnityHttpTransport(), _config);
-            _sync = new SyncEngine(api, _store, new Journal(Path.Combine(Application.persistentDataPath, "cutonce")), () => Resource("CutOnce/desk.plan"));
+            _api = new ApiClient(new UnityHttpTransport(), _config);
+            // With no server and no journal the app still opens on something: E7, the default run (the desk is one "New run" away).
+            _sync = new SyncEngine(_api, _store, new Journal(Path.Combine(Application.persistentDataPath, "cutonce")), () => Resource("CutOnce/e7.plan"));
             _sync.RunLoaded += OnRunLoaded;
             _sync.PlanReady += (planId, revision) => _hud.Toast($"New plan ready: {planId} revision {revision}", 4f);
             _sync.DirectorCommand += OnDirectorCommand;
@@ -109,9 +110,15 @@ namespace CutOnce.Device
         }
 
         // ── state → hologram and HUD ─────────────────────────────────────────────────────────────────────────────
-        void OnRunLoaded()
+        void OnRunLoaded() => Run(BuildHologram());
+
+        /// <summary>Fetches the plan's model files (if it has any), then builds. A newer run arriving meanwhile wins.</summary>
+        async Task BuildHologram()
         {
-            var skipped = _assembly.Build(_store.Plan);
+            var plan = _store.Plan;
+            var models = await PlanModels.Load(_api, plan, _sync.Online);
+            if (this == null || plan != _store.Plan) return;
+            var skipped = _assembly.Build(plan, models);
             if (skipped.Count > 0) Debug.LogWarning("[CutOnce] Parts with no drawable shape: " + string.Join(", ", skipped));
             _proof.Rebuild(_assembly, _material);
             _dirty = true;
@@ -160,7 +167,7 @@ namespace CutOnce.Device
             if (!_store.IsLoaded) return;
             var lit = Time.time < _highlightUntil ? _highlighted : null;
             _assembly.Show(VisualStateResolver.Resolve(_store.Plan, _store.Current, _selection.SelectedPartId, lit), _palette);
-            _hud.ShowState(_store.Plan, _store.Current, MaterialList.For(_store.Plan, _store.Current), _store.Events);
+            _hud.ShowState(_store.Plan, _store.Current, MaterialList.For(_store.Plan, _store.Current), _store.Events, _assembly.ScaleLabel);
             var part = _assembly.ViewOf(_selection.SelectedPartId)?.Part;
             _hud.ShowPart(part != null && _store.Current.parts.TryGetValue(part.part_id, out var status) ? HudText.PartCard(_store.Plan, part, status, _store.Current) : "");
             _hud.ShowStatus(_sync.StatusLine, _alignment.State == AlignmentState.Locked ? "" : _alignment.Hint);

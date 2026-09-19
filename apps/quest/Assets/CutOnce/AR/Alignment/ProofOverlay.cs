@@ -28,13 +28,15 @@ namespace CutOnce.AR
             _owned.Clear();
 
             var b = _alignment.LocalBounds();
-            float y = b.min.y + LineThickness * 0.5f;
-            AddBox(assembly.transform, material, new Vector3(b.center.x, y, b.min.z), new Vector3(b.size.x, LineThickness, LineThickness), Line);
-            AddBox(assembly.transform, material, new Vector3(b.center.x, y, b.max.z), new Vector3(b.size.x, LineThickness, LineThickness), Line);
-            AddBox(assembly.transform, material, new Vector3(b.min.x, y, b.center.z), new Vector3(LineThickness, LineThickness, b.size.z), Line);
-            AddBox(assembly.transform, material, new Vector3(b.max.x, y, b.center.z), new Vector3(LineThickness, LineThickness, b.size.z), Line);
+            // The overlay lives in model space, which a building's tabletop scale shrinks: size it for the room, not the model.
+            float inModel = 1f / assembly.DisplayScale, line = LineThickness * inModel, marker = MarkerSize * inModel;
+            float y = b.min.y + line * 0.5f;
+            AddBox(assembly.transform, material, new Vector3(b.center.x, y, b.min.z), new Vector3(b.size.x, line, line), Line);
+            AddBox(assembly.transform, material, new Vector3(b.center.x, y, b.max.z), new Vector3(b.size.x, line, line), Line);
+            AddBox(assembly.transform, material, new Vector3(b.min.x, y, b.center.z), new Vector3(line, line, b.size.z), Line);
+            AddBox(assembly.transform, material, new Vector3(b.max.x, y, b.center.z), new Vector3(line, line, b.size.z), Line);
             foreach (var tp in assembly.Plan.touch_points ?? new List<TouchPointDto>())
-                AddBox(assembly.transform, material, ModelSpace.Point(tp.position), Vector3.one * MarkerSize, Marker).name = "proof " + tp.point_id;
+                AddBox(assembly.transform, material, ModelSpace.Point(tp.position), Vector3.one * marker, Marker).name = "proof " + tp.point_id;
 
             _tip = AddBox(null, material, Vector3.zero, Vector3.one * MarkerSize * 0.7f, Marker).transform;
             _tip.name = "controller tip";

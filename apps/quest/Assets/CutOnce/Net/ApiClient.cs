@@ -59,6 +59,13 @@ namespace CutOnce.Net
             return (plan, plan == null ? null : r.Body);
         }
 
+        /// <summary>A file that belongs to a plan (its model, by the name the parts' shape.uri gives), or null.</summary>
+        public async Task<byte[]> GetAsset(string planId, string name)
+        {
+            var r = await Send("GET", $"/v1/plans/{planId}/assets/{System.Uri.EscapeDataString(name)}");
+            return r.Ok && r.Data != null && r.Data.Length > 0 ? r.Data : null;
+        }
+
         public async Task<EventsPageDto> GetEvents(string assemblyId, int after = 0) =>
             ParseOrNull<EventsPageDto>(await Send("GET", $"/v1/assemblies/{assemblyId}/events?after={after}"));
 

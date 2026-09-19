@@ -77,9 +77,10 @@ namespace CutOnce.UI
             return text;
         }
 
-        public void ShowState(PlanDto plan, BuildStateDto state, List<MaterialLine> materials, IEnumerable<BuildEventDto> events)
+        /// <param name="scaleLabel">"1:200" when a building is shown as a tabletop model; empty at full size.</param>
+        public void ShowState(PlanDto plan, BuildStateDto state, List<MaterialLine> materials, IEnumerable<BuildEventDto> events, string scaleLabel = "")
         {
-            _title.text = $"{plan.name} · revision {plan.revision}";
+            _title.text = string.IsNullOrEmpty(scaleLabel) ? $"{plan.name} · revision {plan.revision}" : $"{plan.name} · revision {plan.revision} · {scaleLabel}";
             _progress.text = $"{HudText.Progress(state)}   <size=16>{HudText.TimeLeft(state)}</size>";
             _bar.sizeDelta = new Vector2((Width - 40) * Mathf.Clamp01(state.progress.pct / 100f), 8);
             _stepTitle.text = HudText.StepTitle(plan, state);

@@ -17,6 +17,8 @@ namespace CutOnce.Net
         /// <summary>0 when no answer arrived at all (no network, DNS failure, timeout).</summary>
         public int Status;
         public string Body, Error;
+        /// <summary>The raw response, for files (a plan's model). Null when the transport only kept text.</summary>
+        public byte[] Data;
         public bool Reached => Status > 0;
         public bool Ok => Status >= 200 && Status < 300;
     }

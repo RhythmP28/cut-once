@@ -11,10 +11,11 @@ namespace CutOnce.AR
         /// does), and it is turned about the vertical by yawDegrees. The model stays level: gravity is the one
         /// alignment constraint we get for free.
         /// </summary>
-        public static Pose StandOn(Vector3 surfacePoint, float yawDegrees, Bounds modelBounds)
+        /// <param name="scale">The model's display scale (AssemblyView.DisplayScale): bounds are in model metres.</param>
+        public static Pose StandOn(Vector3 surfacePoint, float yawDegrees, Bounds modelBounds, float scale = 1f)
         {
             var rotation = Quaternion.AngleAxis(yawDegrees, Vector3.up);
-            var pivot = new Vector3(modelBounds.center.x, modelBounds.min.y, modelBounds.center.z);
+            var pivot = new Vector3(modelBounds.center.x, modelBounds.min.y, modelBounds.center.z) * scale;
             return new Pose(surfacePoint - rotation * pivot, rotation);
         }
 

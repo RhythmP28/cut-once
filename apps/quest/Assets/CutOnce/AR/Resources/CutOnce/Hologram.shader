@@ -19,7 +19,8 @@ Shader "CutOnce/Hologram"
         _Grid ("Grid on", Float) = 0
         _Dashed ("Dashed edges (estimated part)", Float) = 0
         _HalfSize ("Half size (object space, m)", Vector) = (0.5, 0.5, 0.5, 0)
-        _EdgeMode ("0 none, 1 box, 2 cylinder along Y", Float) = 1
+        _EdgeMode ("0 none, 1 box, 2 cylinder along Y, 3 the mesh is edge lines", Float) = 1
+        _DashLength ("Dash length (object space, m)", Float) = 0.03
         _GridStep ("Grid step (m)", Float) = 0.1
         _RevealY ("Reveal height (world y; 1e6 = all)", Float) = 1000000
         _BandWidth ("Reveal band (m)", Float) = 0.02
@@ -46,7 +47,7 @@ Shader "CutOnce/Hologram"
                 half4 _FillColor;
                 half4 _EdgeColor;
                 float4 _HalfSize;
-                float _EdgeWidthPx, _PulseHz, _Brackets, _Grid, _Dashed, _EdgeMode, _GridStep, _RevealY, _BandWidth;
+                float _EdgeWidthPx, _PulseHz, _Brackets, _Grid, _Dashed, _EdgeMode, _GridStep, _RevealY, _BandWidth, _DashLength;
             CBUFFER_END
 
             struct Attributes
@@ -105,7 +106,13 @@ Shader "CutOnce/Hologram"
 
                 // Edge line: constant width in pixels, anti-aliased, with a soft halo that stands in for bloom.
                 half edge = 0;
-                if (_EdgeMode > 0.5)
+                if (_EdgeMode > 2.5)
+                {
+                    // A model file's crease lines (GlbMeshes.EdgeLines): the whole mesh is the line.
+                    edge = 1.0;
+                    if (_Dashed > 0.5) edge *= step(0.5, frac((input.positionOS.x + input.positionOS.y + input.positionOS.z) / _DashLength));
+                }
+                else if (_EdgeMode > 0.5)
                 {
                     float toEdge, alongEdge;
                     EdgeDistances(input.positionOS, toEdge, alongEdge);
@@ -121,7 +128,7 @@ Shader "CutOnce/Hologram"
                         float reach = clamp(min(_HalfSize.x, min(_HalfSize.y, _HalfSize.z)) * 0.8, 0.01, 0.04);
                         edge *= 1.0 - smoothstep(reach, reach * 1.2, alongEdge);
                     }
-                    if (_Dashed > 0.5) edge *= step(0.5, frac((input.positionOS.x + input.positionOS.y + input.positionOS.z) / 0.03));
+                    if (_Dashed > 0.5) edge *= step(0.5, frac((input.positionOS.x + input.positionOS.y + input.positionOS.z) / _DashLength));
                 }
 
                 // Grid: lines every _GridStep metres on the two axes that run along this face.

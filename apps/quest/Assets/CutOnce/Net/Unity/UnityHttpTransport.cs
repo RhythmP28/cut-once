@@ -21,7 +21,7 @@ namespace CutOnce.Net
             web.SendWebRequest().completed += _ =>
             {
                 bool answered = web.result == UnityWebRequest.Result.Success || web.result == UnityWebRequest.Result.ProtocolError;
-                done.TrySetResult(new HttpResult { Status = answered ? (int)web.responseCode : 0, Body = web.downloadHandler?.text, Error = answered ? null : web.error });
+                done.TrySetResult(new HttpResult { Status = answered ? (int)web.responseCode : 0, Body = web.downloadHandler?.text, Data = web.downloadHandler?.data, Error = answered ? null : web.error });
                 web.Dispose();
             };
             return done.Task;
