@@ -1,7 +1,7 @@
 import { z, type ZodRawShape } from "zod";
 import {
-  AnchorId, AssemblyId, ChunkId, ContextId, DocumentId, EventId, IssueId, JobId, MaterialId, PartId,
-  PlanId, ProjectId, SheetId, StepId, Timestamp, TurnId, VerificationId,
+  AnchorId, AssemblyId, BuildSessionId, ChunkId, ContextId, DocumentId, EventId, IdeaId, IssueId, JobId, MaterialId, PartId,
+  PlanId, ProjectId, ScanId, SheetId, StepId, Timestamp, TurnId, VerificationId,
 } from "./ids.js";
 
 /**
@@ -167,7 +167,7 @@ export function buildSchemas(mode: Mode) {
   const VisiblePart = o({ part_id: PartId, state: PartState, bbox_px: BBoxPx, in_frame: z.number().min(0).max(1), distance_m: z.number().nonnegative() });
   const CopilotContext = o({
     context_id: ContextId, assembly_id: AssemblyId, plan_revision: z.number().int().min(1), state_version: z.number().int().min(0),
-    mode: z.enum(["upload", "overlay"]), selected_part_id: PartId.nullable(),
+    mode: z.enum(["upload", "overlay", "build"]), selected_part_id: PartId.nullable(),
     selection_source: z.enum(["controller_ray", "gaze", "none"]), current_step_id: StepId.nullable(),
     visible_parts: z.array(VisiblePart), camera: CameraIntrinsics.nullable(),
     scripted_query_id: z.string().nullable(), client_sent_at: Timestamp,
@@ -177,6 +177,8 @@ export function buildSchemas(mode: Mode) {
     o({ type: z.literal("log_issue"), issue_id: IssueId }),
     // Spoken "next" / "back". Headset-local navigation, so it writes no event and carries no part.
     o({ type: z.literal("step_nav"), direction: z.enum(["next", "back"]) }),
+    // "What can I build?": the headset scans the room and uploads it to POST /v1/build/scans.
+    o({ type: z.literal("start_scan") }),
   ]);
   const CopilotResponse = o({
     turn_id: TurnId, transcript: z.string(), answer_text: z.string(),
@@ -192,6 +194,59 @@ export function buildSchemas(mode: Mode) {
   const VerificationResult = o({
     verification_id: VerificationId, part_id: PartId, verdict: Verdict, confidence: z.number().min(0).max(1),
     evidence: z.string(), model: z.string(), ms: z.number().nonnegative(),
+  });
+
+  // ── build mode (the Lego Movie): scans, digital twins, ideas ───────────────
+  // Vectors the AI writes are {x, z} objects, not tuples: strict JSON-schema mode rejects tuples.
+  const Vec2 = z.tuple([z.number().finite(), z.number().finite()]);
+  const BuildGrid = o({ cols: z.number().int().min(8).max(256), rows: z.number().int().min(6).max(192) });
+  const BuildCamera = o({ position: Vec3, forward: Vec3, intrinsics: CameraIntrinsics });
+  /** One scan as the headset sends it: one point (plan frame, mm) or a miss per cell, row-major from the photo's top-left. */
+  const BuildScanUpload = o({
+    session_id: BuildSessionId.nullable().optional(), device_id: z.string().min(1), grid: BuildGrid,
+    points_mm: z.array(z.number().int()), hit: z.string().regex(/^[01]*$/), camera: BuildCamera, photo_b64: z.string().min(100),
+  });
+  const BuildScan = o({
+    scan_id: ScanId, session_id: BuildSessionId, device_id: z.string(), captured_at: Timestamp,
+    grid: BuildGrid, points_mm: z.array(z.number().int()), hit: z.string().regex(/^[01]*$/), camera: BuildCamera,
+  });
+  const TwinShape = z.discriminatedUnion("type", [
+    o({ type: z.literal("box"), size: Size3 }),
+    o({ type: z.literal("cylinder"), axis: z.enum(["x", "y", "z"]), diameter: z.number().positive(), length: z.number().positive() }),
+  ]);
+  const TwinMaterial = z.enum(["cardboard", "metal", "plastic", "glass", "wood", "paper", "fabric", "ceramic", "other"]);
+  /** A flat, level surface: its height, and its extent as x/z min and max. */
+  const Surface = o({
+    surface_id: z.string().regex(/^s[0-9]+$/), kind: z.enum(["floor", "table", "shelf", "other"]),
+    y: z.number(), min: Vec2, max: Vec2, points: z.number().int().min(0),
+  });
+  /** One real object: where it is in the room (plan frame, its centre), how big, what it is. yaw_deg turns its local +X onto its long side. */
+  const Twin = o({
+    twin_id: z.string().regex(/^o[0-9]+$/), name: z.string(), label: z.string(), shape: TwinShape,
+    position: Vec3, yaw_deg: z.number(), sits_on: z.string().nullable(),
+    material: TwinMaterial, load_bearing: z.boolean(), cuttable: z.boolean(), confidence: z.number().min(0).max(1),
+    error_m: z.number().nonnegative(), points: z.number().int().min(0), distance_m: z.number().nonnegative(),
+    bbox_px: BBoxPx.nullable(), snapped: z.boolean(), scan_ids: z.array(ScanId),
+  });
+  const Inventory = o({
+    session_id: BuildSessionId, scan_id: ScanId.nullable(), labelled: z.boolean(),
+    surfaces: z.array(Surface), twins: z.array(Twin), message: z.string().nullable(),
+  });
+  const Orientation = z.enum(["upright", "flat", "on_side"]);
+  /** The placement language: the AI (or a rule) says what goes where; the solver decides every number. */
+  const PlaceStep = o({
+    place: z.string(), orientation: Orientation, on: z.array(z.string()),
+    at_cm: o({ x: z.number(), z: z.number() }).nullable(),
+    next_to: z.string().nullable(), side: z.enum(["left", "right", "front", "back"]).nullable(), gap_cm: z.number().nullable(),
+  });
+  const IdeaDraft = o({
+    title: z.string().min(1), uses: z.array(z.string()), steps: z.array(PlaceStep).min(1), why: z.string(), tools: z.array(z.string()),
+  });
+  /** A checked design, ready to start: its plan (design frame) and where that frame sits in the room (plan frame). */
+  const BuildIdea = o({
+    idea_id: IdeaId, session_id: BuildSessionId, source: z.enum(["rule", "ai"]), rule_id: z.string().nullable(),
+    title: z.string(), why: z.string(), tools: z.array(z.string()), plan: Plan,
+    origin: o({ position: Vec3, rotation_quat: Quat }), twin_of: z.record(z.string()), score: z.number(),
   });
 
   // ── jobs, search, director, stream ──────────────────────────────────────────
@@ -225,6 +280,11 @@ export function buildSchemas(mode: Mode) {
     o({ type: z.literal("copilot_turn"), turn: z.record(z.unknown()) }),
     o({ type: z.literal("issue_logged"), issue_id: IssueId, part_id: PartId.nullable(), note: z.string() }),
     o({ type: z.literal("presence"), clients: z.array(Presence) }),
+    o({ type: z.literal("build_inventory"), inventory: Inventory }),
+    o({
+      type: z.literal("build_ideas"), session_id: BuildSessionId, ideas: z.array(BuildIdea), final: z.boolean(),
+      audio_url: z.string().nullable(), message: z.string().nullable(),
+    }),
   ]);
 
   return {
@@ -233,5 +293,6 @@ export function buildSchemas(mode: Mode) {
     EventSource, Verdict, BuildEventBase, BuildEvent, PartStatus, BuildState, SpatialAnchor, CameraIntrinsics,
     VisiblePart, CopilotContext, CopilotAction, CopilotResponse, VerificationRequest, VerificationResult,
     JobStage, Job, RetrievedChunk, DirectorCommand, Presence, WsMessage,
+    BuildGrid, BuildCamera, BuildScanUpload, BuildScan, TwinShape, TwinMaterial, Surface, Twin, Inventory, Orientation, PlaceStep, IdeaDraft, BuildIdea,
   };
 }

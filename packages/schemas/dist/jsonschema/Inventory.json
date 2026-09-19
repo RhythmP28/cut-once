@@ -1,0 +1,312 @@
+{
+  "$ref": "#/definitions/Inventory",
+  "definitions": {
+    "Inventory": {
+      "type": "object",
+      "properties": {
+        "session_id": {
+          "type": "string",
+          "pattern": "^bsess_[a-z0-9_]+$"
+        },
+        "scan_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^scan_[a-z0-9_]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "labelled": {
+          "type": "boolean"
+        },
+        "surfaces": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "surface_id": {
+                "type": "string",
+                "pattern": "^s[0-9]+$"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "floor",
+                  "table",
+                  "shelf",
+                  "other"
+                ]
+              },
+              "y": {
+                "type": "number"
+              },
+              "min": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "max": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "points": {
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "required": [
+              "surface_id",
+              "kind",
+              "y",
+              "min",
+              "max",
+              "points"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "twins": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "twin_id": {
+                "type": "string",
+                "pattern": "^o[0-9]+$"
+              },
+              "name": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "shape": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "box"
+                      },
+                      "size": {
+                        "type": "array",
+                        "minItems": 3,
+                        "maxItems": 3,
+                        "items": [
+                          {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          },
+                          {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          },
+                          {
+                            "type": "number",
+                            "exclusiveMinimum": 0
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "size"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "const": "cylinder"
+                      },
+                      "axis": {
+                        "type": "string",
+                        "enum": [
+                          "x",
+                          "y",
+                          "z"
+                        ]
+                      },
+                      "diameter": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      },
+                      "length": {
+                        "type": "number",
+                        "exclusiveMinimum": 0
+                      }
+                    },
+                    "required": [
+                      "type",
+                      "axis",
+                      "diameter",
+                      "length"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "position": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 3,
+                "items": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "yaw_deg": {
+                "type": "number"
+              },
+              "sits_on": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "material": {
+                "type": "string",
+                "enum": [
+                  "cardboard",
+                  "metal",
+                  "plastic",
+                  "glass",
+                  "wood",
+                  "paper",
+                  "fabric",
+                  "ceramic",
+                  "other"
+                ]
+              },
+              "load_bearing": {
+                "type": "boolean"
+              },
+              "cuttable": {
+                "type": "boolean"
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "error_m": {
+                "type": "number",
+                "minimum": 0
+              },
+              "points": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "distance_m": {
+                "type": "number",
+                "minimum": 0
+              },
+              "bbox_px": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "minItems": 4,
+                    "maxItems": 4,
+                    "items": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "snapped": {
+                "type": "boolean"
+              },
+              "scan_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^scan_[a-z0-9_]+$"
+                }
+              }
+            },
+            "required": [
+              "twin_id",
+              "name",
+              "label",
+              "shape",
+              "position",
+              "yaw_deg",
+              "sits_on",
+              "material",
+              "load_bearing",
+              "cuttable",
+              "confidence",
+              "error_m",
+              "points",
+              "distance_m",
+              "bbox_px",
+              "snapped",
+              "scan_ids"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "session_id",
+        "scan_id",
+        "labelled",
+        "surfaces",
+        "twins",
+        "message"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

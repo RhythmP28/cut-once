@@ -1,0 +1,125 @@
+{
+  "$ref": "#/definitions/IdeaDraft",
+  "definitions": {
+    "IdeaDraft": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "uses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "place": {
+                "type": "string"
+              },
+              "orientation": {
+                "type": "string",
+                "enum": [
+                  "upright",
+                  "flat",
+                  "on_side"
+                ]
+              },
+              "on": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "at_cm": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "x": {
+                        "type": "number"
+                      },
+                      "z": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "z"
+                    ],
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "next_to": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "side": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "left",
+                      "right",
+                      "front",
+                      "back"
+                    ]
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "gap_cm": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "place",
+              "orientation",
+              "on",
+              "at_cm",
+              "next_to",
+              "side",
+              "gap_cm"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1
+        },
+        "why": {
+          "type": "string"
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "title",
+        "uses",
+        "steps",
+        "why",
+        "tools"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

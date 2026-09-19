@@ -99,14 +99,14 @@ function history(turns: { transcript: string; answer_text: string }[]): string {
 
 export interface PromptInput {
   transcript: string; gathered: Gathered; legend: LegendRow[]; chunks: RetrievedChunk[];
-  mode: "upload" | "overlay"; turns: { transcript: string; answer_text: string }[];
+  mode: "upload" | "overlay" | "build"; turns: { transcript: string; answer_text: string }[];
 }
 
 export function userText(input: PromptInput): string {
   const { transcript, gathered: g } = input;
   const stale = g.staleBy > 0 ? `\nNOTE: the headset's picture is ${g.staleBy} versions behind the server. BUILD STATE below is the current one.\n` : "";
   return [
-    `MODE: ${input.mode} (${input.mode === "overlay" ? "building onto something already part-built" : "building from the drawings"})`,
+    `MODE: ${input.mode} (${input.mode === "overlay" ? "building onto something already part-built" : input.mode === "build" ? "building something new from the objects in front of them" : "building from the drawings"})`,
     stale,
     partsInView(input.legend, g),
     "",

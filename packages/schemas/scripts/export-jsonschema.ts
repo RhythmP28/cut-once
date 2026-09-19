@@ -10,6 +10,7 @@ mkdirSync(out, { recursive: true });
 const names = [
   "Plan", "BuildEvent", "BuildState", "Assembly", "Seed", "PlanDraft", "CopilotContext", "CopilotResponse",
   "VerificationRequest", "VerificationResult", "Job", "RetrievedChunk", "DirectorCommand", "WsMessage", "SpatialAnchor",
+  "BuildScanUpload", "Inventory", "BuildIdea", "IdeaDraft",
 ] as const;
 
 for (const name of names) {
