@@ -63,7 +63,7 @@ describe("knowledge tools", () => {
   });
   it("falls back when MCP errors, and uses MCP when it answers", async () => {
     expect(await callKnowledgeTool(t.app.ctx, "lookup_material", { material_id: "mat_leg_700" }, { remote: async () => { throw new Error("403"); } })).toMatchObject({ ok: true, via: "direct" });
-    expect(await callKnowledgeTool(t.app.ctx, "find_parts", { query: "x" }, { remote: async (name) => ({ name }) })).toEqual({ ok: true, via: "mcp", data: { parts: { name: "cutonce_find_parts" } } });
+    expect(await callKnowledgeTool(t.app.ctx, "find_parts", { query: "x" }, { remote: async (name) => [{ part_id: name }] })).toEqual({ ok: true, via: "mcp", data: { parts: [{ part_id: "cutonce_find_parts", name: null, layer: null, step_id: null }] } });
   });
   it("never throws", async () => expect(await callKnowledgeTool(t.app.ctx, "nope" as never, {})).toMatchObject({ ok: false }));
   it("answers build_history from disk with no cluster", async () =>
@@ -153,5 +153,29 @@ describe("review fixes: log_issue never depends on the webhook", () => {
     await expect(logIssue(t.app.ctx, { issue_id: "issue_retry_1", part_id: null, note: "n" })).rejects.toThrow(/disk full/);
     store.appendEvent = original;
     expect(await logIssue(t.app.ctx, { issue_id: "issue_retry_1", part_id: null, note: "n" })).not.toHaveProperty("duplicate");
+  });
+});
+
+describe("review fixes: MCP and direct rows have the same fields", () => {
+  // Rows as Agent Builder's ES|QL tools return them (after unwrap), extra columns included.
+  const REMOTE_ROWS: Record<string, unknown[]> = {
+    find_parts: [{ part_id: "part_left_rear_leg", name: "Left rear leg", layer: "structure", step_id: "step_04", dims_text: "40 mm" }],
+    lookup_material: [{ material_id: "mat_leg_700", name: "Steel leg 700 mm", spec: "x", unit: "each", quantity: 4, used_by: ["part_left_rear_leg"] }],
+    build_history: [{ version: 1, part_id: "part_tabletop", previous_state: "missing", new_state: "built", source: "seed", step_id: "step_01", seconds_since_prev: 0, "@timestamp": "2026-09-19T00:00:00Z" }],
+  };
+  const firstRow = (data: any) => (data.parts ?? data.materials ?? data.events)[0];
+  for (const [tool, rows] of Object.entries(REMOTE_ROWS)) {
+    it(`${tool}: identical row keys on both paths`, async () => {
+      const args = tool === "find_parts" ? { query: "rear leg" } : tool === "lookup_material" ? { material_id: "mat_leg_700" } : {};
+      const viaMcp = await callKnowledgeTool(t.app.ctx, tool as any, args, { remote: async () => rows });
+      const direct = await callKnowledgeTool(t.app.ctx, tool as any, args);
+      expect(viaMcp).toMatchObject({ via: "mcp" }); expect(direct).toMatchObject({ via: "direct" });
+      expect(Object.keys((viaMcp as any).data)).toEqual(Object.keys((direct as any).data));
+      expect(Object.keys(firstRow((viaMcp as any).data)).sort()).toEqual(Object.keys(firstRow((direct as any).data)).sort());
+    });
+  }
+  it("search_documents: MCP rows get score and page_image_uri like retrieve() results", async () => {
+    const r = await callKnowledgeTool(t.app.ctx, "search_documents", { query: "cable" }, { remote: async () => [{ chunk_id: "chunk_desk_drawings_p2_1", document_id: "doc_desk_drawings", page: 2, title: "E-1", text: "t", part_ids: ["part_power_cable"], _score: 1.5 }] });
+    expect((r as any).data.chunks[0]).toEqual({ chunk_id: "chunk_desk_drawings_p2_1", document_id: "doc_desk_drawings", page: 2, title: "E-1", text: "t", part_ids: ["part_power_cable"], score: 1.5, page_image_uri: "/v1/documents/doc_desk_drawings/pages/2.png" });
   });
 });

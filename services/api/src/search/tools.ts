@@ -1,6 +1,6 @@
 import { ulid } from "ulid";
 import type { Ctx } from "../app.js";
-import { directTools, type ToolName } from "./fallbacks.js";
+import { directTools, ROWS, type ToolName } from "./fallbacks.js";
 import { mcpCall } from "./mcp.js";
 
 export type ToolResult = { ok: true; data: unknown; via: "mcp" | "direct" } | { ok: false; error: string };
@@ -18,11 +18,12 @@ export const REMOTE_NAME: Record<ToolName, string> = {
 };
 
 /** Reshape MCP rows into the direct twin's shape, so the copilot sees one format per tool. */
+const rowsOf = (v: unknown) => (Array.isArray(v) ? (v as Record<string, unknown>[]) : []);
 const REMOTE_SHAPE: Record<ToolName, (rows: unknown, sent: Record<string, unknown>) => unknown> = {
-  search_documents: (rows) => ({ chunks: rows }),
-  find_parts: (rows) => ({ parts: rows }),
-  lookup_material: (rows) => ({ materials: rows }),
-  build_history: (rows) => ({ report: "events", events: rows }),
+  search_documents: (rows) => ({ chunks: rowsOf(rows).map(ROWS.chunk) }),
+  find_parts: (rows) => ({ parts: rowsOf(rows).map(ROWS.part) }),
+  lookup_material: (rows) => ({ materials: rowsOf(rows).map(ROWS.material) }),
+  build_history: (rows) => ({ report: "events", events: rowsOf(rows).map(ROWS.event) }),
   log_issue: (_rows, sent) => ({ ok: true, issue_id: sent.issue_id }),
 };
 
@@ -70,6 +71,6 @@ export const knowledgeToolSpecs = [
   fn("search_documents", "Search the project's drawings, manual and parts list. Pass part_id to favour passages about one part.", { query: { type: "string" }, part_id: { type: "string" } }, ["query"]),
   fn("find_parts", "Find parts of the plan by name, alias or kind.", { query: { type: "string" } }, ["query"]),
   fn("lookup_material", "Look up a material by id or by words from its name or spec.", { material_id: { type: "string" }, text: { type: "string" } }, []),
-  fn("build_history", "Aggregated build history from the event log: step_durations, runs_compared or sources_breakdown.", { assembly_id: { type: "string" }, report: { type: "string", enum: ["step_durations", "runs_compared", "sources_breakdown"] } }, []),
+  fn("build_history", "The event log of one build run: each part's state changes in order, with source and seconds since the previous change.", { assembly_id: { type: "string" } }, []),
   fn("log_issue", "Log an issue against a part so the site lead sees it.", { part_id: { type: "string" }, note: { type: "string" }, photo_ref: { type: "string" } }, ["note"]),
 ];

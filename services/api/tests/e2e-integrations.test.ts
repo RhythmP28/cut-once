@@ -125,11 +125,13 @@ afterAll(async () => {
 describe("Agent Builder over real MCP", () => {
   it("sends the ApiKey header, unwraps ES|QL results, and returns the direct twin's shape", async () => {
     const r = await callKnowledgeTool(t.app.ctx, "find_parts", { query: "rear leg" });
-    expect(r).toEqual({ ok: true, via: "mcp", data: { parts: [{ part_id: "part_left_rear_leg", name: "Left rear leg" }, { part_id: "part_right_rear_leg", name: "Right rear leg" }] } });
+    expect(r).toEqual({ ok: true, via: "mcp", data: { parts: [{ part_id: "part_left_rear_leg", name: "Left rear leg", layer: null, step_id: null }, { part_id: "part_right_rear_leg", name: "Right rear leg", layer: null, step_id: null }] } });
     expect(kibana.mcpAuth.length).toBeGreaterThan(0);
     expect(new Set(kibana.mcpAuth)).toEqual(new Set(["ApiKey test-api-key"]));
     const h = await callKnowledgeTool(t.app.ctx, "build_history", {});
-    expect(h).toEqual({ ok: true, via: "mcp", data: { report: "events", events: [{ version: 1 }, { version: 2 }, { version: 3 }] } });
+    expect(h).toMatchObject({ ok: true, via: "mcp", data: { report: "events" } });
+    expect((h as any).data.events.map((e: any) => e.version)).toEqual([1, 2, 3]);
+    expect(Object.keys((h as any).data.events[0]).sort()).toEqual(["new_state", "part_id", "previous_state", "seconds_since_prev", "source", "step_id", "timestamp", "version"]);
   });
 
   it("falls back to the direct twin when a remote tool hangs, which then queries Elasticsearch", async () => {

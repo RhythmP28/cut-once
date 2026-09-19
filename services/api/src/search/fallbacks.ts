@@ -21,9 +21,26 @@ export async function runEsql(ctx: Ctx, name: string, assemblyId?: string): Prom
   return { columns: res.columns, rows: res.values };
 }
 
+/**
+ * One row shape per tool, applied to both paths (Agent Builder over MCP and the direct twins),
+ * so the copilot reads the same fields whichever path answered. Missing fields become null.
+ */
+type Row = Record<string, unknown>;
+const pick = (row: Row, keys: readonly string[]): Row => Object.fromEntries(keys.map((k) => [k, row[k] ?? null]));
+export const ROWS = {
+  part: (r: Row) => pick(r, ["part_id", "name", "layer", "step_id"]),
+  material: (r: Row) => pick(r, ["material_id", "name", "spec", "unit", "quantity", "used_by"]),
+  event: (r: Row) => pick({ ...r, timestamp: r.timestamp ?? r["@timestamp"] }, ["version", "part_id", "previous_state", "new_state", "source", "step_id", "seconds_since_prev", "timestamp"]),
+  chunk: (r: Row) => ({
+    ...pick(r, ["chunk_id", "document_id", "page", "title", "text", "part_ids"]),
+    score: r.score ?? r._score ?? null,
+    page_image_uri: r.page_image_uri ?? `/v1/documents/${String(r.document_id)}/pages/${String(r.page)}.png`,
+  }),
+};
+
 /** The same tools as Agent Builder exposes over MCP, run straight against Elasticsearch. Same names, same arguments. */
 export const directTools: Record<ToolName, (ctx: Ctx, args: Args) => Promise<unknown>> = {
-  search_documents: async (ctx, a) => ({ chunks: await retrieve(ctx.cfg, { query: str(a.query), projectId: ctx.cfg.projectId, partId: str(a.part_id) || null, k: 5 }, ctx.cfg.logLevel === "silent" ? undefined : console) }),
+  search_documents: async (ctx, a) => ({ chunks: (await retrieve(ctx.cfg, { query: str(a.query), projectId: ctx.cfg.projectId, partId: str(a.part_id) || null, k: 5 }, ctx.cfg.logLevel === "silent" ? undefined : console)).map((c) => ROWS.chunk(c as unknown as Row)) }),
   find_parts: async (ctx, a) => {
     const es = getEs(ctx.cfg);
     if (!es) { // no cluster: the plan on disk still knows its own parts. Score by shared words; keep only the best matches.
@@ -34,25 +51,24 @@ export const directTools: Record<ToolName, (ctx: Ctx, args: Args) => Promise<unk
         return { p, score: words.filter((w) => have.has(w) || have.has(w.replace(/s$/, ""))).length };
       });
       const best = Math.max(0, ...scored.map((x) => x.score));
-      return { parts: best === 0 ? [] : scored.filter((x) => x.score === best).map(({ p }) => ({ part_id: p.part_id, name: p.name, layer: p.layer, step_id: p.step_id })) };
+      return { parts: best === 0 ? [] : scored.filter((x) => x.score === best).map(({ p }) => ROWS.part(p as unknown as Row)) };
     }
     const res = await es.search<Record<string, unknown>>({ index: INDEX.parts, size: 5, query: { multi_match: { query: str(a.query), fields: ["name^3", "aliases^2", "dims_text", "description", "kind"] } } });
-    return { parts: res.hits.hits.map((h) => h._source) };
+    return { parts: res.hits.hits.map((h) => ROWS.part(h._source ?? {})) };
   },
   lookup_material: async (ctx, a) => {
     const plan = ctx.store.getPlan(ctx.store.currentAssembly()?.plan_id ?? "plan_desk_demo");
     const q = (str(a.material_id) || str(a.text)).toLowerCase();
-    return { materials: plan.materials.filter((m) => m.material_id === q || `${m.name} ${m.spec}`.toLowerCase().includes(q)) };
+    return { materials: plan.materials.filter((m) => m.material_id === q || `${m.name} ${m.spec}`.toLowerCase().includes(q)).map((m) => ROWS.material(m as unknown as Row)) };
   },
+  // The event log of one run, read from disk (exact, no cluster needed): the same rows the ES|QL tool returns.
+  // Aggregated reports (step_durations, runs_compared, sources_breakdown) stay on GET /v1/analytics/:name.
   build_history: async (ctx, a) => {
     const aid = str(a.assembly_id) || ctx.store.currentAssembly()?.assembly_id;
-    if (!aid) return { error: "no run" };
-    const name = ["step_durations", "runs_compared", "sources_breakdown"].includes(str(a.report)) ? str(a.report) : "step_durations";
-    try { return { report: name, ...(await runEsql(ctx, name, aid)) }; }
-    catch { // without a cluster, answer from the log on disk
-      const { events } = ctx.store.getEvents(aid);
-      return { report: "events", events: events.map((e) => ({ version: e.version, part_id: e.part_id, new_state: e.new_state, source: e.source, timestamp: e.timestamp })) };
-    }
+    if (!aid) return { report: "events", events: [] };
+    const { events } = ctx.store.getEvents(aid);
+    return { report: "events", events: events.filter((e) => e.kind === "part_state").map((e, i, all) => ROWS.event({ ...e,
+      seconds_since_prev: i === 0 ? 0 : Math.max(0, (Date.parse(e.timestamp) - Date.parse(all[i - 1]!.timestamp)) / 1000) } as unknown as Row)) };
   },
   log_issue: async (ctx, a) => logIssue(ctx, { issue_id: str(a.issue_id) || `issue_${ulid().toLowerCase()}`, part_id: str(a.part_id) || null, note: str(a.note) || "Issue logged", photo_ref: str(a.photo_ref) || undefined }),
 };
