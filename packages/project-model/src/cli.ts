@@ -1,9 +1,12 @@
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { BuildEvent, Plan } from "@cutonce/schemas";
 import { fold, hasErrors, orderSteps, validatePlan } from "./index.js";
 
 const [cmd, ...args] = process.argv.slice(2);
-const json = (p: string) => JSON.parse(readFileSync(p, "utf8"));
+// pnpm runs this from the package folder; INIT_CWD is where the user actually typed the command.
+const at = (p: string) => resolve(process.env.INIT_CWD ?? process.cwd(), p);
+const json = (p: string) => JSON.parse(readFileSync(at(p), "utf8"));
 
 if (cmd === "validate" && args[0]) {
   const issues = validatePlan(json(args[0]));
@@ -12,7 +15,7 @@ if (cmd === "validate" && args[0]) {
   process.exit(hasErrors(issues) ? 1 : 0);
 } else if (cmd === "fold" && args[0] && args[1]) {
   const plan = json(args[0]) as Plan;
-  const events = readFileSync(args[1], "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as BuildEvent);
+  const events = readFileSync(at(args[1]), "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as BuildEvent);
   const upTo = args.indexOf("--up-to") >= 0 ? Number(args[args.indexOf("--up-to") + 1]) : null;
   console.log(JSON.stringify(fold(plan, events[0]?.assembly_id ?? "asm_cli", events, upTo), null, 2));
 } else if (cmd === "steps" && args[0]) {
