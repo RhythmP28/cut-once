@@ -600,6 +600,7 @@ describe("build mode: Kit's turn", () => {
     t = await makeApp({ elevenKey: "", openaiKey: "test-key", omniKey: "q", omniBaseUrl: "http://127.0.0.1:9/v1", copilotMode: "live" });
     try {
       onTable();
+      transcribe.mockResolvedValue("hi");                                        // heard alongside, and reused by the fallback
       runKitTurn.mockRejectedValueOnce(new Error("401 Unauthorized"))
         .mockResolvedValueOnce({ kit: { heard: "hi", intent: "question", wish: null, pick: null, answer: "Hello!", objects: [], confidence: 0.9 }, sttMs: 20, modelMs: 40 });
       const body = (await query({ mode: "build" })).json();
@@ -609,9 +610,46 @@ describe("build mode: Kit's turn", () => {
     } finally { await t.cleanup(); t = old; }
   });
 
-  it("says 'ask me again' when the model runs out of time and too little of the cap is left for a fallback", async () => {
+  const omniToo = (over: object = {}) => makeApp({ elevenKey: "", openaiKey: "test-key", omniKey: "q", omniBaseUrl: "http://127.0.0.1:9/v1", copilotMode: "live", ...over });
+  const answered = (answer: string) => ({ kit: { heard: "which piece goes first", intent: "question", wish: null, pick: null, answer, objects: [], confidence: 0.9 }, sttMs: null, modelMs: 30 });
+
+  it("on OMNI with OpenAI too, a command said outright answers from the transcript: a stalled OMNI call cannot hold 'next' up", async () => {
     const old = t;
-    t = await makeApp({ elevenKey: "", openaiKey: "test-key", copilotMode: "live", kitTurnMs: 200 });
+    t = await omniToo();
+    try {
+      onTable();
+      transcribe.mockResolvedValue("next");
+      runKitTurn.mockReturnValue(new Promise(() => {}));                      // OMNI never answers
+      const started = Date.now();
+      const body = (await query({ mode: "build" })).json();
+      expect([body.action, body.answer_text]).toEqual([{ type: "step_nav", direction: "next" }, "Next step."]);
+      expect(Date.now() - started).toBeLessThan(1000);
+      expect(runKitTurn.mock.calls.map((c) => c[0].ai.provider)).toEqual(["omni"]);
+    } finally { await t.cleanup(); t = old; }
+  });
+
+  it("on OMNI, anything but a command waits for what OMNI heard; with no OpenAI key nothing is transcribed alongside", async () => {
+    const old = t;
+    t = await omniToo();
+    try {
+      onTable();
+      transcribe.mockResolvedValue("which piece goes first");
+      runKitTurn.mockResolvedValue(answered("The can goes first."));
+      expect((await query({ mode: "build" })).json()).toMatchObject({ answer_text: "The can goes first.", timings_ms: { kit_omni: 1 } });
+    } finally { await t.cleanup(); t = old; }
+    t = await omniToo({ openaiKey: "" });
+    try {
+      onTable();
+      transcribe.mockClear();
+      runKitTurn.mockResolvedValue(answered("The can goes first."));
+      expect((await query({ mode: "build" })).json().answer_text).toBe("The can goes first.");
+      expect(transcribe).not.toHaveBeenCalled();
+    } finally { await t.cleanup(); t = old; }
+  });
+
+  it("a stalled OMNI call with too little of the cap left says 'ask me again', and tries nothing else", async () => {
+    const old = t;
+    t = await omniToo({ kitTurnMs: 200 });                                    // this file's cap is 1.5 s: no room for a fallback
     try {
       onTable();
       transcribe.mockResolvedValue("which piece goes first");
@@ -619,7 +657,36 @@ describe("build mode: Kit's turn", () => {
       const started = Date.now();
       const body = (await query({ mode: "build" })).json();
       expect([body.answer_text, body.needs_clarification]).toEqual(["That took too long. Ask me again.", true]);
-      expect(Date.now() - started).toBeLessThan(3000);
+      expect(Date.now() - started).toBeLessThan(1500);
+      expect(runKitTurn.mock.calls.map((c) => c[0].ai.provider)).toEqual(["omni"]);
+    } finally { await t.cleanup(); t = old; }
+  });
+
+  it("a stalled OMNI call with time left falls back to OpenAI once, reusing the transcript", async () => {
+    const old = t;
+    process.env.COPILOT_CAP_MS = "9000";
+    t = await omniToo({ kitTurnMs: 200 });
+    try {
+      onTable();
+      transcribe.mockResolvedValue("which piece goes first");
+      runKitTurn.mockReturnValueOnce(new Promise(() => {})).mockResolvedValueOnce(answered("The can goes first."));
+      const body = (await query({ mode: "build" })).json();
+      expect([body.answer_text, body.timings_ms.kit_openai]).toEqual(["The can goes first.", 1]);
+      expect(runKitTurn.mock.calls.map((c) => [c[0].ai.provider, c[0].transcript])).toEqual([["omni", undefined], ["openai", "which piece goes first"]]);
+      expect(transcribe).toHaveBeenCalledTimes(1);
+    } finally { await t.cleanup(); t = old; }
+  });
+
+  it("never gives Kit's model more than the hard cap has left, whatever KIT_TURN_MS says", async () => {
+    const old = t;
+    t = await omniToo({ openaiKey: "", kitTurnMs: 20_000 });                  // this file's cap is 1.5 s
+    try {
+      onTable();
+      runKitTurn.mockReturnValue(new Promise(() => {}));
+      const started = Date.now();
+      expect((await query({ mode: "build" })).json().answer_text).toBe("That took too long. Ask me again.");
+      expect(Date.now() - started).toBeLessThan(2500);
+      expect(runKitTurn.mock.calls[0]![0].timeoutMs).toBeLessThanOrEqual(1500);
     } finally { await t.cleanup(); t = old; }
   });
 

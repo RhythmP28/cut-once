@@ -1,6 +1,6 @@
 import { ulid } from "ulid";
 import type { CopilotAction, CopilotContext, CopilotResponse, RetrievedChunk } from "@cutonce/schemas";
-import { aiFor, type AiCall } from "../ai.js";
+import { aiFor, ready, type AiCall } from "../ai.js";
 import type { Ctx } from "../app.js";
 import { isBuildPlan } from "../build/plan.js";
 import { cleanWish, pickIdea } from "../build/session.js";
@@ -257,9 +257,16 @@ async function kitTurn(
     }
   };
 
+  // Words that need no model: a design on show named outright, or a voice command said outright.
+  const direct = (words: string): Promise<CopilotResponse> | null => {
+    const named = byName(words);
+    if (named) return start(named, words);
+    const fast = matchFastPath(words, fastInput);
+    return fast ? respondFast(deps, input, g, fast, words, turnId, timings, t0, recordTurn, log) : null;
+  };
+
   // On OpenAI the words come before the model: a voice command said outright ("done", "next") is answered from the
-  // transcript with no model call, as fast as before Kit. OMNI hears the clip itself, so there the commands are found
-  // in what Kit heard, below.
+  // transcript with no model call, as fast as before Kit.
   let transcript: string | undefined;
   if (primary.provider === "openai") {
     const sttStart = Date.now();
@@ -269,22 +276,38 @@ async function kitTurn(
     timings.stt = since(sttStart);
     timings.kit_openai = 1;
     if (!transcript) return unheard(deps, turnId, failed, timings, t0, recordTurn);
-    const named = byName(transcript);
-    if (named) return start(named, transcript);
-    const fast = matchFastPath(transcript, fastInput);
-    if (fast) return respondFast(deps, input, g, fast, transcript, turnId, timings, t0, recordTurn, log);
+    const answer = direct(transcript);
+    if (answer) return answer;
   }
 
   const run = (ai: AiCall, timeoutMs: number) => withCap(runKitTurn({
     cfg: ctx.cfg, m, ai, audio: input.audio, frame: input.frame, context, building: buildingNow(g, context.started),
     turns: deps.turns.history(input.assemblyId, 2), timeoutMs, ...(ai.provider === "openai" && transcript !== undefined ? { transcript } : {}),
   }), timeoutMs + 250);
-  let result: KitTurnResult | null = null, used = primary;
-  try { result = await run(primary, Math.max(1000, ctx.cfg.kitTurnMs - (timings.stt ?? 0))); }
-  catch (err) { log.warn({ turn: turnId, provider: primary.provider, err: (err as Error).message }, "the Kit turn failed"); }
+  // What KIT_TURN_MS leaves after the transcription, and never past the hard cap.
+  const budget = Math.max(1000, Math.min(ctx.cfg.kitTurnMs - (timings.stt ?? 0), m.budgets.hardCap - since(t0) - 250));
+  const hearing = run(primary, budget).then((r) => ({ r }), (e: Error) => ({ e }));
+
+  // OMNI hears the clip itself. With an OpenAI key too, the clip is transcribed alongside: a command said outright is
+  // answered as soon as its words are known (a stalled OMNI call cannot hold "next" up), and a fallback reuses them.
+  let alongside: Promise<string> | null = null;
+  if (primary.provider === "omni" && ready(ctx.cfg, "openai")) {
+    const sttStart = Date.now();
+    alongside = transcribe(ctx.cfg, m, input.audio).then((words) => { timings.stt = since(sttStart); return words; }, () => "");
+    const first = await Promise.race([hearing, alongside.then((words) => ({ words }))]);
+    if ("words" in first && first.words) {
+      const answer = direct(first.words);
+      if (answer) return answer;
+    }
+  }
+
+  const heard = await hearing;
+  let result: KitTurnResult | null = "r" in heard ? heard.r : null, used = primary;
+  if ("e" in heard) log.warn({ turn: turnId, provider: primary.provider, err: heard.e.message }, "the Kit turn failed");
   const left = m.budgets.hardCap - since(t0), backup = primary.provider === "omni" ? aiFor(ctx.cfg, "turn", "openai") : null;
   if (!result && backup?.provider === "openai" && left >= 4000) {
     used = backup;
+    transcript ??= (await alongside) || undefined;                        // heard alongside: no second transcription
     try { result = await run(backup, left - 500); }
     catch (err) { log.warn({ turn: turnId, provider: backup.provider, err: (err as Error).message }, "the Kit turn failed on the fallback too"); }
   }

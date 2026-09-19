@@ -189,12 +189,12 @@ describe("Kit's turn (build mode) over the wire", () => {
     } finally { await t.cleanup(); }
   });
 
-  it("on OMNI: one streamed call hears the voice clip itself and sees the photo; nothing goes to OpenAI", async () => {
+  it("on OMNI: one streamed call hears the voice clip itself and sees the photo; OpenAI only transcribes alongside, for commands", async () => {
     const t = await makeApp({ openaiKey: "sk-test", omniKey: "q", omniBaseUrl: omniUrl, copilotMode: "live" });
     try {
       const r = await question(t, { mode: "build" });
       expect([r.statusCode, r.json().answer_text, r.json().transcript]).toEqual([200, "Stand the can up first.", "which piece goes first"]);
-      expect(seen).toEqual([]);
+      expect(seen.map((x) => x.path)).toEqual(["transcriptions"]);        // "where does the power cable run": not a command
       expect(omniSeen).toHaveLength(1);
       const body = omniSeen[0]!;
       expect([body.model, body.stream]).toEqual(["qwen3.5-omni-flash", true]);
@@ -204,6 +204,14 @@ describe("Kit's turn (build mode) over the wire", () => {
       expect(parts[0]!.text).toMatch(/SAID: \(in the audio\)$/);
       expect(parts[2]!.input_audio).toEqual({ data: `data:;base64,${Buffer.from("RIFFfake").toString("base64")}`, format: "wav" });
       expect(r.json().timings_ms).toMatchObject({ kit_omni: 1 });
+    } finally { await t.cleanup(); }
+  });
+
+  it("on OMNI with no OpenAI key, nothing at all goes to OpenAI", async () => {
+    const t = await makeApp({ openaiKey: "", omniKey: "q", omniBaseUrl: omniUrl, copilotMode: "live" });
+    try {
+      expect((await question(t, { mode: "build" })).json().answer_text).toBe("Stand the can up first.");
+      expect([seen, omniSeen.length]).toEqual([[], 1]);
     } finally { await t.cleanup(); }
   });
 });
