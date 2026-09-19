@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -48,6 +48,33 @@ describe("computeIdeas", () => {
     const again = await computeIdeas(d, { ...input, twins: pile.map((t, k) => ({ ...t, twin_id: `o${k + 11}` })) }, () => {});
     expect(d.call).toHaveBeenCalledOnce();
     expect(again.find((i) => i.title === "Can tower")?.twin_of).toMatchObject({ part_o11: "o11" });
+  });
+
+  it("never lets a rethink's designs become the plain answer for that pile", async () => {
+    const phone = { ...aiDraft, title: "Phone stand" };
+    const call = vi.fn().mockResolvedValueOnce({ ideas: [phone] }).mockResolvedValue({ ideas: [aiDraft] });
+    const d = deps({ call });
+    expect((await computeIdeas(d, { ...input, request: "something for my phone instead" }, () => {})).map((i) => i.title)).toContain("Phone stand");
+    // The demo kit is always the same pile, so the same cache key: a plain scan must ask afresh, not replay "for my phone".
+    const plain = await computeIdeas(d, input, () => {});
+    expect(call).toHaveBeenCalledTimes(2);
+    expect(plain.map((i) => i.title)).toEqual(["Laptop riser", "Can tower"]);
+  });
+
+  it("keeps the designs that passed when the repair call fails", async () => {
+    const bad = { ...aiDraft, title: "Rolling can", steps: [{ ...aiDraft.steps[0]!, orientation: "on_side" as const }] };
+    const warn = vi.fn();
+    const call = vi.fn().mockResolvedValueOnce({ ideas: [aiDraft, bad] }).mockRejectedValueOnce(new Error("Request timed out."));
+    const out = await computeIdeas(deps({ call, log: { warn } }), input, () => {});
+    expect(out.map((i) => i.title)).toEqual(["Laptop riser", "Can tower"]);
+    expect(warn.mock.calls[0]![1]).toMatch(/repair/);
+  });
+
+  it("still offers the AI's designs when they cannot be cached (a full disk)", async () => {
+    const notAFolder = join(mkdtempSync(join(tmpdir(), "ideas-")), "file");
+    writeFileSync(notAFolder, "x");
+    const out = await computeIdeas(deps({ cacheDir: join(notAFolder, "cache") }), input, () => {});
+    expect(out.map((i) => i.title)).toEqual(["Laptop riser", "Can tower"]);
   });
 
   it("offers rule ideas only when there is no key", async () => {

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { ZodError } from "zod";
 import type { BuildIdea, BuildScan, BuildScanUpload, Surface, Twin, Vec3 } from "@cutonce/schemas";
 import type { Ctx } from "../app.js";
 import { normalise } from "../copilot/fastpath.js";
@@ -133,7 +134,15 @@ export class BuildSessions {
     this.queue = this.queue.then(work).catch((err) => this.deps.log.error({ err: (err as Error).message }, "build mode step failed"));
   }
 
+  /**
+   * A session that has been replaced (the Director's New session or Replay, a scan with no session id) goes quiet and
+   * stops: the headset adopts the session of whatever inventory it hears, so late names from the old one would pull it
+   * back, and every pick of an old idea then answers 404.
+   */
+  private replaced = (session: Session) => session !== this.session;
+
   private async process(session: Session, scan: BuildScan, photo: Buffer, labels: "saved" | "live"): Promise<void> {
+    if (this.replaced(session)) return;
     try {
       const cloud = decodeScan(scan);
       const built = buildTwins(cloud, scan.scan_id);
@@ -144,11 +153,14 @@ export class BuildSessions {
       this.broadcastInventory(session, mergeTwins(session.twins, incoming), scan.scan_id, false,
         incoming.length ? null : "I couldn't see any objects. Try looking at them from a little closer.");
       const named = await this.label(scan, photo, incoming, surfaces, cloud, labels);
+      if (this.replaced(session)) return;
       session.twins = fixSizes(mergeTwins(session.twins, named.twins), this.deps.vocab);
       this.broadcastInventory(session, session.twins, scan.scan_id, true, named.note);
       await this.ideas(session, photo, null);
     } catch (err) {
-      this.broadcastInventory(session, session.twins, scan.scan_id, true, `I couldn't read that scan: ${(err as Error).message}`);
+      // A schema error's message is a page of JSON, and this sentence is read on the HUD.
+      const why = err instanceof ZodError ? "its saved data is not in the form I expect." : (err as Error).message;
+      this.broadcastInventory(session, session.twins, scan.scan_id, true, `I couldn't read that scan: ${why}`);
       throw err;
     } finally {
       this.files.saveSession(session);
@@ -162,7 +174,11 @@ export class BuildSessions {
     const { twins, by } = await nameTwins(
       { cfg: this.ctx.cfg, call: this.deps.call, model: this.deps.models.label, vocab: this.deps.vocab, timeoutMs: 15_000, log: this.deps.log },
       photo, incoming, surfaces, cloud);
-    if (by === "vision") { this.files.saveLabels(scan.scan_id, twins); return { twins, note: null }; }
+    if (by === "vision") {
+      // Saved for replays only: a full disk must not cost this scan its names.
+      try { this.files.saveLabels(scan.scan_id, twins); } catch (err) { this.deps.log.warn({ err: (err as Error).message }, "could not save the scan's labels"); }
+      return { twins, note: null };
+    }
     const named = twins.filter((t) => t.name !== "unknown").length;
     return { twins, note: named ? `I named ${named} of ${twins.length} objects by their size alone.` : "I can see objects but couldn't name them. Add them from the laptop, or ask again." };
   }
@@ -173,6 +189,7 @@ export class BuildSessions {
         cacheDir: join(this.files.root, "idea-cache"), timeoutMs: 20_000, log: this.deps.log },
       { sessionId: session.session_id, twins: session.twins, surfaces: session.surfaces, camera: session.camera ?? [0, 1.6, 0], photo, request },
       (ideas, final) => {
+        if (this.replaced(session)) return;
         session.ideas = ideas;
         const message = final ? summary(session.twins, ideas) : null;
         const audio = message ? this.ctx.hooks.say?.(message) ?? null : null;
@@ -182,6 +199,7 @@ export class BuildSessions {
   }
 
   private broadcastInventory(session: Session, twins: Twin[], scanId: string | null, labelled: boolean, message: string | null): void {
+    if (this.replaced(session)) return;
     this.ctx.store.bus.emit("broadcast", { type: "build_inventory", inventory: { session_id: session.session_id, scan_id: scanId, labelled, surfaces: session.surfaces, twins, message } });
   }
 }

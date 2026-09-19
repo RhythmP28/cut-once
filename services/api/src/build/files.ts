@@ -5,6 +5,8 @@ import { S, type BuildScan, type BuildScanUpload, type Twin } from "@cutonce/sch
 import { notFound } from "../errors.js";
 import { ensureDir, readJson, writeJsonAtomic } from "../store/fs.js";
 
+const SCAN_ID = /^scan_[a-z0-9_]+$/;
+
 export const newId = (prefix: "scan" | "bsess" | "idea") => `${prefix}_${ulid().toLowerCase()}`;
 
 /**
@@ -20,7 +22,7 @@ export class BuildFiles {
 
   /** Scan ids come from URLs, so they are checked before they ever touch a path (the same rule as plan ids in the Store). */
   scanDir(scanId: string): string {
-    if (!/^scan_[a-z0-9_]+$/.test(scanId)) throw notFound(`build scan ${scanId}`);
+    if (!SCAN_ID.test(scanId)) throw notFound(`build scan ${scanId}`);
     return scanId.startsWith("scan_rec_") ? join(this.recordingsDir, scanId.slice("scan_rec_".length)) : join(this.root, "scans", scanId);
   }
 
@@ -32,6 +34,7 @@ export class BuildFiles {
     const dir = this.scanDir(scan.scan_id);
     ensureDir(dir);
     writeJsonAtomic(join(dir, "scan.json"), scan);
+    writeJsonAtomic(join(dir, "meta.json"), { session_id: scan.session_id, captured_at: scan.captured_at });   // what the list shows, without opening 150 kB of points
     writeFileSync(join(dir, "photo.jpg"), Buffer.from(upload.photo_b64, "base64"));
     return scan;
   }
@@ -55,10 +58,12 @@ export class BuildFiles {
   }
 
   listScans(): { scan_id: string; session_id: string | null; captured_at: string | null; recording: boolean }[] {
-    const live = existsSync(join(this.root, "scans")) ? readdirSync(join(this.root, "scans")).filter((d) => d.startsWith("scan_")) : [];
+    // Only folders that are scan ids: a stray "scan_01abc copy" must not take the whole list down with it.
+    const live = existsSync(join(this.root, "scans")) ? readdirSync(join(this.root, "scans")).filter((d) => SCAN_ID.test(d) && !d.startsWith("scan_rec_")) : [];
     const recs = existsSync(this.recordingsDir) ? readdirSync(this.recordingsDir).filter((d) => /^[a-z0-9_]+$/.test(d)).map((d) => `scan_rec_${d}`) : [];
     return [...live, ...recs].map((scan_id) => {
-      const meta = readJson<{ session_id?: string; captured_at?: string }>(join(this.scanDir(scan_id), "scan.json"));
+      const dir = this.scanDir(scan_id);
+      const meta = readJson<{ session_id?: string; captured_at?: string }>(join(dir, "meta.json")) ?? readJson<{ session_id?: string; captured_at?: string }>(join(dir, "scan.json"));
       return { scan_id, session_id: meta?.session_id ?? null, captured_at: meta?.captured_at ?? null, recording: scan_id.startsWith("scan_rec_") };
     }).sort((a, b) => (b.captured_at ?? "").localeCompare(a.captured_at ?? ""));
   }

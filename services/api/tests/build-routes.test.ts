@@ -1,26 +1,32 @@
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Twin, WsMessage } from "@cutonce/schemas";
 import { KIT, CAMERA, photoB64, synthScan } from "./build-synth.js";
+import { BuildFiles } from "../src/build/files.js";
 import { pickIdea } from "../src/build/session.js";
 import { auth, makeApp } from "./helpers.js";
 
 // The two model calls. Labels: name by shape, like the vision model would for the kit. Ideas: none (rules still apply).
-vi.mock("../src/build/label.js", async (orig) => ({
-  ...(await orig<object>()),
-  labelTwins: vi.fn(async (_d: unknown, _p: unknown, twins: Twin[]) => twins.map((t) => t.shape.type === "cylinder"
+const nameTwins = vi.hoisted(() => vi.fn());
+vi.mock("../src/build/label.js", async (orig) => ({ ...(await orig<object>()), nameTwins }));
+const byShape = async (_d: unknown, _p: unknown, twins: Twin[]) => ({
+  by: "vision" as const,
+  twins: twins.map((t) => t.shape.type === "cylinder"
     ? { ...t, name: "tall_can", label: "tall can", material: "metal", load_bearing: true, confidence: 0.9 }
-    : { ...t, name: "pizza_box", label: "pizza box", material: "cardboard", load_bearing: true, cuttable: true, confidence: 0.9 })),
-}));
+    : { ...t, name: "pizza_box", label: "pizza box", material: "cardboard", load_bearing: true, cuttable: true, confidence: 0.9 }),
+});
 vi.mock("../src/llm.js", async (orig) => ({ ...(await orig<object>()), jsonCall: vi.fn(async () => ({ ideas: [] })) }));
 
 let t: Awaited<ReturnType<typeof makeApp>>;
 let seen: WsMessage[];
 beforeEach(async () => {
+  nameTwins.mockReset(); nameTwins.mockImplementation(byShape);
   t = await makeApp({ openaiKey: "test-key" });
   seen = [];
   t.app.ctx.store.bus.on("broadcast", (m) => seen.push(m));
 });
-afterEach(async () => { await t.app.ctx.hooks.build!.idle(); await t.cleanup(); });   // no scan may still be writing when the folder goes
+afterEach(async () => { await t.app.ctx.hooks.build!.idle(); await t.cleanup(); vi.restoreAllMocks(); });   // no scan may still be writing when the folder goes
 
 const kitUpload = () => {
   const scan = synthScan(KIT, CAMERA.cam, CAMERA.lookAt);
@@ -35,6 +41,9 @@ describe("a scan of the kit", () => {
     const kinds = seen.map((m) => (m.type === "build_inventory" ? `inventory:${m.inventory.labelled}` : m.type === "build_ideas" ? `ideas:${m.final}` : m.type));
     expect(kinds).toEqual(["inventory:false", "inventory:true", "ideas:false", "ideas:true"]);
     const last = seen.at(-1)!;
+    expect(nameTwins).toHaveBeenCalledOnce();
+    const named = seen.find((m) => m.type === "build_inventory" && m.inventory.labelled);
+    expect(named?.type === "build_inventory" && named.inventory.message).toBeNull();          // named by the (stand-in) vision model, not by size
     expect(last.type === "build_ideas" && last.ideas.map((i) => i.title)).toEqual(["Laptop riser"]);
     expect(last.type === "build_ideas" && last.message).toMatch(/You could build a laptop riser/);
   });
@@ -87,6 +96,43 @@ describe("a scan of the kit", () => {
     await t.app.ctx.hooks.build!.idle();
     expect(r.json().session_id).toMatch(/^bsess_/);
     expect(seen.some((m) => m.type === "build_ideas" && m.final && m.ideas.length === 1)).toBe(true);
+  });
+
+  it("goes quiet for a session that has been replaced: its late names and ideas would pull the headset back to it", async () => {
+    let release = () => {};
+    nameTwins.mockImplementationOnce(async (d: unknown, ph: unknown, twins: Twin[]) => { await new Promise<void>((r) => { release = r; }); return byShape(d, ph, twins); });
+    const { session_id: old } = (await post("/v1/build/scans", kitUpload())).json();
+    await vi.waitFor(() => expect(nameTwins).toHaveBeenCalled());
+    const fresh = (await post("/v1/build/sessions", {})).json().session_id;          // the Director's "New session" while names are on their way
+    seen = [];
+    release();
+    await t.app.ctx.hooks.build!.idle();
+    expect(fresh).not.toBe(old);
+    expect(seen.filter((m) => m.type === "build_inventory" || m.type === "build_ideas")).toEqual([]);
+  });
+
+  it("does not lose a scan's names and ideas when its labels cannot be saved (a full disk)", async () => {
+    const save = vi.spyOn(BuildFiles.prototype, "saveLabels").mockImplementation(() => { throw new Error("ENOSPC: no space left on device"); });
+    await post("/v1/build/scans", kitUpload());
+    await t.app.ctx.hooks.build!.idle();
+    expect(save).toHaveBeenCalled();
+    const last = seen.at(-1)!;
+    expect(last.type === "build_ideas" && last.final && last.ideas.map((i) => i.title)).toEqual(["Laptop riser"]);
+  });
+
+  it("says in a few words when a scan cannot be read, not in a page of JSON", async () => {
+    const { scan_id } = (await post("/v1/build/scans", kitUpload())).json();
+    await t.app.ctx.hooks.build!.idle();
+    // Saved labels from before sides were floored at 5 mm: a zero side, which the Twin schema refuses.
+    const file = join(t.dataDir, "build", "scans", scan_id, "labels.json");
+    const twins = JSON.parse(readFileSync(file, "utf8")) as { shape: { size?: number[] } }[];
+    twins.find((q) => q.shape.size)!.shape.size![2] = 0;
+    writeFileSync(file, JSON.stringify(twins));
+    seen = [];
+    await post(`/v1/build/scans/${scan_id}/replay`, { labels: "saved" });
+    await t.app.ctx.hooks.build!.idle();
+    const said = seen.flatMap((m) => (m.type === "build_inventory" && m.inventory.message ? [m.inventory.message] : []));
+    expect(said).toEqual(["I couldn't read that scan: its saved data is not in the form I expect."]);
   });
 
   it("lists the vocabulary, and says which objects have a standard size: only those can be added by hand", async () => {

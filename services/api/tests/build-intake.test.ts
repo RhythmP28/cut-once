@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { BuildFiles } from "../src/build/files.js";
@@ -54,6 +54,20 @@ describe("POST /v1/build/scans", () => {
 });
 
 describe("BuildFiles", () => {
+  it("lists scans from their small meta files, and is not broken by a stray folder", async () => {
+    const { scan_id } = (await post(upload())).json();
+    await t.app.ctx.hooks.build!.idle();
+    mkdirSync(join(t.dataDir, "build", "scans", "scan_01abc copy"));                   // Finder's doing, or a teammate's
+    mkdirSync(join(t.dataDir, "build", "scans", "scan_empty"));
+    const r = await t.app.inject({ method: "GET", url: "/v1/build/scans", headers: auth });
+    expect(r.statusCode).toBe(200);
+    const live = (r.json().scans as { scan_id: string; recording: boolean }[]).filter((q) => !q.recording).map((q) => q.scan_id);
+    expect(live).toEqual([scan_id, "scan_empty"]);                                    // recordings from the repo are listed too
+    // The list never opens scan.json (150 kB of points each): what it shows is in meta.json, written with the scan.
+    const meta = JSON.parse(readFileSync(join(t.dataDir, "build", "scans", scan_id, "meta.json"), "utf8"));
+    expect(Object.keys(meta).sort()).toEqual(["captured_at", "session_id"]);
+  });
+
   it("never writes into a recording: they are fixtures in the public repo, and a live replay must not change them", () => {
     const files = new BuildFiles(t.dataDir, t.dataDir);             // a stand-in repo root, so nothing real is touched
     files.saveLabels("scan_rec_kit", []);

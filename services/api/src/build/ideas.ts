@@ -136,9 +136,15 @@ async function invent(deps: IdeasDeps, input: IdeasInput, usable: Twin[], byId: 
   for (const draft of drafts) { const r = ai(draft); if ("idea" in r) ok.push({ draft, idea: r.idea }); else failed.push({ draft, reason: r.reason }); }
   if (!cached && failed.length) {
     const fix = `${text}\n\nThese designs failed a check. Fix each one and return only the fixed designs:\n${failed.map((f) => `- ${JSON.stringify(f.draft)}\n  failed because ${f.reason}`).join("\n")}`;
-    for (const draft of (await ask(fix, null)).ideas) { const r = ai(draft); if ("idea" in r) ok.push({ draft, idea: r.idea }); }
+    // The repair is a bonus: if it fails, the designs that already passed still go out.
+    try { for (const draft of (await ask(fix, null)).ideas) { const r = ai(draft); if ("idea" in r) ok.push({ draft, idea: r.idea }); } }
+    catch (err) { deps.log.warn({ err: (err as Error).message }, "the repair round for AI build ideas failed; keeping the designs that passed"); }
   }
-  if (!cached && ok.length) writeJsonAtomic(cachePath, { drafts: ok.map((o) => remap(o.draft, canon.toCanon)).filter(Boolean) });
+  // Only a plain ask is cached under the pile's key: a rethink's designs ("for my phone instead") answer its request, not the pile.
+  if (!cached && !input.request && ok.length) {
+    try { writeJsonAtomic(cachePath, { drafts: ok.map((o) => remap(o.draft, canon.toCanon)).filter(Boolean) }); }
+    catch (err) { deps.log.warn({ err: (err as Error).message }, "could not cache the AI build ideas"); }
+  }
   return ok.map((o) => o.idea);
 }
 
