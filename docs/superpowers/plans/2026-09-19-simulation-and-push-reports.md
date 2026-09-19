@@ -917,8 +917,8 @@ describe("buildMarkdown", () => {
 - [ ] **Step 2: Run them.** `pnpm -F @cutonce/sim test`. Expected: FAIL.
 
 - [ ] **Step 3: Implement with Codex.** Prompt: "Implement `tools/sim/compare.ts`, `tools/sim/types.ts` and `tools/sim/report.ts` so the tests in `tools/sim/tests` pass, following Task 6 of docs/superpowers/plans/2026-09-19-simulation-and-push-reports.md exactly (interfaces, statuses, the 0.05% same threshold, exit code rule). Use pngjs and pixelmatch. The HTML report shows baseline, current and diff images side by side for each scene, with relative paths (`baseline/screens/x.png`, `current/screens/x.png`, `diff/x.png`), and the plan and scenario tables. Don't change the tests." Markdown sections, in order:
-  1. failing steps (if any)
-  2. the header `## Simulation report · <current sha7> vs <baseline sha7>` (or "No earlier run to compare with")
+  1. the header `## Simulation report · <current sha7> vs <baseline sha7>` (or "No earlier run to compare with")
+  2. failing steps (if any), directly under the header so they are the first thing read
   3. Behaviour
   4. Pictures (table of changed, new and removed scenes only)
   5. Plans (one line per file: "no change" or "N changed: Tabletop moved 10 mm, …")
