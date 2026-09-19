@@ -135,9 +135,7 @@ export class BuildSessions {
   accept(upload: BuildScanUpload): { scan_id: string; session_id: string } {
     const session = upload.session_id && this.session?.session_id === upload.session_id ? this.session : this.newSession();
     session.started = null;                                          // scanning again puts the headset back to picking
-    const said = this.expected;
-    this.expected = null;
-    if (said && Date.now() - said.at <= WISH_TTL_MS) this.setWish(session, said.wish, said.change);
+    this.takeWish(session);
     const scan = this.files.saveScan(upload, session.session_id);
     const photo = Buffer.from(upload.photo_b64, "base64");
     this.enqueue(() => this.process(session, scan, photo, "live"));
@@ -147,8 +145,16 @@ export class BuildSessions {
   replay(scanId: string, labels: "saved" | "live"): { session_id: string } {
     const { scan, photo } = this.files.readScan(scanId);
     const session = this.newSession();
+    this.takeWish(session);                                          // the Director's fallback for a failed scan: same wish
     this.enqueue(() => this.process(session, { ...scan, session_id: session.session_id }, photo, labels));
     return { session_id: session.session_id };
+  }
+
+  /** The wish waiting for a scan goes with this one (the headset's, or a replay), if it is still fresh. */
+  private takeWish(session: Session): void {
+    const said = this.expected;
+    this.expected = null;
+    if (said && Date.now() - said.at <= WISH_TTL_MS) this.setWish(session, said.wish, said.change);
   }
 
   /** Objects known, nothing being built, and no scan being read or named (it designs next: a rethink would design twice). */

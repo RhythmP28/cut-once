@@ -195,6 +195,17 @@ describe("the wish", () => {
     expect((await current()).wish).toBeNull();
   });
 
+  it("goes with a replayed recording too: the Director's fallback when the headset's own scan fails", async () => {
+    const build = t.app.ctx.hooks.build!;
+    const { scan_id } = (await post("/v1/build/scans", kitUpload())).json();
+    await build.idle();
+    build.expectScan("a birdhouse", false);
+    await post(`/v1/build/scans/${scan_id}/replay`, { labels: "saved" });
+    await build.idle();
+    expect(asked().at(-1)).toContain('The builder asked: "a birdhouse"');
+    expect((await current()).wish).toBe("a birdhouse");
+  });
+
   it("is dropped when no scan follows within a minute: it belongs to that question, not a later one", async () => {
     const build = t.app.ctx.hooks.build!;
     build.expectScan("a robot", false);
