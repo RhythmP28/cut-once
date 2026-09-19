@@ -8,7 +8,7 @@
     <IsPackable>false</IsPackable>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <WarningsNotAsErrors>CS0649</WarningsNotAsErrors>
+    <NoWarn>CS0649</NoWarn> <!-- DTO fields are filled by the JSON reader -->
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../apps/quest/Assets/CutOnce/Core/**/*.cs" />
