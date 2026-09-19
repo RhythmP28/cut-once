@@ -9,6 +9,7 @@ import { gather, searchQuery } from "./context.js";
 import { isQuestion, matchFastPath } from "./fastpath.js";
 import { markUp, type LegendRow } from "./marks.js";
 import type { CopilotModels } from "./models.js";
+import { ROUTE_MIN, routeTurn } from "./router.js";
 import { transcribe } from "./stt.js";
 import type { Speech } from "./tts.js";
 import type { TurnMemory } from "./turns.js";
@@ -91,7 +92,7 @@ export async function answerQuery(deps: Deps, input: QueryInput, log: Log): Prom
   if (!transcript) return unheard(deps, turnId, sttFailed, timings, t0, recordTurn);
 
   // Fast path: a spoken command is decided from the plan and the log, so it skips the model entirely.
-  const fast = matchFastPath(transcript, { plan: g.plan, state: g.state, selectedPartId: input.context.selected_part_id, recentEvents: g.recentEvents });
+  const fast = matchFastPath(transcript, { plan: g.plan, state: g.state, selectedPartId: input.context.selected_part_id, recentEvents: g.recentEvents, mode: input.context.mode });
   if (fast) {
     if (fast.action) await applyAction(deps, input.assemblyId, fast.action, "operator", { confidence: 1, note: fast.note ?? "spoken command" });
     speech.start(turnId, fast.answer_text);
@@ -105,27 +106,50 @@ export async function answerQuery(deps: Deps, input: QueryInput, log: Log): Prom
     return response;
   }
 
-  // Retrieval and annotation are independent of each other and of the model, so they overlap.
+  // Build mode: saying an idea's name starts it. The titles live on the server, so no model is needed.
+  if (input.context.mode === "build" && ctx.hooks.build) {
+    try {
+      const title = await ctx.hooks.build.startByName(transcript);
+      if (title) return quick(deps, turnId, transcript, `Building the ${title.toLowerCase()}. Watch the pieces.`, null, timings, t0, recordTurn);
+    } catch (err) {
+      // The idea was picked but its run could not be made (a full disk, say). In front of judges a reply beats an error.
+      log.warn({ turn: turnId, transcript, err: (err as Error).message }, "could not start the picked build idea");
+      return quick(deps, turnId, transcript, "I couldn't start that build. Try again.", null, timings, t0, recordTurn, true);
+    }
+  }
+
+  // Retrieval and annotation are independent of each other and of the model, so they overlap — and with the router.
   const { marks, legend } = markUp(input.context.visible_parts);
   const retrieveStart = Date.now();
-  const [chunks, annotated] = await Promise.all([
-    retrieve(ctx.cfg, { query: searchQuery(transcript, g.selected), projectId: g.plan.project_id, partId: input.context.selected_part_id, k: 5 }, log)
-      .then((c) => { timings.retrieve = since(retrieveStart); return c; }),
-    (async () => {
-      if (!input.frame) return null; // no camera frame: the model answers from the tables and documents
-      const start = Date.now();
-      try {
-        const out = await annotateFrame(input.frame, marks);
-        timings.annotate = since(start);
-        return out;
-      } catch (err) {
-        // Annotation is an aid, not a requirement: the raw frame and the tables still answer the question.
-        log.warn({ err: (err as Error).message }, "frame annotation failed; sending the raw frame only");
-        timings.annotate = since(start);
-        return null;
-      }
-    })(),
-  ]);
+  const retrieving = retrieve(ctx.cfg, { query: searchQuery(transcript, g.selected), projectId: g.plan.project_id, partId: input.context.selected_part_id, k: 5 }, log)
+    .then((c) => { timings.retrieve = since(retrieveStart); return c; });
+  retrieving.catch(() => {});      // a build-mode early return must not leave a rejection unhandled; the await below still throws
+  const annotating = (async () => {
+    if (!input.frame) return null; // no camera frame: the model answers from the tables and documents
+    const start = Date.now();
+    try {
+      const out = await annotateFrame(input.frame, marks);
+      timings.annotate = since(start);
+      return out;
+    } catch (err) {
+      // Annotation is an aid, not a requirement: the raw frame and the tables still answer the question.
+      log.warn({ err: (err as Error).message }, "frame annotation failed; sending the raw frame only");
+      timings.annotate = since(start);
+      return null;
+    }
+  })();
+
+  // The router decides the flow. Anything but a sure "question" skips the answer model entirely.
+  const routeStart = Date.now();
+  const routed = await routeTurn(ctx.cfg, m, { transcript, mode: input.context.mode, ideaTitles: ctx.hooks.build?.ideaTitles() ?? [] });
+  timings.route = since(routeStart);
+  if (routed && routed.flow !== "question") {
+    if (routed.confidence < ROUTE_MIN) return quick(deps, turnId, transcript, "Do you want ideas for what to build, or an answer about this step?", null, timings, t0, recordTurn, true);
+    if (routed.flow === "build_ideas") return quick(deps, turnId, transcript, "Let me see what you've got.", { type: "start_scan" }, timings, t0, recordTurn);
+    // modify_design with nothing to rethink (no pile yet, or a build already under way) is answered like any question.
+    if (ctx.hooks.build && (await ctx.hooks.build.rethink(transcript))) return quick(deps, turnId, transcript, "Let me rethink that.", null, timings, t0, recordTurn);
+  }
+  const [chunks, annotated] = await Promise.all([retrieving, annotating]);
 
   const llmStart = Date.now();
   const spent = since(t0);
@@ -160,6 +184,20 @@ export async function answerQuery(deps: Deps, input: QueryInput, log: Log): Prom
   };
   recordTurn(response, chunks.map((c) => c.chunk_id));
   log.info({ turn: turnId, transcript, parts: response.highlight_parts.length, refs: response.drawing_refs.length, ms: since(t0) }, "copilot answered");
+  return response;
+}
+
+/** A one-line spoken reply that skips the answer model (build-mode routing). */
+function quick(
+  deps: Deps, turnId: string, transcript: string, text: string, action: CopilotAction | null, timings: Record<string, number>, t0: number,
+  recordTurn: (r: CopilotResponse, chunkIds: string[]) => void, clarify = false,
+): CopilotResponse {
+  deps.speech.start(turnId, text);
+  const response: CopilotResponse = {
+    ...shell(turnId, transcript), answer_text: text, action, confidence: 1, needs_clarification: clarify,
+    audio_url: `/v1/audio/${turnId}`, timings_ms: { ...timings, total_to_response: since(t0) },
+  };
+  recordTurn(response, []);
   return response;
 }
 

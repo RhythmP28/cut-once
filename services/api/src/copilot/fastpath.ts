@@ -1,13 +1,19 @@
 import type { BuildEvent, BuildState, CopilotAction, Part, PartState, Plan } from "@cutonce/schemas";
+import { isBuildPlan } from "../build/plan.js";
 
 export interface FastPathInput {
   plan: Plan; state: BuildState; selectedPartId: string | null; recentEvents: BuildEvent[];
+  /** The headset's mode. "build" from the first scan to the end of the walkthrough. */
+  mode?: "upload" | "overlay" | "build";
 }
 /** `action: null` is a spoken reply with nothing to apply; `note` is written on the event (blueprint §550 for undo). */
 export interface FastPath { action: CopilotAction | null; answer_text: string; highlight_parts: string[]; note?: string }
 
-/** Lower case, no punctuation, single spaces. "Mark the left rear leg, built." → "mark the left rear leg built". */
-export const normalise = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+/**
+ * Lower case, no punctuation, single spaces. "Mark the left rear leg, built." → "mark the left rear leg built".
+ * An apostrophe joins its word ("It's done." → "its done"): the transcriber writes them, and the commands below are spelt without.
+ */
+export const normalise = (s: string) => s.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
 
 /** A question never changes the build, whatever the model proposes. "Is the leg in?" asks; "the leg is in" tells. */
 export const isQuestion = (s: string) =>
@@ -52,8 +58,15 @@ const markState = (partId: string, newState: PartState): CopilotAction =>
  */
 export function matchFastPath(transcript: string, input: FastPathInput): FastPath | null {
   const text = normalise(transcript);
-  const { plan, state, selectedPartId, recentEvents } = input;
+  const { plan, state, selectedPartId, recentEvents, mode } = input;
   const nameOf = (id: string) => plan.parts.find((p) => p.part_id === id)?.name ?? id;
+
+  // "What can I build?": the rehearsed line never depends on a model. The headset scans and uploads.
+  // "Look again" is a rescan only in build mode: anywhere else it asks the copilot to look at the part again.
+  if (/^(what can (i|we) (build|make)( with (this|these|that|all this|all of this|this stuff))?|what could (i|we) (build|make)( with (this|these|that))?|help me build something|build something|make something|scan (this|that|again|the table))$/.test(text)
+    || (mode === "build" && text === "look again")) {
+    return { action: { type: "start_scan" }, answer_text: "Let me see what you've got.", highlight_parts: [] };
+  }
 
   // "next" / "back": pure headset navigation, no event.
   if (/^(next|next step|go next|carry on)$/.test(text)) return { action: { type: "step_nav", direction: "next" }, answer_text: "Next step.", highlight_parts: [] };
@@ -77,7 +90,10 @@ export function matchFastPath(transcript: string, input: FastPathInput): FastPat
 
   // "done" / "mark it built": the part you are pointing at.
   if (/^(done|its done|thats done|mark (it|this) (built|done)|built)$/.test(text)) {
-    if (!selectedPartId) return null; // nothing selected: let the model ask which part
+    // Nothing selected: let the model ask which part. Except in a build-mode run, where you are holding the piece, not
+    // pointing: there "done" is the whole step. Build mode is also on while scanning and picking, when the run is still
+    // the old one (E7, the desk), so the plan decides, not the mode alone.
+    if (!selectedPartId) return mode === "build" && isBuildPlan(plan) ? stepDone(plan, state) : null;
     // The headset can point at a part from a plan revision the server no longer runs: say so, do not fail the turn.
     if (!plan.parts.some((p) => p.part_id === selectedPartId)) {
       return { action: null, answer_text: "That part isn't in this plan. Reload the plan on the headset and try again.", highlight_parts: [] };
@@ -97,4 +113,17 @@ export function matchFastPath(transcript: string, input: FastPathInput): FastPat
   }
 
   return null;
+}
+
+/** Build mode's "done": every part of the current step that is not built yet, then the next step, read out. */
+function stepDone(plan: Plan, state: BuildState): FastPath | null {
+  const step = plan.steps.find((s) => s.step_id === state.current_step_id);
+  const todo = step?.part_ids.filter((id) => state.parts[id]?.state !== "built") ?? [];
+  if (!step || todo.length === 0) return null;
+  const next = plan.steps.find((s) => s.index === step.index + 1);
+  return {
+    action: { type: "mark_state", part_ids: todo, new_state: "built", source: "voice" },
+    answer_text: next ? `Done. Next: ${next.instruction}` : "Done. That's the whole build!",
+    highlight_parts: next?.part_ids ?? [],
+  };
 }

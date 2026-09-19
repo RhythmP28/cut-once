@@ -7,6 +7,10 @@ export interface PlanInput {
   placed: Placed[]; twins: Map<string, Twin>; projectId: string;
 }
 
+const PLAN_PREFIX = "plan_build_";
+/** True for a plan that build mode made (toPlan mints the id). The copilot uses it: only such a run has one-piece steps. */
+export const isBuildPlan = (plan: Pick<Plan, "plan_id">) => plan.plan_id.startsWith(PLAN_PREFIX);
+
 const VERB = { upright: "Stand", flat: "Lay", on_side: "Turn" } as const;
 const HOW = { upright: "upright", flat: "flat", on_side: "on its side" } as const;
 const stepId = (i: number) => `step_${String(i).padStart(2, "0")}`;
@@ -63,7 +67,7 @@ export function toPlan(input: PlanInput): { plan: Plan; twinOf: Record<string, s
   });
 
   const plan: Plan = {
-    plan_id: `plan_build_${input.ideaId.replace(/^idea_/, "")}`, project_id: input.projectId, name: input.title, revision: 1, status: "draft",
+    plan_id: `${PLAN_PREFIX}${input.ideaId.replace(/^idea_/, "")}`, project_id: input.projectId, name: input.title, revision: 1, status: "draft",
     frame: { handedness: "right", up: "+Y", units: "m", pose: "design", origin: "centre of the build area, on the table" },
     layers: ["build"], parts, materials, steps, markers: [], touch_points: [],
     provenance: {

@@ -10,6 +10,8 @@ const transcribe = vi.hoisted(() => vi.fn());
 const ask = vi.hoisted(() => vi.fn());
 vi.mock("../src/copilot/stt.js", () => ({ transcribe }));
 vi.mock("../src/copilot/answer.js", async (importOriginal) => ({ ...(await importOriginal<object>()), ask }));
+const routeTurn = vi.hoisted(() => vi.fn());
+vi.mock("../src/copilot/router.js", async (importOriginal) => ({ ...(await importOriginal<object>()), routeTurn }));
 
 const FIXTURES = join(REPO_ROOT, "data", "fixtures");
 const frame = () => readFileSync(join(FIXTURES, "frame_0001.jpg"));
@@ -22,6 +24,7 @@ beforeEach(async () => {
   t = await makeApp({ elevenKey: "", openaiKey: "test-key", copilotMode: "live" });
   transcribe.mockReset();
   ask.mockReset();
+  routeTurn.mockReset(); routeTurn.mockResolvedValue(null);
 });
 afterEach(async () => { await t.cleanup(); });
 
@@ -331,5 +334,75 @@ describe("the demo cache", () => {
     const r = await t.app.inject({ method: "POST", url: "/v1/director/command", headers: auth, payload: { type: "promote_cache", turn_id: turnId, scripted_query_id: "../../cutonce_escape" } });
     expect(r.statusCode).toBe(400);
     expect(existsSync(escaped)).toBe(false);
+  });
+});
+
+describe("build-mode routing", () => {
+  it("'what can I build' is instant: start_scan, no router and no answer model", async () => {
+    transcribe.mockResolvedValue("what can I build");
+    const body = (await query()).json();
+    expect(body.action).toEqual({ type: "start_scan" });
+    expect(ask).not.toHaveBeenCalled();
+    expect(routeTurn).not.toHaveBeenCalled();
+  });
+  it("the router's build_ideas starts a scan without the answer model", async () => {
+    transcribe.mockResolvedValue("could I make something useful out of all this junk");
+    routeTurn.mockResolvedValue({ flow: "build_ideas", confidence: 0.9 });
+    const body = (await query()).json();
+    expect(body.action).toEqual({ type: "start_scan" });
+    expect(ask).not.toHaveBeenCalled();
+  });
+  it("an unsure router asks back instead of guessing", async () => {
+    transcribe.mockResolvedValue("could this be a thing");
+    routeTurn.mockResolvedValue({ flow: "build_ideas", confidence: 0.4 });
+    const body = (await query()).json();
+    expect([body.action, body.needs_clarification]).toEqual([null, true]);
+    expect(ask).not.toHaveBeenCalled();
+  });
+  it("a question still goes to the answer model", async () => {
+    transcribe.mockResolvedValue("where does this cable go");
+    routeTurn.mockResolvedValue({ flow: "question", confidence: 0.95 });
+    ask.mockResolvedValue(draft());
+    expect((await query()).json().answer_text).toMatch(/cable tray/);
+  });
+  it("a router that failed or ran out of time is a question: the copilot never goes quiet because the small model did", async () => {
+    transcribe.mockResolvedValue("where does this cable go");
+    routeTurn.mockResolvedValue(null);
+    ask.mockResolvedValue(draft());
+    const body = (await query()).json();
+    expect(body.answer_text).toMatch(/cable tray/);
+    expect(body.timings_ms.route).toBeGreaterThanOrEqual(0);
+  });
+  it("'make it taller' with ideas on show rethinks them; with none to rethink it is answered like any question", async () => {
+    transcribe.mockResolvedValue("make it taller");
+    routeTurn.mockResolvedValue({ flow: "modify_design", confidence: 0.9 });
+    const build = t.app.ctx.hooks.build!;
+    const rethink = vi.spyOn(build, "rethink").mockResolvedValue(true);
+    expect((await query({ mode: "build" })).json().answer_text).toBe("Let me rethink that.");
+    expect(rethink).toHaveBeenCalledWith("make it taller");
+    expect(ask).not.toHaveBeenCalled();
+
+    rethink.mockResolvedValue(false);
+    ask.mockResolvedValue(draft());
+    expect((await query({ mode: "build" })).json().answer_text).toMatch(/cable tray/);
+  });
+  it("in build mode, picking an idea by name starts it with no model at all; outside build mode names are not listened for", async () => {
+    transcribe.mockResolvedValue("let's build the laptop riser");
+    const start = vi.spyOn(t.app.ctx.hooks.build!, "startByName").mockResolvedValue("Laptop riser");
+    const body = (await query({ mode: "build" })).json();
+    expect(body.answer_text).toBe("Building the laptop riser. Watch the pieces.");
+    expect([routeTurn.mock.calls.length, ask.mock.calls.length]).toEqual([0, 0]);
+
+    start.mockClear();
+    ask.mockResolvedValue(draft());
+    await query({ mode: "overlay" });
+    expect(start).not.toHaveBeenCalled();
+  });
+  it("a picked build that cannot be started is said out loud, not a failed turn", async () => {
+    transcribe.mockResolvedValue("build the laptop riser");
+    vi.spyOn(t.app.ctx.hooks.build!, "startByName").mockRejectedValue(new Error("ENOSPC: no space left on device"));
+    const r = await query({ mode: "build" });
+    expect([r.statusCode, r.json().answer_text, r.json().needs_clarification]).toEqual([200, "I couldn't start that build. Try again.", true]);
+    expect(ask).not.toHaveBeenCalled();
   });
 });

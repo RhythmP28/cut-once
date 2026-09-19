@@ -20,6 +20,27 @@ export interface BuildDeps {
 export interface Session {
   session_id: string; created_at: string; scans: string[]; surfaces: Surface[]; twins: Twin[]; ideas: BuildIdea[];
   camera: Vec3 | null; photo: string | null;
+  /** The idea being built, from its start until the next scan. The headset shows no new ideas mid-build, and drops out of build mode if another run appears. */
+  started: string | null;
+}
+
+/** What may surround an idea's name when it is being picked: "let's build the laptop riser, please". */
+const PICKING = new Set("lets let us build make start do try pick choose show me i id we want would like to go with for the a an that this one please instead ok okay yes yeah sure can could you now then".split(" "));
+
+/**
+ * The idea a sentence picks, or null. Only the name plus picking words counts. "How tall is the laptop riser?" names an
+ * idea too, but asks about it, and starting a run for it would throw the current build away.
+ */
+export function pickIdea<T extends { title: string }>(transcript: string, ideas: T[]): T | null {
+  const said = ` ${normalise(transcript)} `;
+  for (const idea of [...ideas].sort((a, b) => b.title.length - a.title.length)) {   // "tall laptop riser" before "laptop riser"
+    const name = ` ${normalise(idea.title)} `;
+    const at = said.indexOf(name);
+    if (at < 0) continue;
+    const around = `${said.slice(0, at)} ${said.slice(at + name.length)}`.split(" ").filter(Boolean);
+    if (around.every((w) => PICKING.has(w))) return idea;
+  }
+  return null;
 }
 
 /**
@@ -38,12 +59,13 @@ export class BuildSessions {
   ideaTitles = () => this.session?.ideas.map((i) => i.title) ?? [];
 
   newSession(): Session {
-    this.session = { session_id: newId("bsess"), created_at: new Date().toISOString(), scans: [], surfaces: [], twins: [], ideas: [], camera: null, photo: null };
+    this.session = { session_id: newId("bsess"), created_at: new Date().toISOString(), scans: [], surfaces: [], twins: [], ideas: [], camera: null, photo: null, started: null };
     return this.session;
   }
 
   accept(upload: BuildScanUpload): { scan_id: string; session_id: string } {
     const session = upload.session_id && this.session?.session_id === upload.session_id ? this.session : this.newSession();
+    session.started = null;                                          // scanning again puts the headset back to picking
     const scan = this.files.saveScan(upload, session.session_id);
     const photo = Buffer.from(upload.photo_b64, "base64");
     this.enqueue(() => this.process(session, scan, photo, "live"));
@@ -59,26 +81,28 @@ export class BuildSessions {
 
   rethink(request: string): Promise<boolean> {
     const s = this.session;
-    if (!s || s.twins.length === 0) return Promise.resolve(false);
+    if (!s || s.twins.length === 0 || s.started) return Promise.resolve(false);
     const photo = s.photo && existsSync(s.photo) ? readFileSync(s.photo) : null;
     this.enqueue(() => this.ideas(s, photo, request));
     return Promise.resolve(true);
   }
 
   async startIdea(ideaId: string): Promise<{ assembly_id: string; plan_id: string; revision: number }> {
-    const idea = this.session?.ideas.find((i) => i.idea_id === ideaId);
-    if (!idea) throw notFound(`build idea ${ideaId}`);
+    const session = this.session;                                      // a replay may swap this.session while the run is being made
+    const idea = session?.ideas.find((i) => i.idea_id === ideaId);
+    if (!session || !idea) throw notFound(`build idea ${ideaId}`);
     const { store } = this.ctx;
     const { revision } = store.putDraft(idea.plan);
     store.approve(idea.plan.plan_id, revision, "build mode");
     store.putSeed({ seed: "build_start", plan_id: idea.plan.plan_id, built: ["part_surface"] });
     const assembly = await store.createAssembly({ plan_id: idea.plan.plan_id, revision, seed: "build_start", name: `Build: ${idea.title}` });
+    session.started = idea.idea_id;
     return { assembly_id: assembly.assembly_id, plan_id: idea.plan.plan_id, revision };
   }
 
   async startByName(transcript: string): Promise<string | null> {
-    const said = normalise(transcript);
-    const idea = this.session?.ideas.find((i) => said.includes(normalise(i.title)));
+    if (!this.session || this.session.started) return null;
+    const idea = pickIdea(transcript, this.session.ideas);
     if (!idea) return null;
     await this.startIdea(idea.idea_id);
     return idea.title;

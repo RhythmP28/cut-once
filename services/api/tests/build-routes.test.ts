@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Twin, WsMessage } from "@cutonce/schemas";
 import { KIT, CAMERA, photoB64, synthScan } from "./build-synth.js";
+import { pickIdea } from "../src/build/session.js";
 import { auth, makeApp } from "./helpers.js";
 
 // The two model calls. Labels: name by shape, like the vision model would for the kit. Ideas: none (rules still apply).
@@ -56,6 +57,28 @@ describe("a scan of the kit", () => {
     expect(await t.app.ctx.hooks.build!.startByName("let's build the laptop riser")).toBe("Laptop riser");
   });
 
+  it("a question about an idea never starts it, and once a build is under way names are not picks until the next scan", async () => {
+    const build = t.app.ctx.hooks.build!;
+    await post("/v1/build/scans", kitUpload());
+    await build.idle();
+    const runs = () => t.app.ctx.store.listAssemblies().length;
+    const before = runs();
+    expect(await build.startByName("how tall is the laptop riser?")).toBeNull();
+    expect(await build.startByName("The laptop riser, please.")).toBe("Laptop riser");
+    expect(runs()).toBe(before + 1);
+    // Mid-build the headset would drop out of build mode if another run appeared, and it shows no new ideas either.
+    expect(await build.startByName("laptop riser")).toBeNull();
+    expect(await build.rethink("make it taller")).toBe(false);
+    expect(runs()).toBe(before + 1);
+    // Scanning again puts the headset back to picking, so names are picks again.
+    const { session_id } = (await t.app.inject({ method: "GET", url: "/v1/build/sessions/current", headers: auth })).json();
+    await post("/v1/build/scans", { ...kitUpload(), session_id });
+    await build.idle();
+    expect(await build.rethink("make it taller")).toBe(true);
+    await build.idle();
+    expect(await build.startByName("laptop riser")).toBe("Laptop riser");
+  });
+
   it("replays a saved scan into a new session using its saved labels", async () => {
     const { scan_id } = (await post("/v1/build/scans", kitUpload())).json();
     await t.app.ctx.hooks.build!.idle();
@@ -71,5 +94,24 @@ describe("a scan of the kit", () => {
     await t.app.ctx.hooks.build!.idle();
     const r = await post("/v1/build/objects", { name: "drink_can" });
     expect(r.json()).toMatchObject({ name: "drink_can", snapped: true });
+  });
+});
+
+describe("pickIdea: which idea a sentence picks", () => {
+  const ideas = [{ title: "Laptop riser" }, { title: "Tall laptop riser" }, { title: "Two-tier display stand" }];
+  const picked = (said: string) => pickIdea(said, ideas)?.title ?? null;
+
+  it("takes the name alone or with the words people pick with", () => {
+    expect(picked("Laptop riser.")).toBe("Laptop riser");
+    expect(picked("Let's build the laptop riser, please")).toBe("Laptop riser");
+    expect(picked("Can we do the two tier display stand instead?")).toBe("Two-tier display stand");
+    expect(picked("I'd like to make the tall laptop riser")).toBe("Tall laptop riser");
+  });
+  it("leaves questions and remarks about an idea to the copilot", () => {
+    expect(picked("How tall is the laptop riser?")).toBeNull();
+    expect(picked("Why does the laptop riser have the cans at the front")).toBeNull();
+    expect(picked("the laptop riser is wobbly")).toBeNull();
+    expect(picked("build the laptop riser not the two tier display stand")).toBeNull();
+    expect(picked("build a shelf")).toBeNull();
   });
 });

@@ -76,6 +76,35 @@ describe("fast path", () => {
 
   it("'done' with nothing selected falls through to the model", () => expect(matchFastPath("done", input())).toBeNull());
 
+  it("hears \"it's done\" with its apostrophe, the way the transcriber writes it", () => {
+    expect(normalise("It's done.")).toBe("its done");
+    expect(matchFastPath("It's done.", input({ selectedPartId: "part_cable_tray" }))?.action)
+      .toEqual({ type: "mark_state", part_ids: ["part_cable_tray"], new_state: "built", source: "voice" });
+  });
+
+  it("'what can I build' starts a scan without the model", () =>
+    expect(matchFastPath("What can I build with this?", input())?.action).toEqual({ type: "start_scan" }));
+
+  it("'look again' rescans in build mode only: anywhere else it asks the copilot to look at the part again", () => {
+    expect(matchFastPath("look again", input({ mode: "build" }))?.action).toEqual({ type: "start_scan" });
+    expect(matchFastPath("look again", input({ mode: "overlay" }))).toBeNull();
+    expect(matchFastPath("scan the table", input({ mode: "overlay" }))?.action).toEqual({ type: "start_scan" });
+  });
+
+  it("in build mode, 'done' with nothing pointed at marks the current step's parts and reads the next step", () => {
+    const state = t.app.ctx.store.getState(currentId());
+    const design = { ...plan(), plan_id: "plan_build_01k5" };           // a run that build mode started
+    const step = design.steps.find((s) => s.step_id === state.current_step_id)!;
+    const fast = matchFastPath("done", input({ mode: "build", plan: design }));
+    expect(fast?.action).toEqual({ type: "mark_state", part_ids: step.part_ids.filter((id) => state.parts[id]?.state !== "built"), new_state: "built", source: "voice" });
+    expect(fast?.answer_text).toMatch(/^Done\. Next: /);
+  });
+
+  it("while build mode is still scanning or showing ideas, the run is the old one, and 'done' never marks its step", () => {
+    expect(matchFastPath("done", input({ mode: "build" }))).toBeNull();
+    expect(matchFastPath("done", input({ mode: "overlay", plan: { ...plan(), plan_id: "plan_build_01k5" } }))).toBeNull();
+  });
+
   it("'next' and 'back' navigate without touching the event log", () => {
     expect(matchFastPath("next", input())?.action).toEqual({ type: "step_nav", direction: "next" });
     expect(matchFastPath("go back", input())?.action).toEqual({ type: "step_nav", direction: "back" });

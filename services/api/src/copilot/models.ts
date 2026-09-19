@@ -8,9 +8,9 @@ import type { Config } from "../config.js";
  * images, set it to the vision-capable one and nothing else in the repo has to move.
  */
 export interface CopilotModels {
-  chat: string; stt: string; voiceId: string; ttsModel: string;
+  chat: string; router: string; stt: string; voiceId: string; ttsModel: string;
   sampleRate: number;
-  budgets: { stt: number; retrieve: number; llm: number; tool: number; tts: number; hardCap: number; verify: number; retainAudio: number };
+  budgets: { stt: number; route: number; retrieve: number; llm: number; tool: number; tts: number; hardCap: number; verify: number; retainAudio: number };
 }
 
 const num = (v: string | undefined, fallback: number) => (Number.isFinite(Number(v)) && v ? Number(v) : fallback);
@@ -18,6 +18,8 @@ const num = (v: string | undefined, fallback: number) => (Number.isFinite(Number
 export function models(cfg: Config, env: Record<string, string | undefined> = process.env): CopilotModels {
   return {
     chat: env.OPENAI_COPILOT_MODEL || cfg.openaiModel,
+    // The flow router: a small, fast model. Defaults to the copilot's model so it works before a cheaper one is chosen.
+    router: env.OPENAI_ROUTER_MODEL || env.OPENAI_COPILOT_MODEL || cfg.openaiModel,
     stt: env.OPENAI_STT_MODEL || "gpt-transcribe",
     // Sarah, one of ElevenLabs' premade voices. Premade is the category free accounts can use over the
     // API — Rachel is a "library" voice now and 402s on the free tier, which is exactly the kind of
@@ -27,6 +29,8 @@ export function models(cfg: Config, env: Record<string, string | undefined> = pr
     sampleRate: num(env.COPILOT_PCM_RATE, 22050),
     budgets: {
       stt: num(env.COPILOT_STT_MS, 3000),
+      // The router overlaps retrieval and annotation, and the answer model waits for it: a slow router is dropped, not awaited.
+      route: num(env.COPILOT_ROUTE_MS, 700),
       retrieve: num(env.COPILOT_RETRIEVE_MS, 800),
       llm: num(env.COPILOT_LLM_MS, 6000),
       tool: num(env.COPILOT_TOOL_MS, 2000),

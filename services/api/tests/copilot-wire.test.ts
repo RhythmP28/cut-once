@@ -14,7 +14,9 @@ import { auth, makeApp } from "./helpers.js";
 
 type Seen = { path: string; model?: string; schema?: string; tools: number; images: number; toolResults: number; at: number };
 const seen: Seen[] = [];
-const stand = { toolRound: false };
+const stand = { toolRound: false, flow: "question" };
+/** The answer model's calls. The router's call goes out first on every turn that reaches a model. */
+const answers = () => seen.filter((s) => s.path === "chat" && s.schema !== "route");
 const ANSWER = { answer_text: "Run it through the tray.", highlight_parts: ["part_cable_tray"], highlight_style: "path", chunk_ids: [], action: null, confidence: 0.9, needs_clarification: false };
 
 const readBody = (req: IncomingMessage) => new Promise<Buffer>((resolve) => { const c: Buffer[] = []; req.on("data", (d) => c.push(d)); req.on("end", () => resolve(Buffer.concat(c))); });
@@ -33,6 +35,7 @@ async function openai(req: IncomingMessage, res: ServerResponse) {
     toolResults: b.messages.filter((m) => m.role === "tool").length, at: Date.now() });
   const reply = (content: string | null, tool_calls?: object[]) => send({ id: "chatcmpl_wire", object: "chat.completion", created: 0, model: b.model,
     choices: [{ index: 0, finish_reason: tool_calls ? "tool_calls" : "stop", message: { role: "assistant", content, ...(tool_calls ? { tool_calls } : {}) } }] });
+  if (schema === "route") return reply(JSON.stringify({ flow: stand.flow, confidence: 0.95 }));
   if (schema === "verification") return reply(JSON.stringify({ verdict: "present", confidence: 0.9, evidence: "a tray is there" }));
   if (schema === "g0") return reply(JSON.stringify({ shape: "square", colour: "red", confident: true }));
   if (b.tools && stand.toolRound) return reply(null, ["search_documents", "find_parts", "lookup_material"].map((name, i) =>
@@ -52,7 +55,7 @@ beforeAll(async () => {
   process.env.OPENAI_BASE_URL = oaiUrl;
 });
 afterAll(() => { for (const s of stuckSockets) s.destroy(); stuck.close(); oai.close(); delete process.env.OPENAI_BASE_URL; });
-beforeEach(() => { seen.length = 0; stand.toolRound = false; process.env.COPILOT_CAP_MS = "30000"; delete process.env.OPENAI_COPILOT_MODEL; });
+beforeEach(() => { seen.length = 0; stand.toolRound = false; stand.flow = "question"; delete process.env.OPENAI_ROUTER_MODEL; process.env.COPILOT_CAP_MS = "30000"; delete process.env.OPENAI_COPILOT_MODEL; });
 afterEach(() => { delete process.env.COPILOT_CAP_MS; delete process.env.OPENAI_COPILOT_MODEL; });
 
 const FIXTURES = join(REPO_ROOT, "data", "fixtures");
@@ -93,15 +96,16 @@ function g0(env: Record<string, string>): Promise<{ code: number; stdout: string
 }
 
 describe("the real OpenAI calls", () => {
-  it("transcribe, then one model call with both frames, the five tools and the per-question schema", async () => {
+  it("transcribe, route, then one model call with both frames, the five tools and the per-question schema", async () => {
     const t = await makeApp({ openaiKey: "sk-test", copilotMode: "live" });
     try {
       const r = await question(t);
       expect(r.statusCode).toBe(200);
       expect(r.json().answer_text).toBe(ANSWER.answer_text);
-      expect(seen.map((s) => s.path)).toEqual(["transcriptions", "chat"]);
+      expect(seen.map((s) => s.path)).toEqual(["transcriptions", "chat", "chat"]);
       expect(seen[0]!.model).toBe("gpt-transcribe");
-      expect(seen[1]).toMatchObject({ model: "gpt-5.6-luna", schema: "copilot_answer", tools: 5, images: 2 });
+      expect(seen[1]).toMatchObject({ model: "gpt-5.6-luna", schema: "route", tools: 0, images: 0 });   // text only: the router never sees the camera
+      expect(seen[2]).toMatchObject({ model: "gpt-5.6-luna", schema: "copilot_answer", tools: 5, images: 2 });
     } finally { await t.cleanup(); }
   });
 
@@ -110,7 +114,7 @@ describe("the real OpenAI calls", () => {
     const t = await makeApp({ openaiKey: "sk-test", copilotMode: "live" });
     try {
       expect((await question(t)).statusCode).toBe(200);
-      expect(seen.filter((s) => s.path === "chat").map((c) => [c.tools, c.toolResults])).toEqual([[5, 0], [0, 3]]);
+      expect(answers().map((c) => [c.tools, c.toolResults])).toEqual([[5, 0], [0, 3]]);
     } finally { await t.cleanup(); }
   });
 
@@ -118,7 +122,18 @@ describe("the real OpenAI calls", () => {
     const t = await makeApp({ openaiKey: "sk-test", copilotMode: "live" });
     try {
       expect((await question(t, { withFrame: false })).statusCode).toBe(200);
-      expect(seen.find((s) => s.path === "chat")?.images).toBe(0);
+      expect(answers().map((c) => c.images)).toEqual([0]);
+    } finally { await t.cleanup(); }
+  });
+
+  it("the router's own model goes on the wire, and its 'build ideas' ends the turn: a scan, and no answer call", async () => {
+    process.env.OPENAI_ROUTER_MODEL = "tiny-router";
+    stand.flow = "build_ideas";
+    const t = await makeApp({ openaiKey: "sk-test", copilotMode: "live" });
+    try {
+      const r = await question(t);
+      expect([r.statusCode, r.json().action]).toEqual([200, { type: "start_scan" }]);
+      expect(seen.filter((s) => s.path === "chat").map((c) => [c.model, c.schema])).toEqual([["tiny-router", "route"]]);
     } finally { await t.cleanup(); }
   });
 });
@@ -130,7 +145,7 @@ describe("tool calls", () => {
     try {
       const r = await question(t);
       expect(r.json().timings_ms.tool_calls).toBe(3);
-      const [first, second] = seen.filter((s) => s.path === "chat");
+      const [first, second] = answers();
       expect(second!.at - first!.at).toBeLessThan(3500); // one 2 s tool timeout, not three in a row (6 s)
     } finally { await t.cleanup(); }
   }, 30_000);
