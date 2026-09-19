@@ -19,7 +19,8 @@
     "extract:eval": "pnpm -F @cutonce/api exec tsx --env-file-if-exists=../../.env.local src/cli/extract-eval.ts",
     "sync:fixtures": "node scripts/sync-fixtures.mjs",
     "gen:fixtures": "pnpm -F @cutonce/project-model exec tsx scripts/gen-fixtures.ts",
-    "backup": "sh -c 'mkdir -p backups && rsync -a ./data/runtime/ \"./backups/$(date +%Y%m%d-%H%M%S)/\"'"
+    "backup": "sh -c 'mkdir -p backups && rsync -a ./data/runtime/ \"./backups/$(date +%Y%m%d-%H%M%S)/\"'",
+    "sim": "tsx tools/sim/run.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

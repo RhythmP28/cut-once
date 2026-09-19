@@ -1,0 +1,41 @@
+name: sim
+# Every push: photograph the hologram scenes, walk the golden path with a pretend headset, compare plans,
+# and post what changed since the previous push. Changed pictures never fail the run; failing steps do.
+on:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: sim-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  sim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with: { lfs: true, fetch-depth: 0 }
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm -F @cutonce/sim exec playwright install --with-deps --only-shell chromium
+      - name: Fetch the previous push's results
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BEFORE: ${{ github.event.before }}
+        run: bash tools/sim/fetch-baseline.sh
+      - name: Simulate
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: pnpm sim --ci
+      - name: Post the report
+        if: always()
+        run: cat sim-out/report.md >> "$GITHUB_STEP_SUMMARY" || echo "No report was written." >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: sim-out, path: sim-out/, retention-days: 14 }
