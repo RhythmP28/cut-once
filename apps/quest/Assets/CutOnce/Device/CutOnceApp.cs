@@ -41,6 +41,7 @@ namespace CutOnce.Device
         int _seenConnects; string _lastEventId, _toastRun;
         Action<WsMessageDto> _handleMessage;                          // cached: a method group in Update would allocate a delegate every frame
         bool _waitForMarkRelease;
+        BuildScanCapture _capture; string _buildSession;
         readonly ConcurrentQueue<(string permission, bool granted)> _permissionAnswers = new ConcurrentQueue<(string, bool)>();   // filled from Android's thread
 
         // ── start-up ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -73,6 +74,7 @@ namespace CutOnce.Device
             _selection.Changed += _ => _dirty = true;
             _hud = HudController.Create(null);
             _hud.ShowStatus("Starting…", _alignment.Hint);
+            _capture = gameObject.AddComponent<BuildScanCapture>();
         }
 
         void Start()
@@ -214,7 +216,27 @@ namespace CutOnce.Device
                     : answer.permission == QuestPermissions.Scene
                     ? "Spatial data not allowed: build mode can't measure objects. Allow it in Settings > Privacy."
                     : "Microphone not allowed: use the question buttons, or allow it in Settings > Privacy.", 6f);
+            if (OVRInput.GetDown(OVRInput.RawButton.X)) ScanNow();
             if (_dirty) Refresh();
+        }
+
+        /// <summary>X on the left controller: scan this view now (M1's trigger; build mode keeps it as a manual scan).</summary>
+        void ScanNow()
+        {
+            var copilot = FindAnyObjectByType<CopilotController>();
+            var frames = copilot != null ? copilot.frameSourceBehaviour as ICameraFrameSource : null;
+            _hud.Toast("Scanning… hold still", 2f);
+            StartCoroutine(_capture.Capture(frames, GetComponent<QuestSurfaceRaycaster>(), _buildSession, _config.device_id,
+                dto => Run(Upload(dto)), error => _hud.Toast("Couldn't scan: " + error, 4f)));
+        }
+
+        async Task Upload(BuildScanUploadDto dto)
+        {
+            var ok = await _api.PostBuildScan(dto);
+            if (this == null) return;
+            if (ok == null) { _hud.Toast("The server didn't get the scan", 4f); return; }
+            _buildSession = ok.session_id;
+            _hud.Toast("Scan saved: " + ok.scan_id, 3f);
         }
 
         /// <summary>B on the pointed part: a press toggles built / missing (so it is also the undo); holding it flags the part wrong.</summary>
