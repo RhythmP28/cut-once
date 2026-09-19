@@ -1,0 +1,16 @@
+{
+  "name": "CutOnce.Sim.Tests",
+  "rootNamespace": "CutOnce.Sim.Tests",
+  "references": [
+    "CutOnce.Diagnostics",
+    "Oculus.VR",
+    "meta.xr.mrutilitykit",
+    "Unity.XR.Management",
+    "UnityEngine.TestRunner",
+    "UnityEditor.TestRunner"
+  ],
+  "overrideReferences": true,
+  "precompiledReferences": ["nunit.framework.dll"],
+  "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+  "autoReferenced": false
+}

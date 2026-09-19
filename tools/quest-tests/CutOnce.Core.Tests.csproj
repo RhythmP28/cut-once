@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Runs the headset's pure C# (no UnityEngine) and its NUnit tests in seconds, without opening Unity.
+       The same test files run inside Unity as EditMode tests. Usage: pnpm quest:core-test -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <IsPackable>false</IsPackable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <NoWarn>CS0649</NoWarn> <!-- DTO fields are filled by the JSON reader -->
+    <!-- NuGet's audit warnings depend on the day's advisory feed; they must not turn a green build red. -->
+    <WarningsNotAsErrors>NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../apps/quest/Assets/CutOnce/Core/**/*.cs" />
+    <Compile Include="../../apps/quest/Assets/CutOnce/Net/**/*.cs" Exclude="../../apps/quest/Assets/CutOnce/Net/Unity/**/*.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="NUnit" Version="3.14.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />
+  </ItemGroup>
+</Project>

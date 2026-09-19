@@ -205,7 +205,7 @@ Each person has about 19–20 real build hours before feature freeze (T+0 to T+2
 | Print the QR sheets. Find a printer tonight | A1 |
 | Get the desk and parts (power strip, cable, clips). Legs must screw in by hand | A2 |
 | Ask the hardware desk for a second Quest | B |
-| Install Unity 6000.3.12f1 and put the Quest in developer mode | A1 · A2 |
+| Install Unity **6000.6.2f1** with Android Build Support (the version pinned in `apps/quest`; see apps/quest/README.md) and put the Quest in developer mode | A1 · A2 |
 
 ### Demo-day roles (suggested; swap freely)
 - **Operator** (wears the headset): A1, who can nudge or re-align in seconds.

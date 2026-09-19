@@ -2,7 +2,8 @@ import { useState } from "react";
 import type { Assembly, BuildState, Plan } from "@cutonce/schemas";
 import { useCommand } from "./useCommand";
 
-const SEEDS = ["demo_start", "empty"] as const;
+const SEEDS = ["e7_start", "demo_start", "empty"] as const;
+const SEED_LABEL: Record<(typeof SEEDS)[number], string> = { e7_start: "Engineering 7 (E7)", demo_start: "the half-built desk", empty: "an empty desk" };
 
 interface Props {
   assembly: Assembly | null;
@@ -24,19 +25,7 @@ export function RunPanel({ assembly, plan, state, noRun, onChanged }: Props) {
   return (
     <section className="card run-panel">
       <div className="run-head">
-        <div>
-          <div className="label">Run</div>
-          <div className="run-id mono">{assembly ? assembly.assembly_id : noRun ? "no run yet" : "loading…"}</div>
-          {assembly && (
-            <div className="muted">
-              {plan?.name ?? assembly.plan_id} · rev {assembly.plan_revision} · seed {assembly.seed}
-            </div>
-          )}
-        </div>
-        <div className="run-version">
-          <div className="label">Version</div>
-          <div className="big">{state ? state.version : "–"}</div>
-        </div>
+        <div className="step-title">{assembly ? plan?.name ?? assembly.plan_id : noRun ? "No run yet" : "Loading…"}</div>
       </div>
 
       <div className="progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
@@ -60,9 +49,9 @@ export function RunPanel({ assembly, plan, state, noRun, onChanged }: Props) {
       </div>
 
       <div className="row new-run">
-        <label htmlFor="seed">Seed</label>
+        <label htmlFor="seed" className="muted">Start again from</label>
         <select id="seed" value={seed} onChange={(e) => setSeed(e.target.value)}>
-          {SEEDS.map((s) => <option key={s} value={s}>{s}</option>)}
+          {SEEDS.map((s) => <option key={s} value={s}>{SEED_LABEL[s]}</option>)}
         </select>
         <button type="button" className="primary" disabled={busy} onClick={() => void send({ type: "new_run", seed }, "new run")}>
           {busy ? "Starting…" : "New run"}

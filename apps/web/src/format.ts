@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { TwinShape } from "@cutonce/schemas";
 
 /** Re-render on a timer, for "connected 12 s ago" style labels. */
 export function useNow(intervalMs = 1000): number {
@@ -30,4 +31,11 @@ export function clock(iso: string): string {
 
 export function ms(value: number): string {
   return value >= 1000 ? `${(value / 1000).toFixed(1)} s` : `${Math.round(value)} ms`;
+}
+
+const cm = (m: number) => (m * 100).toFixed(1);
+
+/** "⌀6.6 × 15.7 cm" for a cylinder (width, then length), "35.0 × 4.0 × 35.0 cm" for a box (x, up, z). */
+export function shapeSize(shape: TwinShape): string {
+  return shape.type === "cylinder" ? `⌀${cm(shape.diameter)} × ${cm(shape.length)} cm` : `${shape.size.map(cm).join(" × ")} cm`;
 }

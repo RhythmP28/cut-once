@@ -8,7 +8,7 @@ next, keeps a version history of the real build, and answers spoken questions ab
 
 | Path | What |
 |---|---|
-| `apps/quest` | Unity 6 headset app (Meta XR SDK, started from QuestCameraKit) |
+| `apps/quest` | Unity 6000.6.2f1 headset app (Meta XR SDK 205). Setup, the simulator loop and the checks: `apps/quest/README.md`; rules for Quest-safe code: `apps/quest/AGENTS.md` |
 | `apps/web` | Laptop pages: `/director` (demo control), `/upload`, `/review/:plan`, `/history` |
 | `services/api` | One Node 22 + Fastify server: plans, runs, events, live stream, uploads, search, copilot |
 | `packages/schemas` | The shared data formats (Zod → JSON Schema). Every part has one stable `part_id` used everywhere |
@@ -31,6 +31,7 @@ pnpm dev                          # API on http://127.0.0.1:8080
 pnpm -F @cutonce/web dev          # web app with a proxy to the API
 pnpm test && pnpm typecheck
 ```
+Headset app (Unity closed): `pnpm quest:check`, `pnpm quest:build`, `pnpm quest:install`.
 Useful: `pnpm pm validate <plan.json>`, `pnpm gen:fixtures`, `pnpm sync:fixtures`, `pnpm reindex`, `pnpm search:eval`, `pnpm serve:local` + `pnpm tunnel`, `pnpm backup`.
 Put it online (laptop + Cloudflare tunnel, no VM): `infra/README.md`. Elasticsearch: `knowledge/README.md`. E7: `tools/e7/README.md`.
 

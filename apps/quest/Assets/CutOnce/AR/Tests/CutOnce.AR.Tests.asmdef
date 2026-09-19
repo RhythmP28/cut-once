@@ -1,9 +1,9 @@
 {
   "name": "CutOnce.AR.Tests",
-  "references": ["CutOnce.AR", "UnityEngine.TestRunner", "UnityEditor.TestRunner"],
+  "references": ["CutOnce.AR", "CutOnce.Core", "UnityEngine.TestRunner", "UnityEditor.TestRunner"],
   "includePlatforms": ["Editor"],
   "overrideReferences": true,
-  "precompiledReferences": ["nunit.framework.dll"],
+  "precompiledReferences": ["nunit.framework.dll", "Newtonsoft.Json.dll"],
   "defineConstraints": ["UNITY_INCLUDE_TESTS"],
   "autoReferenced": false
 }

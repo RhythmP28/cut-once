@@ -16,7 +16,7 @@ tools/e7/.venv/bin/pip install --no-cache-dir -r tools/e7/requirements.txt
 tools/e7/.venv/bin/python tools/e7/run_all.py
 ```
 
-`run_all.py` runs `00` to `06` and then `check.py`. Nothing is interactive: every hand-entered number is read
+`run_all.py` runs `00` to `03`, the benchmark, `04` to `06`, and then `check.py`. Nothing is interactive: every hand-entered number is read
 from `e7_overrides.yaml`. Expected last lines: `schema ok`, `rests_on ok`, `nodes match`, a table of 8 levels,
 `CHECK PASSED`. Then, from the repo root: `pnpm pm validate data/e7/out/e7.plan.json`.
 
@@ -30,6 +30,36 @@ from `e7_overrides.yaml`. Expected last lines: `schema ok`, `rests_on ok`, `node
 | `05_mesh.py` | extrudes each footprint; one GLB node per part, **node name = part_id**, coordinates baked into vertices | `out/e7.glb`, `stages/mesh/massing.geom.png` |
 | `06_events.py` | one planned `missing -> built` event per part, spaced by the step minutes | `out/e7.events.json` (JSON array) |
 | `check.py` | JSON Schema validation, `rests_on` and step logic, GLB node names and bounds, per-level table | exit code |
+
+## Accuracy benchmark
+
+`benchmark.py` (also `pnpm e7:benchmark`) measures the model against sources that did not produce it: OpenStreetMap's
+outline of the building (way 382735686) and the Ontario lidar roof heights, both committed with their licences. It
+never reads the drawings, so CI runs it (`--check` fails when the committed numbers no longer match the model). Its
+errors become each part's accuracy tags in `04_plan.py` (`source`, `tolerance_m`, `basis`), which the headset draws
+(dashed when the tolerance is above 5 cm) and the copilot can quote. Current score:
+
+| Measure | Model | Reference | Error |
+|---|---|---|---|
+| Outline overlap (IoU) after a rigid fit | | OpenStreetMap | 0.887 |
+| Outline edge distance | | OpenStreetMap | mean 2.81 m, 90% within 4.34 m |
+| Outline area | 3584 m² | 3877 m² | -7.6% |
+| Scale (if left free) | | | 1.006 (the scale bars were read well) |
+| Roof heights, 12,055 lidar pixels | | Ontario lidar, 0.5 m | median 2.25 m, bias -2.21 m |
+| Main roof | 30.11 m | 30.62 m | |
+| Penthouse | 34.18 m | 36.47 m | the section does not show it |
+| Levels | 8 | 8 | |
+| Gross floor area | 27304 m² | 21368–22483 m² | +21.4% (atrium and voids counted as floor) |
+
+What it shows: the west edge sits about 5 m inside the real one (the atrium is traced too narrow), the penthouse is
+about 2 m too low, and the main roof is right to half a metre. Pictures: `data/e7/stages/benchmark/`.
+
+## Loading the drawings into the server
+
+`pnpm e7:install` uploads all 14 published drawings (the 8 level plans, the section, the site and context plans and
+three Engineering 5 sheets) through the normal upload route, downloading any this machine lacks, and makes E7 the
+current run. `data/e7/drawings.json` lists them with their hashes; their hashes are in
+`data/demo/known_hashes.json`, so each upload replays the approved E7 plan, whose parts cite these documents.
 
 ## Re-click (about 40 minutes for everything)
 

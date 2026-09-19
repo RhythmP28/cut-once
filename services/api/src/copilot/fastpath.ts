@@ -1,12 +1,31 @@
 import type { BuildEvent, BuildState, CopilotAction, Part, PartState, Plan } from "@cutonce/schemas";
+import { isBuildPlan } from "../build/plan.js";
 
 export interface FastPathInput {
   plan: Plan; state: BuildState; selectedPartId: string | null; recentEvents: BuildEvent[];
+  /** The headset's mode. "build" from the first scan to the end of the walkthrough. */
+  mode?: "upload" | "overlay" | "build";
 }
-export interface FastPath { action: CopilotAction; answer_text: string; highlight_parts: string[] }
+/**
+ * `action: null` is a spoken reply with nothing to apply; `note` is written on the event (blueprint §550 for undo).
+ * `wish`, on a scan: what the builder asked for (a string), a plain "what can I build?" (null: forget the last wish),
+ * or absent (another look: the wish stays). The pipeline hands it to build mode with the scan.
+ */
+export interface FastPath {
+  action: CopilotAction | null; answer_text: string; highlight_parts: string[]; note?: string; wish?: string | null;
+  /** A run to start from a seed, as the Director's New run does ("build E7"), with what to say if it is already up or cannot start. */
+  startRun?: { seed: string; already: string; failed: string };
+}
 
-/** Lower case, no punctuation, single spaces. "Mark the left rear leg, built." → "mark the left rear leg built". */
-export const normalise = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+/**
+ * Lower case, no punctuation, single spaces. "Mark the left rear leg, built." → "mark the left rear leg built".
+ * An apostrophe joins its word ("It's done." → "its done"): the transcriber writes them, and the commands below are spelt without.
+ */
+export const normalise = (s: string) => s.toLowerCase().replace(/['’]/g, "").replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+
+/** A question never changes the build, whatever the model proposes. "Is the leg in?" asks; "the leg is in" tells. */
+export const isQuestion = (s: string) =>
+  /\?\s*$/.test(s.trim()) || /^(is|are|was|were|am|do|does|did|can|could|should|would|will|have|has|what|where|which|how|why|when|who)\b/i.test(s.trim());
 
 const STOP = new Set(["the", "a", "an", "this", "that", "it", "my", "is", "as", "please", "now"]);
 const words = (s: string) => normalise(s).split(" ").filter((w) => w && !STOP.has(w));
@@ -35,6 +54,32 @@ export function resolvePart(phrase: string, parts: Part[]): Part | null {
   return best && !tied ? best.part : null;
 }
 
+/** "Build E7", "show me E-7", "open Engineering 7": the building, as the Director's New run starts it. */
+const E7_RUN = { seed: "e7_start", already: "Engineering 7 is already up. Ask me about any part.", failed: "I couldn't open Engineering 7 on this server." };
+const OPEN_E7 = /^(?:kit )?(?:(?:can|could) you |please )?(?:build|show|open|load|bring up|go to)(?: me)?(?: the)? (?:e ?7|e seven|engineering (?:7|seven))(?: building)?$/;
+
+const PLAIN_ASK = /^(what can (i|we) (build|make)( with (this|these|that|all this|all of this|this stuff))?|what could (i|we) (build|make)( with (this|these|that))?|help me build something|build something|make something)$/;
+const ASKING = "(?:hey kit )?(?:kit )?(?:(?:can|could|would|will) you |please )?";
+/** "Build me a birdhouse", "let's make a robot", "can we build a tower with these": the thing asked for, as said. */
+const WISH_PHRASES = [
+  new RegExp(`^${ASKING}(?:help me )?(?:build|make) me (an? .+|something(?: .+)?)$`),
+  /^(?:hey kit )?(?:i want to|i wanna|i would like to|id like to|lets|let us) (?:build|make) (an? .+|something(?: .+)?)$/,
+  /^(?:hey kit )?(?:can|could) (?:i|we) (?:build|make) (an? .+?)(?: with (?:this|these|that|all this|this stuff))?$/,
+  new RegExp(`^${ASKING}(?:help me )?(?:build|make) (an? .+)$`),
+];
+/**
+ * The wish in a sentence, or null. Kept to short, plain asks: a long one, and "a smaller one" / "another one" (a
+ * change to designs already on show, not a new thing), are left to the model, which knows what is on show.
+ */
+function wishIn(text: string): string | null {
+  for (const re of WISH_PHRASES) {
+    const wish = re.exec(text)?.[1]?.trim();
+    if (!wish) continue;
+    return wish.split(" ").length <= 10 && !/\bone$/.test(wish) ? wish : null;
+  }
+  return null;
+}
+
 const STATE_WORDS: Record<string, PartState> = { built: "built", done: "built", in: "built", wrong: "wrong", missing: "missing", out: "missing" };
 
 const markState = (partId: string, newState: PartState): CopilotAction =>
@@ -47,20 +92,38 @@ const markState = (partId: string, newState: PartState): CopilotAction =>
  */
 export function matchFastPath(transcript: string, input: FastPathInput): FastPath | null {
   const text = normalise(transcript);
-  const { plan, state, selectedPartId, recentEvents } = input;
+  const { plan, state, selectedPartId, recentEvents, mode } = input;
   const nameOf = (id: string) => plan.parts.find((p) => p.part_id === id)?.name ?? id;
+
+  if (OPEN_E7.test(text)) {
+    return { action: null, answer_text: "Here's Engineering 7, rebuilt from its 14 published drawings. Ask me about any part.", highlight_parts: [], startRun: E7_RUN };
+  }
+
+  // "What can I build?": the rehearsed lines never depend on a model. The headset scans and uploads. A plain ask
+  // forgets the last wish; "build me a birdhouse" carries its own; another look ("scan again") keeps the one there is.
+  // "Look again" is a rescan only in build mode: anywhere else it asks the copilot to look at the part again.
+  if (PLAIN_ASK.test(text)) return { action: { type: "start_scan" }, answer_text: "Let me see what you've got.", highlight_parts: [], wish: null };
+  const wish = wishIn(text);
+  if (wish) return { action: { type: "start_scan" }, answer_text: `Let me see how to make ${wish} from what's here.`, highlight_parts: [], wish };
+  if (/^scan (this|that|again|the table)$/.test(text) || (mode === "build" && text === "look again")) {
+    return { action: { type: "start_scan" }, answer_text: "Let me see what you've got.", highlight_parts: [] };
+  }
 
   // "next" / "back": pure headset navigation, no event.
   if (/^(next|next step|go next|carry on)$/.test(text)) return { action: { type: "step_nav", direction: "next" }, answer_text: "Next step.", highlight_parts: [] };
   if (/^(back|go back|previous|previous step|last step)$/.test(text)) return { action: { type: "step_nav", direction: "back" }, answer_text: "Going back a step.", highlight_parts: [] };
 
-  // "undo": reverse the most recent part_state change. Expressed as a normal mark_state so the
-  // log stays append-only — an undo is a new event, never a deletion.
+  // "undo": reverse the newest change a person made (voice or manual) that is not itself an undo and has not
+  // been undone yet, so saying it twice steps back twice instead of redoing. Seeded demo state is never
+  // undone. Expressed as a normal mark_state noted "undo of evt_…" (blueprint §550): the log stays append-only.
   if (/^(undo|undo that|undo it|take that back)$/.test(text)) {
-    const last = [...recentEvents].reverse().find((e) => e.kind === "part_state" && e.part_id && e.previous_state && e.new_state);
-    if (!last?.part_id || !last.previous_state) return null;
+    const undone = new Set(recentEvents.map((e) => /^undo of (evt_\w+)/.exec(e.note ?? "")?.[1]));
+    const last = [...recentEvents].reverse().find((e) => e.kind === "part_state" && e.part_id && e.previous_state && e.new_state
+      && (e.source === "voice" || e.source === "manual") && !e.note?.startsWith("undo of ") && !undone.has(e.event_id));
+    if (!last?.part_id || !last.previous_state) return { action: null, answer_text: "There's nothing to undo.", highlight_parts: [] };
     return {
       action: markState(last.part_id, last.previous_state),
+      note: `undo of ${last.event_id}`,
       answer_text: `Undone. The ${nameOf(last.part_id)} is back to ${last.previous_state}.`,
       highlight_parts: [last.part_id],
     };
@@ -68,7 +131,14 @@ export function matchFastPath(transcript: string, input: FastPathInput): FastPat
 
   // "done" / "mark it built": the part you are pointing at.
   if (/^(done|its done|thats done|mark (it|this) (built|done)|built)$/.test(text)) {
-    if (!selectedPartId) return null; // nothing selected: let the model ask which part
+    // Nothing selected: let the model ask which part. Except in a build-mode run, where you are holding the piece, not
+    // pointing: there "done" is the whole step. Build mode is also on while scanning and picking, when the run is still
+    // the old one (E7, the desk), so the plan decides, not the mode alone.
+    if (!selectedPartId) return mode === "build" && isBuildPlan(plan) ? stepDone(plan, state) : null;
+    // The headset can point at a part from a plan revision the server no longer runs: say so, do not fail the turn.
+    if (!plan.parts.some((p) => p.part_id === selectedPartId)) {
+      return { action: null, answer_text: "That part isn't in this plan. Reload the plan on the headset and try again.", highlight_parts: [] };
+    }
     if (state.parts[selectedPartId]?.state === "built") return null; // no_op; the full pipeline explains why
     return { action: markState(selectedPartId, "built"), answer_text: `Marked the ${nameOf(selectedPartId)} built.`, highlight_parts: [selectedPartId] };
   }
@@ -84,4 +154,17 @@ export function matchFastPath(transcript: string, input: FastPathInput): FastPat
   }
 
   return null;
+}
+
+/** Build mode's "done": every part of the current step that is not built yet, then the next step, read out. */
+function stepDone(plan: Plan, state: BuildState): FastPath | null {
+  const step = plan.steps.find((s) => s.step_id === state.current_step_id);
+  const todo = step?.part_ids.filter((id) => state.parts[id]?.state !== "built") ?? [];
+  if (!step || todo.length === 0) return null;
+  const next = plan.steps.find((s) => s.index === step.index + 1);
+  return {
+    action: { type: "mark_state", part_ids: todo, new_state: "built", source: "voice" },
+    answer_text: next ? `Done. Next: ${next.instruction}` : "Done. That's the whole build!",
+    highlight_parts: next?.part_ids ?? [],
+  };
 }

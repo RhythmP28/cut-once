@@ -16,7 +16,11 @@ it("walks the whole golden path against a real server", async () => {
   expect(result.steps.map((s) => s.name)).toEqual([
     "health", "new run", "stream connect", "mark built", "idempotent retry", "no-op rejected",
     "history", "copilot answer", "copilot clarifies", "voice command", "director force",
+    "build scan", "build start", "build step",
   ]);
+  // Build mode over real HTTP and the real stream: the kit is named, the riser offered, started and walked.
+  expect(result.steps.find((s) => s.name === "build scan")!.detail).toBe("4 objects → Laptop riser");
+  expect(result.steps.find((s) => s.name === "build step")!.detail).toMatch(/^step_02 → step_03, 2\/5 built$/);
   expect(result.ok).toBe(true);
 }, 30_000);
 

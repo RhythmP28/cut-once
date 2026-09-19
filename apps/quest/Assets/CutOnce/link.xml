@@ -1,0 +1,6 @@
+<!-- The JSON reader fills these types by reflection. If the project's managed stripping level is ever raised, IL2CPP would
+     otherwise remove fields and constructors that no code names, and plans or events would arrive empty on the headset only. -->
+<linker>
+  <assembly fullname="CutOnce.Core" preserve="all"/>
+  <assembly fullname="CutOnce.Net" preserve="all"/>
+</linker>

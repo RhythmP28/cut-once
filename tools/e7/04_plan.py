@@ -2,6 +2,11 @@
 
 Per level N = 1..8: part_e7_l0N_slab (footprint x 0.3 m) and part_e7_l0N_envelope (footprint x clear height),
 plus part_e7_roof. One step per part, in build order. No overall_size (the desk-scale size check is for boxes).
+
+Every part cites the drawings it came from (doc_refs, ids from data/e7/drawings.json) and carries accuracy tags in
+external_ids (source, tolerance_m, basis, reviewed) taken from data/e7/out/e7.benchmark.json: the model measured
+against OpenStreetMap and Ontario lidar, so the headset draws estimated parts dashed and the copilot can say how far
+off a number may be. Run benchmark.py before this stage.
 """
 from __future__ import annotations
 
@@ -16,10 +21,44 @@ MATERIALS = {
 }
 
 
+REVISION = 2   # 2: parts cite their drawings and carry benchmark accuracy tags. A new revision is what makes a running
+               # server import the file again (the store never overwrites a revision it already has).
+
+
+def drawing_ids() -> dict[str, str]:
+    return {d["key"]: d["document_id"] for d in c.read_json(c.DATA / "drawings.json")["drawings"]}
+
+
+def accuracy(role: str, n: int, bench: dict, reviewed: bool) -> dict[str, str]:
+    """Tags from measured error, never guessed. Outline error: 90% of the edge lies within p90 of OpenStreetMap's.
+    Height error: the lidar sees only the top of the building, so inner floor lines are checked through the roof."""
+    f, h = bench["footprint"], bench["heights"]
+    pent, main_roof = h["zones"]["penthouse (level 8 outline)"], h["zones"]["main roof (outside level 8)"]
+    outline = (f"outline traced from the Level {n} plan; the model's outline vs OpenStreetMap: IoU {f['iou']}, "
+               f"mean edge distance {f['mean_boundary_distance_m']} m, 90% within {f['p90_boundary_distance_m']} m")
+    top = n == c.LEVELS[-1]
+    zone = pent if top else main_roof
+    height_err = abs(zone["model_m"] - zone["lidar_median_m"])
+    if role == "slab":
+        tol, basis = f["p90_boundary_distance_m"], outline + "; thickness assumed 0.3 m"
+    elif role == "envelope":
+        tol = max(f["p90_boundary_distance_m"], height_err)
+        basis = (outline + f"; storey height read from the section render; the {'penthouse' if top else 'main roof'} is "
+                 f"{zone['model_m']} m in the model and {zone['lidar_median_m']} m in lidar")
+    else:
+        tol, basis = abs(pent["model_m"] - pent["lidar_median_m"]), (
+            f"flat cap on the level 8 outline; top {pent['model_m']} m in the model vs {pent['lidar_median_m']} m in lidar "
+            "(the penthouse height is not visible in the section); the real atrium roof is a sawtooth")
+    return {"source": "drawings", "tolerance_m": f"{tol:.1f}", "basis": basis, "reviewed": "reviewed" if reviewed else "auto"}
+
+
 def main() -> int:
     c.ensure_dirs()
     ov = c.load_overrides()
     heights = c.read_json(c.STAGES / "heights" / "heights.json")
+    bench = c.read_json(c.OUT / "e7.benchmark.json")
+    docs = drawing_ids()
+    clicked_outlines = "footprints" in (ov.get("clicked_by_person") or {})
     specs = c.part_specs()
     days = ov["schedule"]
     minutes = {"slab": days["slab_days"] * 1440, "envelope": days["envelope_days"] * 1440, "roof": days["roof_days"] * 1440}
@@ -47,18 +86,21 @@ def main() -> int:
             title, how = "Close the roof", "Build the roof over level 8 and the atrium."
         layer = "structure" if role == "slab" else "envelope"
         mat_id = MATERIALS[role][0]
+        sheet = docs["L08"] if role == "roof" else docs[f"L{n:02d}"]
+        refs = [{"document_id": sheet, "page": 1}] + ([] if role == "slab" else [{"document_id": docs["section"], "page": 1}])
         parts.append({
             "part_id": pid, "name": name, "aliases": aliases, "kind": role, "layer": layer,
             "shape": {"type": "mesh", "uri": "e7.glb", "node": pid,
                       "bounds": {"min": [b["min_x"], s["y0"], b["min_z"]], "max": [b["max_x"], s["y1"], b["max_z"]]}},
             "position": [0, 0, 0], "material_id": mat_id, "step_id": step_of[pid],
             "rests_on": rests_on, "attaches_to": [], "verify_hint": hint,
-            "install_minutes": minutes[role], "doc_refs": [],
+            "install_minutes": minutes[role], "doc_refs": refs,
+            "external_ids": accuracy(role, n, bench, clicked_outlines),
         })
         steps.append({
             "step_id": step_of[pid], "index": i, "title": title, "instruction": how, "part_ids": [pid],
             "requires": [step_of[r] for r in rests_on], "layer": layer, "est_minutes": minutes[role],
-            "materials": [{"material_id": mat_id, "qty": 1}], "doc_refs": [],
+            "materials": [{"material_id": mat_id, "qty": 1}], "doc_refs": refs,
         })
 
     materials = []
@@ -87,20 +129,24 @@ def main() -> int:
         "sawtooth ridge line, and the sawtooth roof is simplified to a flat cap.",
         f"Slab thickness is assumed to be {c.SLAB_THICKNESS_M} m on every level.",
         "install_minutes are placeholders that only space the build animation; they are not a construction programme.",
+        f"Benchmark (tools/e7/benchmark.py, independent sources): outline vs OpenStreetMap IoU {bench['footprint']['iou']}, "
+        f"mean edge distance {bench['footprint']['mean_boundary_distance_m']} m; roof heights vs Ontario lidar median "
+        f"|error| {bench['heights']['median_abs_error_m']} m (bias {bench['heights']['bias_m']:+} m); "
+        f"{bench['levels']['model']} levels vs {bench['levels']['reference']} in OpenStreetMap.",
     ]
     # Say "hand-clicked" only once a person really has clicked the footprints.
     extracted_by = ("tools/e7 massing pipeline (hand-clicked footprints)" if "footprints" in clicked else
                     "tools/e7 massing pipeline (footprints estimated by eye by an AI assistant, not yet hand-clicked)")
     plan = {
         "plan_id": "plan_e7_massing", "project_id": "proj_cutonce_demo", "name": "Engineering 7 massing model",
-        "revision": 1, "status": "approved",
+        "revision": REVISION, "status": "approved",
         "frame": {"handedness": "right", "up": "+Y", "units": "m", "pose": "upright",
                   "origin": f"plan pixel {tuple(ov['frame']['origin_px'])} on every level sheet: where the E5/E7 party-wall "
                             "line (west edge of the E7 atrium) meets the line of the E7 bar's north face, at Level 1 "
                             "finished floor (Y = 0). +X = drawing right (roughly east), +Z = drawing down (roughly south)."},
         "layers": ["structure", "envelope"],
         "parts": parts, "materials": materials, "steps": steps, "markers": [], "touch_points": [],
-        "provenance": {"source_document_ids": [], "extracted_by": extracted_by,
+        "provenance": {"source_document_ids": [docs[k] for k in [*(f"L{n:02d}" for n in c.LEVELS), "section"]], "extracted_by": extracted_by,
                        "approved_by": ov["plan"]["approved_by"], "assumptions": assumptions, "validation": []},
     }
     c.write_json(c.OUT / "e7.plan.json", plan)

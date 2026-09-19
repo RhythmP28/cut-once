@@ -1,0 +1,6 @@
+{
+  "name": "CutOnce.Diagnostics",
+  "rootNamespace": "CutOnce.Diagnostics",
+  "references": [],
+  "autoReferenced": true
+}

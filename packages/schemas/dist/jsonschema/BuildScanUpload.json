@@ -1,0 +1,146 @@
+{
+  "$ref": "#/definitions/BuildScanUpload",
+  "definitions": {
+    "BuildScanUpload": {
+      "type": "object",
+      "properties": {
+        "session_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^bsess_[a-z0-9_]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "device_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "grid": {
+          "type": "object",
+          "properties": {
+            "cols": {
+              "type": "integer",
+              "minimum": 8,
+              "maximum": 256
+            },
+            "rows": {
+              "type": "integer",
+              "minimum": 6,
+              "maximum": 192
+            }
+          },
+          "required": [
+            "cols",
+            "rows"
+          ],
+          "additionalProperties": false
+        },
+        "points_mm": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "hit": {
+          "type": "string",
+          "pattern": "^[01]*$"
+        },
+        "camera": {
+          "type": "object",
+          "properties": {
+            "position": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "forward": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            "intrinsics": {
+              "type": "object",
+              "properties": {
+                "width": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0
+                },
+                "height": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0
+                },
+                "fx": {
+                  "type": "number"
+                },
+                "fy": {
+                  "type": "number"
+                },
+                "cx": {
+                  "type": "number"
+                },
+                "cy": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "width",
+                "height",
+                "fx",
+                "fy",
+                "cx",
+                "cy"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "position",
+            "forward",
+            "intrinsics"
+          ],
+          "additionalProperties": false
+        },
+        "photo_b64": {
+          "type": "string",
+          "minLength": 100
+        }
+      },
+      "required": [
+        "device_id",
+        "grid",
+        "points_mm",
+        "hit",
+        "camera",
+        "photo_b64"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

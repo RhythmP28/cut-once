@@ -1,3 +1,4 @@
+// Image work is quick alone (under 1.5 s) but shares the CPU with subprocess tests in a full run: 20 s allowance each.
 import sharp from "sharp";
 import { expect, it } from "vitest";
 import { annotateFrame } from "../src/copilot/annotate.js";
@@ -15,10 +16,10 @@ it("resizes to 1024 wide, keeps 4:3, and draws the box in its state colour", asy
   const [r, g, b] = px(Math.round(640 * 0.8), Math.round(580 * 0.8)); // centre of the box's left edge (x = 512), half-way down
   expect(r).toBeLessThan(90); expect(g).toBeGreaterThan(150); expect(b).toBeGreaterThan(150); // cyan (#00e5ff), allowing JPEG blur
   expect(px(10, 10)[0]).toBeLessThan(60); // the background is untouched
-});
+}, 20_000);
 
 it("colours by state: a wrong part is red", async () => {
   const { px } = await pixels(await annotateFrame(await frame(), [{ n: 2, bbox_px: [100, 400, 200, 200], state: "wrong" }]));
   const [r, g, b] = px(80, 400); // left edge at x = 100 * 0.8, half-way down (y = 500 * 0.8)
   expect(r).toBeGreaterThan(150); expect(g).toBeLessThan(110); expect(b).toBeLessThan(110);
-});
+}, 20_000);

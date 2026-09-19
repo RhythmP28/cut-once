@@ -1,0 +1,207 @@
+using System.Collections.Generic;
+using System.IO;
+using UnityEditor;
+using UnityEditor.Build;
+using UnityEditor.XR.Management;
+using UnityEditor.XR.Management.Metadata;
+using UnityEditor.XR.OpenXR.Features;
+using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
+using UnityEngine.XR.Management;
+using UnityEngine.XR.OpenXR;
+using UnityEngine.XR.OpenXR.Features.Interactions;
+using UnityEngine.XR.OpenXR.Features.MetaQuestSupport;
+
+namespace CutOnce.QuestTools
+{
+    /// <summary>
+    /// The project's Quest 3 settings, written as code so a Mac and a Windows machine end up identical, and anyone can
+    /// put them back with Cut Once > Apply Quest 3 settings. <see cref="QuestChecks"/> verifies the same values, so a
+    /// change here needs the matching change there.
+    /// </summary>
+    public static class QuestSetup
+    {
+        public const string ProductName = "Cut Once";
+        public const string ApplicationId = "com.cutonce.quest";
+        public const AndroidSdkVersions MinAndroidSdk = AndroidSdkVersions.AndroidApiLevel32;
+        public const int Msaa = 4;
+        public const string SettingsFolder = "Assets/CutOnce/Settings";
+        public const string UrpAssetPath = SettingsFolder + "/Quest_URP.asset";
+        public const string UrpRendererPath = SettingsFolder + "/Quest_Renderer.asset";
+        public const string XRSettingsPath = "Assets/XR/XRGeneralSettingsPerBuildTarget.asset";
+        public const string OpenXRLoader = "UnityEngine.XR.OpenXR.OpenXRLoader";
+        public const string MetaXRFeature = "Meta.XR.MetaXRFeature";
+        internal const string Quest3ManifestName = "eureka"; // Quest 3's name in the Android manifest
+
+        [MenuItem("Cut Once/Apply Quest 3 settings", priority = 1)]
+        static void ApplyFromMenu()
+        {
+            Apply();
+            EditorUtility.DisplayDialog("Cut Once", "Quest 3 settings applied.\n\nNext: Cut Once > Check Quest readiness.", "OK");
+        }
+
+        public static void Apply()
+        {
+            ApplyPlayer();
+            ApplyRendering();
+            ApplyXR(BuildTargetGroup.Android);
+            // Play mode in the Editor uses the Standalone settings, and that is what Meta XR Simulator connects to.
+            ApplyXR(BuildTargetGroup.Standalone);
+            ApplyMetaProjectConfig();
+            AssetDatabase.SaveAssets();
+        }
+
+        static void ApplyPlayer()
+        {
+            PlayerSettings.companyName = ProductName;
+            PlayerSettings.productName = ProductName;
+            PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, ApplicationId);
+            PlayerSettings.SetScriptingBackend(NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);
+            PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
+            PlayerSettings.Android.minSdkVersion = MinAndroidSdk;
+            PlayerSettings.Android.forceInternetPermission = true;
+            PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.Android, false);
+            PlayerSettings.SetGraphicsAPIs(BuildTarget.Android, new[] { GraphicsDeviceType.Vulkan });
+            PlayerSettings.colorSpace = ColorSpace.Linear;
+            // The laptop server on the venue Wi-Fi is plain http; Android refuses that unless it is allowed here.
+            PlayerSettings.insecureHttpOption = InsecureHttpOption.AlwaysAllowed;
+            // Otherwise Play mode pauses whenever the simulator window has focus.
+            PlayerSettings.runInBackground = true;
+            EditorUserBuildSettings.androidBuildSubtarget = MobileTextureSubtarget.ASTC;
+        }
+
+        /// <summary>
+        /// Creates an asset folder through the AssetDatabase. A folder made on disk first is not in the database yet,
+        /// so a package creating the same folder right after gets "XR 1" instead of "XR".
+        /// </summary>
+        internal static void EnsureFolder(string path)
+        {
+            if (AssetDatabase.IsValidFolder(path)) return;
+            string parent = Path.GetDirectoryName(path)!.Replace('\\', '/');
+            EnsureFolder(parent);
+            AssetDatabase.CreateFolder(parent, Path.GetFileName(path));
+        }
+
+        static void ApplyRendering()
+        {
+            EnsureFolder(SettingsFolder);
+            var renderer = AssetDatabase.LoadAssetAtPath<UniversalRendererData>(UrpRendererPath);
+            if (renderer == null)
+            {
+                renderer = ScriptableObject.CreateInstance<UniversalRendererData>();
+                AssetDatabase.CreateAsset(renderer, UrpRendererPath);
+            }
+            renderer.renderingMode = RenderingMode.Forward;
+            renderer.depthPrimingMode = DepthPrimingMode.Disabled;
+            renderer.postProcessData = null; // no post-processing: it is a full-screen pass per eye
+            EditorUtility.SetDirty(renderer);
+
+            var asset = AssetDatabase.LoadAssetAtPath<UniversalRenderPipelineAsset>(UrpAssetPath);
+            if (asset == null)
+            {
+                asset = UniversalRenderPipelineAsset.Create(renderer);
+                AssetDatabase.CreateAsset(asset, UrpAssetPath);
+            }
+            asset.msaaSampleCount = Msaa;
+            // HDR's colour format has no alpha channel, and passthrough shows through where alpha is 0.
+            asset.supportsHDR = false;
+            asset.supportsCameraDepthTexture = false;
+            asset.supportsCameraOpaqueTexture = false;
+            asset.renderScale = 1f;
+            // The hologram is unlit, so realtime shadows would cost GPU time for nothing anyone sees.
+            asset.shadowDistance = 0f;
+            EditorUtility.SetDirty(asset);
+
+            GraphicsSettings.defaultRenderPipeline = asset;
+            int current = QualitySettings.GetQualityLevel();
+            for (int i = 0; i < QualitySettings.names.Length; i++)
+            {
+                QualitySettings.SetQualityLevel(i, false);
+                QualitySettings.renderPipeline = asset;
+                // Ignored under URP (the asset's MSAA decides), but Meta's Project Setup Tool sets it to 4; agree with it.
+                QualitySettings.antiAliasing = Msaa;
+                QualitySettings.shadows = UnityEngine.ShadowQuality.Disable;
+                QualitySettings.vSyncCount = 0;
+            }
+            QualitySettings.SetQualityLevel(current, false);
+        }
+
+        static void ApplyXR(BuildTargetGroup group)
+        {
+            var perTarget = XRSettingsPerTarget(create: true);
+            if (!perTarget.HasSettingsForBuildTarget(group)) perTarget.CreateDefaultSettingsForBuildTarget(group);
+            if (!perTarget.HasManagerSettingsForBuildTarget(group)) perTarget.CreateDefaultManagerSettingsForBuildTarget(group);
+            var general = perTarget.SettingsForBuildTarget(group);
+            general.InitManagerOnStart = true;
+            XRPackageMetadataStore.AssignLoader(general.Manager, OpenXRLoader, group);
+            EditorUtility.SetDirty(general);
+
+            FeatureHelpers.RefreshFeatures(group);
+            var openxr = OpenXRSettings.GetSettingsForBuildTargetGroup(group);
+            openxr.renderMode = OpenXRSettings.RenderMode.SinglePassInstanced;
+            foreach (var feature in openxr.GetFeatures())
+            {
+                if (feature.GetType().FullName == MetaXRFeature
+                    || feature is OculusTouchControllerProfile
+                    || feature is MetaQuestTouchPlusControllerProfile)
+                    feature.enabled = true;
+                if (feature is MetaQuestFeature quest)
+                {
+                    quest.enabled = true;
+                    // AddTargetDevice adds a missing entry but leaves an existing, unticked one unticked.
+                    quest.AddTargetDevice(Quest3ManifestName, "Quest 3", true);
+                    var serialized = new SerializedObject(quest);
+                    var quest3 = TargetDevice(serialized, Quest3ManifestName);
+                    if (quest3 != null)
+                    {
+                        quest3.FindPropertyRelative("enabled").boolValue = true;
+                        serialized.ApplyModifiedPropertiesWithoutUndo();
+                    }
+                }
+                EditorUtility.SetDirty(feature);
+            }
+            EditorUtility.SetDirty(openxr);
+        }
+
+        /// <summary>The serialized entry for one target device of the Meta Quest feature (its list is not public).</summary>
+        internal static SerializedProperty TargetDevice(SerializedObject quest, string manifestName)
+        {
+            var devices = quest.FindProperty("targetDevices");
+            for (int i = 0; devices != null && i < devices.arraySize; i++)
+            {
+                var device = devices.GetArrayElementAtIndex(i);
+                if (device.FindPropertyRelative("manifestName").stringValue == manifestName) return device;
+            }
+            return null;
+        }
+
+        internal static XRGeneralSettingsPerBuildTarget XRSettingsPerTarget(bool create)
+        {
+            if (EditorBuildSettings.TryGetConfigObject(XRGeneralSettings.settingsKey, out XRGeneralSettingsPerBuildTarget existing) && existing != null)
+                return existing;
+            if (!create) return null;
+            EnsureFolder(Path.GetDirectoryName(XRSettingsPath)!.Replace('\\', '/'));
+            var created = ScriptableObject.CreateInstance<XRGeneralSettingsPerBuildTarget>();
+            AssetDatabase.CreateAsset(created, XRSettingsPath);
+            EditorBuildSettings.AddConfigObject(XRGeneralSettings.settingsKey, created, true);
+            return created;
+        }
+
+        static void ApplyMetaProjectConfig()
+        {
+            var config = OVRProjectConfig.CachedProjectConfig;
+            // Quest 3 is the demo headset; a spare from the hardware desk may be a 3S, which has the same cameras.
+            config.targetDeviceTypes = new List<OVRProjectConfig.DeviceType> { OVRProjectConfig.DeviceType.Quest3, OVRProjectConfig.DeviceType.Quest3S };
+            config.insightPassthroughSupport = OVRProjectConfig.FeatureSupport.Required; // the whole app is mixed reality
+            config.isPassthroughCameraAccessEnabled = true; // the copilot's photo: horizonos.permission.HEADSET_CAMERA
+            // Depth rays (build mode's scan, placing on a real table): com.oculus.permission.USE_SCENE. Required rather than
+            // Supported: both declare the same permission, and Required is what MRUK's and the Depth API's setup rules write,
+            // so pnpm quest:setup (Meta's fixes, then ours) and this file agree.
+            config.sceneSupport = OVRProjectConfig.FeatureSupport.Required;
+            config.anchorSupport = OVRProjectConfig.AnchorSupport.Enabled; // the aligned desk is kept with a spatial anchor
+            config.handTrackingSupport = OVRProjectConfig.HandTrackingSupport.ControllersAndHands;
+            OVRProjectConfig.CommitProjectConfig(config);
+        }
+    }
+}

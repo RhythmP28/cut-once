@@ -46,7 +46,13 @@ export class Speech {
     } finally {
       job.done = true;
       this.wake(job);
+      this.forget(turnId, job);
     }
+  }
+
+  /** Drops a finished job after the retention time; GET /v1/audio then serves the saved file (turns/routes.ts). */
+  private forget(turnId: string, job: Job) {
+    setTimeout(() => { if (this.jobs.get(turnId) === job) this.jobs.delete(turnId); }, this.m.budgets.retainAudio).unref();
   }
 
   /** Milliseconds from `since` to the first byte of audio, or null if none arrived. This is the G6 number. */
@@ -80,7 +86,9 @@ export class Speech {
 
   /** Makes a cached answer playable through the same live path as a fresh one. */
   adopt(turnId: string, pcm: Buffer) {
-    this.jobs.set(turnId, { chunks: [pcm], done: true, failed: null, waiters: [] });
+    const job: Job = { chunks: [pcm], done: true, failed: null, waiters: [] };
+    this.jobs.set(turnId, job);
     this.turns.saveAudio(turnId, pcm);
+    this.forget(turnId, job);
   }
 }

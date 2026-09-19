@@ -48,8 +48,12 @@ export async function boot(store: Store, docs: DocumentStore, cfg: Config, log: 
   const known = join(demo, "known_hashes.json");
   if (existsSync(known)) docs.mergeKnown(json(known) as Record<string, KnownHash>);
 
-  if (!store.currentAssembly() && store.listSeeds().includes("demo_start")) {
-    try { const a = await store.createAssembly({ seed: "demo_start" }); log.info({ assembly_id: a.assembly_id }, "created the first run from demo_start"); }
-    catch (err) { log.warn({ err }, "could not create the first run"); }
+  // A fresh data folder starts with one run: the configured seed (E7 unless DEFAULT_SEED says otherwise), else the desk.
+  // An existing current run is never replaced here; the Director page's "New run" switches.
+  const seedNames = store.listSeeds();
+  const first = [cfg.defaultSeed, "demo_start"].find((s) => seedNames.includes(s));
+  if (!store.currentAssembly() && first) {
+    try { const a = await store.createAssembly({ seed: first }); log.info({ assembly_id: a.assembly_id, seed: first }, "created the first run"); }
+    catch (err) { log.warn({ err, seed: first }, "could not create the first run"); }
   }
 }

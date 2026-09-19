@@ -32,6 +32,15 @@ is 9 s (`COPILOT_CAP_MS`); past it the turn falls back to a cached answer, or to
 
 - **The server writes the event for a spoken command.** A `mark_state` action in the response has already
   been applied. The headset shows a 2 s Undo toast and must **not** append its own event.
+- **Only commands change the build.** A state change the model proposes is applied only for a statement
+  (never a question), with `needs_clarification` false and confidence ≥ 0.8; its event records the model's
+  confidence and the words. A replayed cached answer never carries an action.
+- **"Undo" steps back** through changes a person made (voice or manual), one per "undo", and never reverses
+  the seeded demo state. Its event is noted `undo of evt_…`. With nothing left it answers "There's nothing to undo."
+- **Nothing heard is still an answer.** An empty or failed transcription returns a spoken "I didn't catch
+  that / couldn't hear that. Hold A and ask again." Only a missing `OPENAI_API_KEY` is a 503.
+- **A frame is optional.** Without one the headset sends `"camera": null` and no `frame` part; the model
+  answers from the tables and documents, and the HUD's cached answers still work.
 - **`CopilotAction` gained a `step_nav` variant** (`{type:"step_nav", direction:"next"|"back"}`) for spoken
   "next" and "back". It carries no part and writes no event — it is headset-local navigation. The JSON
   Schema in `packages/schemas/dist/jsonschema/` is regenerated, so the C# mirror picks it up.
@@ -49,9 +58,11 @@ pnpm sync:fixtures      # copy them into the Unity project
 pnpm dev                # API on :8080, then open http://127.0.0.1:8080/debug
 ```
 
-`pnpm g0` is the gate. If it fails on images, set `OPENAI_COPILOT_MODEL` in `.env.local` to the
-vision-capable model, re-run, and tell the team — Michael's drawing extraction reads images through the
-same helper (`services/api/src/llm.ts`).
+`pnpm g0` is the gate. It checks the model the copilot actually uses (`OPENAI_COPILOT_MODEL` if set,
+else `OPENAI_MODEL`); a check whose key is missing is skipped, not failed. If it fails on images, set
+`OPENAI_COPILOT_MODEL` in `.env.local` to the vision-capable model and re-run: voice answers and camera
+verification both follow it. Tell the team too — drawing extraction reads images with `OPENAI_MODEL`
+through the same helper (`services/api/src/llm.ts`).
 
 ## Fallback ladder
 

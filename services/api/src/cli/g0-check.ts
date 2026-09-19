@@ -71,7 +71,7 @@ function testWav(): Buffer {
   return Buffer.concat([header, data]);
 }
 
-const results: { gate: string; ok: boolean; ms: number; detail: string }[] = [];
+const results: { gate: string; ok: boolean; skipped?: boolean; ms: number; detail: string }[] = [];
 async function check(gate: string, fn: () => Promise<string>) {
   const t0 = Date.now();
   // The detail is awaited before the row is built; putting `await fn()` inside the literal would
@@ -83,7 +83,7 @@ async function check(gate: string, fn: () => Promise<string>) {
 console.log(`chat model:   ${m.chat}\ntranscribe:   ${m.stt}\nvoice:        ${m.ttsModel} / ${m.voiceId}\n`);
 
 /** A missing key marks its checks skipped and keeps going: a half-configured laptop should still test the rest. */
-const skip = (gate: string, why: string) => results.push({ gate, ok: false, ms: 0, detail: `SKIPPED — ${why}` });
+const skip = (gate: string, why: string) => results.push({ gate, ok: false, skipped: true, ms: 0, detail: why });
 
 // G0: an image in, strict JSON out. Everything in the copilot depends on this one answering yes.
 if (!cfg.openaiKey) skip("G0 · image + strict JSON", "OPENAI_API_KEY is not set in .env.local");
@@ -92,8 +92,9 @@ else await check("G0 · image + strict JSON", async () => {
   const image = existsSync(frame)
     ? { data: readFileSync(frame), mime: "image/jpeg" as const }
     : { data: testPng(), mime: "image/png" as const };
-  const out = await jsonCall(loadConfig({}, {}), {
-    name: "g0", schema: Shape, timeoutMs: 30_000,
+  // The loaded config (with the key) and the copilot's own model: the one voice answers and verification use.
+  const out = await jsonCall(cfg, {
+    model: m.chat, name: "g0", schema: Shape, timeoutMs: 30_000,
     system: "You answer only from the image you are given, in the JSON schema provided.",
     text: existsSync(frame) ? "What shape is the large light-coloured panel in the middle of this photo? Give its rough colour." : "What shape is the coloured region, and what colour is it?",
     images: [image],
@@ -122,10 +123,11 @@ else await check("TTS · ElevenLabs PCM", async () => {
   return `${bytes} bytes of PCM at ${m.sampleRate} Hz (${(bytes / 2 / m.sampleRate).toFixed(1)} s)`;
 });
 
-console.log(results.map((r) => `${r.ok ? "PASS" : "FAIL"}  ${r.gate.padEnd(28)} ${String(r.ms).padStart(6)} ms  ${r.detail}`).join("\n"));
+console.log(results.map((r) => `${r.skipped ? "SKIP" : r.ok ? "PASS" : "FAIL"}  ${r.gate.padEnd(28)} ${String(r.ms).padStart(6)} ms  ${r.detail}`).join("\n"));
 const g0 = results[0]!;
-if (!g0.ok && !g0.detail.startsWith("SKIPPED")) {
-  console.error("\nG0 FAILED. Set OPENAI_COPILOT_MODEL to the vision-capable model in .env.local, re-run, and tell the team —");
-  console.error("Michael's drawing extraction reads images through the same helper.");
+if (!g0.ok && !g0.skipped) {
+  console.error(`\nG0 FAILED on ${m.chat}. If the error says the model does not take images, set OPENAI_COPILOT_MODEL in .env.local`);
+  console.error("to a vision-capable model and run pnpm g0 again (it checks that same model), and tell the team.");
 }
-process.exit(results.every((r) => r.ok) ? 0 : 1);
+// A missing key skips its checks; only a check that ran and failed fails the command.
+process.exit(results.some((r) => !r.ok && !r.skipped) ? 1 : 0);

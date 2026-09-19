@@ -19,6 +19,9 @@ export const TurnId = idOf("turn");
 export const VerificationId = idOf("ver");
 export const ContextId = idOf("ctx");
 export const AnchorId = idOf("anchor");
+export const BuildSessionId = idOf("bsess");
+export const ScanId = idOf("scan");
+export const IdeaId = idOf("idea");
 
 /** `evt_` + a 26-character ULID (Crockford base32, upper case). */
 export const EventId = z.string().regex(/^evt_[0-9A-HJKMNP-TV-Z]{26}$/, "must be evt_ + a 26-char ULID");

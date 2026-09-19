@@ -1,0 +1,144 @@
+[
+  {
+    "twin_id": "o1",
+    "name": "tall_can",
+    "label": "tall can",
+    "shape": {
+      "type": "cylinder",
+      "axis": "y",
+      "diameter": 0.05850470126671492,
+      "length": 0.15594753086419566
+    },
+    "position": [
+      0.10186869979256885,
+      0.8170262345679022,
+      0.38503521113874345
+    ],
+    "yaw_deg": 0,
+    "sits_on": "s2",
+    "material": "metal",
+    "load_bearing": true,
+    "cuttable": false,
+    "confidence": 0.9,
+    "error_m": 0.03696919824228547,
+    "points": 22,
+    "distance_m": 1.5942859484567031,
+    "bbox_px": [
+      570,
+      370,
+      30,
+      80
+    ],
+    "snapped": false,
+    "scan_ids": [
+      "scan_rec_synthetic_kit"
+    ]
+  },
+  {
+    "twin_id": "o2",
+    "name": "tall_can",
+    "label": "tall can",
+    "shape": {
+      "type": "cylinder",
+      "axis": "y",
+      "diameter": 0.06667199165693186,
+      "length": 0.15694753086419566
+    },
+    "position": [
+      0.2226791938545873,
+      0.8175262345679022,
+      0.38274111149982887
+    ],
+    "yaw_deg": 0,
+    "sits_on": "s2",
+    "material": "metal",
+    "load_bearing": true,
+    "cuttable": false,
+    "confidence": 0.9,
+    "error_m": 0.03717028928078119,
+    "points": 27,
+    "distance_m": 1.604314245525794,
+    "bbox_px": [
+      500,
+      370,
+      40,
+      80
+    ],
+    "snapped": false,
+    "scan_ids": [
+      "scan_rec_synthetic_kit"
+    ]
+  },
+  {
+    "twin_id": "o3",
+    "name": "tall_can",
+    "label": "tall can",
+    "shape": {
+      "type": "cylinder",
+      "axis": "y",
+      "diameter": 0.07487638593309637,
+      "length": 0.15994753086419566
+    },
+    "position": [
+      0.16055036143335424,
+      0.8190262345679022,
+      0.5386494340821858
+    ],
+    "yaw_deg": 0,
+    "sits_on": "s2",
+    "material": "metal",
+    "load_bearing": true,
+    "cuttable": false,
+    "confidence": 0.9,
+    "error_m": 0.039749871960646596,
+    "points": 24,
+    "distance_m": 1.7329565839486576,
+    "bbox_px": [
+      540,
+      330,
+      40,
+      80
+    ],
+    "snapped": false,
+    "scan_ids": [
+      "scan_rec_synthetic_kit"
+    ]
+  },
+  {
+    "twin_id": "o4",
+    "name": "pizza_box",
+    "label": "pizza box",
+    "shape": {
+      "type": "box",
+      "size": [
+        0.34648099577369246,
+        0.046947530864195675,
+        0.34277323537426935
+      ]
+    },
+    "position": [
+      -0.2002684022863778,
+      0.7625262345679023,
+      0.579941814242053
+    ],
+    "yaw_deg": -91,
+    "sits_on": "s2",
+    "material": "cardboard",
+    "load_bearing": true,
+    "cuttable": true,
+    "confidence": 0.9,
+    "error_m": 0.04108135857921616,
+    "points": 137,
+    "distance_m": 1.7993570732714022,
+    "bbox_px": [
+      650,
+      350,
+      180,
+      80
+    ],
+    "snapped": false,
+    "scan_ids": [
+      "scan_rec_synthetic_kit"
+    ]
+  }
+]

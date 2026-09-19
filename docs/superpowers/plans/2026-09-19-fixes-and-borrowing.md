@@ -17,7 +17,7 @@
 - **Disk is truth.** Elasticsearch and MCP are optional; a tool call never throws on the copilot path.
 - **The user's tap or voice is truth.** Models and the camera only suggest.
 - **Stable IDs.** `part_id`, `issue_id` and `chunk_id` are the join keys everywhere.
-- Unity **6000.3.12f1**, Meta XR **205.0.0** (the QuestCameraKit fork's pins). Oculus SDK-licensed code is called, not vendored; LGPL/GPL sources are ideas only.
+- Unity **6000.3.12f1**, Meta XR **205.0.0** (the QuestCameraKit fork's pins). Superseded 2026-09-19: `apps/quest` is the project and pins Unity **6000.6.2f1** (see `apps/quest/README.md`). Oculus SDK-licensed code is called, not vendored; LGPL/GPL sources are ideas only.
 - Secrets never enter git.
 
 ## How every decision in this plan was made

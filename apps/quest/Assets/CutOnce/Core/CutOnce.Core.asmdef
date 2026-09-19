@@ -1,0 +1,7 @@
+{
+  "name": "CutOnce.Core",
+  "rootNamespace": "CutOnce.Core",
+  "references": [],
+  "noEngineReferences": true,
+  "autoReferenced": true
+}

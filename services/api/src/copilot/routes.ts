@@ -33,6 +33,11 @@ export const copilotRoutes: Plugin = (app: FastifyInstance, ctx: Ctx) => {
     const stream = speech.stream(turnId);
     return stream ? { stream, contentType: speech.contentType } : null;
   };
+  ctx.hooks.say = (text) => {
+    const turnId = turns.newTurnId();
+    speech.start(turnId, text);
+    return { turn_id: turnId, audio_url: `/v1/audio/${turnId}` };
+  };
 
   const requireAssembly = (aid: string) => { ctx.store.getAssembly(aid); return aid; };
 
@@ -46,11 +51,12 @@ export const copilotRoutes: Plugin = (app: FastifyInstance, ctx: Ctx) => {
       const context = S.CopilotContext.safeParse(jsonPart(parsed, "context"));
       if (!context.success) throw badRequest("the `context` field is not a CopilotContext", context.error.issues);
       const audio = filePart(parsed, "audio");
-      const frame = filePart(parsed, "frame");
-      captures.put({ frame: frame.buffer, audio: audio.buffer, mime: frame.mime, note: `query on ${aid}`, context: context.data });
+      // A frame is optional: the camera may not be ready, and the rehearsed HUD answers must work without one.
+      const frame = parsed.files.frame?.buffer.length ? parsed.files.frame : null;
+      captures.put({ frame: frame?.buffer ?? null, audio: audio.buffer, mime: frame?.mime ?? "image/jpeg", note: `query on ${aid}`, context: context.data });
 
       try {
-        return await answerQuery(deps, { assemblyId: aid, context: context.data as CopilotContext, audio: audio.buffer, frame: frame.buffer, uploadMs }, app.log);
+        return await answerQuery(deps, { assemblyId: aid, context: context.data as CopilotContext, audio: audio.buffer, frame: frame?.buffer ?? null, uploadMs }, app.log);
       } catch (err) {
         // Everything recoverable is already handled inside the pipeline; this is a dead key or a dead network.
         app.log.error({ err: (err as Error).message }, "copilot query failed");

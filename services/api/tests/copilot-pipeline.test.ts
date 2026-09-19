@@ -1,8 +1,11 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Strict, type CopilotContext, type WsMessage } from "@cutonce/schemas";
 import { REPO_ROOT } from "../src/config.js";
+import type { KitBuildContext } from "../src/build/session.js";
+import type { KitTurn } from "../src/copilot/kit.js";
+import { twin } from "./build-synth.js";
 import { auth, makeApp } from "./helpers.js";
 
 // The two calls that need a key and a network. Everything between them is the real pipeline.
@@ -10,6 +13,10 @@ const transcribe = vi.hoisted(() => vi.fn());
 const ask = vi.hoisted(() => vi.fn());
 vi.mock("../src/copilot/stt.js", () => ({ transcribe }));
 vi.mock("../src/copilot/answer.js", async (importOriginal) => ({ ...(await importOriginal<object>()), ask }));
+const routeTurn = vi.hoisted(() => vi.fn());
+vi.mock("../src/copilot/router.js", async (importOriginal) => ({ ...(await importOriginal<object>()), routeTurn }));
+const runKitTurn = vi.hoisted(() => vi.fn());
+vi.mock("../src/copilot/kit.js", async (importOriginal) => ({ ...(await importOriginal<object>()), runKitTurn }));
 
 const FIXTURES = join(REPO_ROOT, "data", "fixtures");
 const frame = () => readFileSync(join(FIXTURES, "frame_0001.jpg"));
@@ -22,6 +29,8 @@ beforeEach(async () => {
   t = await makeApp({ elevenKey: "", openaiKey: "test-key", copilotMode: "live" });
   transcribe.mockReset();
   ask.mockReset();
+  routeTurn.mockReset(); routeTurn.mockResolvedValue(null);
+  runKitTurn.mockReset();
 });
 afterEach(async () => { await t.cleanup(); });
 
@@ -148,8 +157,22 @@ describe("a question", () => {
     expect((await query()).json().highlight_parts).toEqual(["part_cable_tray"]);
   });
 
-  it("503s with a readable reason when transcription itself fails", async () => {
-    transcribe.mockRejectedValue(new Error("OPENAI_API_KEY is not set"));
+  it("answers out loud when transcription fails, instead of an error", async () => {
+    transcribe.mockRejectedValue(new Error("Request timed out."));
+    const r = await query();
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toMatchObject({ needs_clarification: true, answer_text: "I couldn't hear that. Hold A and ask again." });
+    expect(r.json().audio_url).toMatch(/^\/v1\/audio\/turn_/);
+    expect(ask).not.toHaveBeenCalled();
+  });
+
+  it("answers out loud when nothing was said", async () => {
+    transcribe.mockResolvedValue("");
+    expect((await query()).json()).toMatchObject({ needs_clarification: true, answer_text: "I didn't catch that. Hold A and ask again." });
+  });
+
+  it("still 503s with a readable reason when the OpenAI key is missing: a set-up problem to find at rehearsal", async () => {
+    t.app.ctx.cfg.openaiKey = "";
     const r = await query();
     expect(r.statusCode).toBe(503);
     expect(r.json().error.message).toContain("OPENAI_API_KEY");
@@ -204,5 +227,341 @@ describe("the safety net", () => {
     await promote("q_cable");
     const r = await t.app.inject({ method: "GET", url: "/v1/copilot/cache", headers: auth });
     expect(r.json().entries).toMatchObject([{ scripted_query_id: "q_cable", transcript: "where does the power cable run" }]);
+  });
+});
+
+describe("a blank answer", () => {
+  it("is replaced by a short spoken line, so the headset never shows and plays nothing", async () => {
+    transcribe.mockResolvedValue("hmm"); ask.mockResolvedValue(draft({ answer_text: "   " }));
+    const body = (await query()).json();
+    expect(body.answer_text).toBe("I don't have an answer for that. Try asking another way.");
+    expect(body.needs_clarification).toBe(true);
+  });
+});
+
+describe("a question with no camera frame", () => {
+  const noFrame = (over: Partial<CopilotContext> = {}, frameBytes: Buffer | null = null) => t.app.inject({
+    method: "POST", url: `/v1/assemblies/${aid()}/copilot/query`,
+    ...multipart([
+      { name: "context", value: JSON.stringify({ ...baseContext(), assembly_id: aid(), visible_parts: [], camera: null, ...over }) },
+      { name: "audio", value: Buffer.from("RIFFfake"), filename: "a.wav", type: "audio/wav" },
+      ...(frameBytes ? [{ name: "frame", value: frameBytes, filename: "f.jpg", type: "image/jpeg" }] : []),
+    ]),
+  });
+
+  it("is answered without images when the headset sends no frame at all", async () => {
+    transcribe.mockResolvedValue("where does the power cable run"); ask.mockResolvedValue(draft());
+    const r = await noFrame();
+    expect(r.statusCode).toBe(200);
+    expect(ask.mock.calls[0]![2].frames).toEqual({ annotated: null, raw: null });
+  });
+
+  it("treats a zero-byte frame the same way", async () => {
+    transcribe.mockResolvedValue("where does the power cable run"); ask.mockResolvedValue(draft());
+    expect((await noFrame({}, Buffer.alloc(0))).statusCode).toBe(200);
+    expect(ask.mock.calls[0]![2].frames).toEqual({ annotated: null, raw: null });
+  });
+
+  it("still replays a rehearsed answer from the HUD", async () => {
+    transcribe.mockResolvedValue("where does the power cable run"); ask.mockResolvedValue(draft());
+    const turnId = (await query()).json().turn_id;
+    await t.app.inject({ method: "POST", url: "/v1/director/command", headers: auth, payload: { type: "promote_cache", turn_id: turnId, scripted_query_id: "q_cable" } });
+    const body = (await noFrame({ scripted_query_id: "q_cable" })).json();
+    expect(body.cached).toBe(true);
+    expect(body.answer_text).toContain("cable tray");
+  });
+});
+
+describe("what may change the build", () => {
+  const legBuilt = { type: "mark_state", part_ids: ["part_left_rear_leg"], new_state: "built" };
+  const leg = () => t.app.ctx.store.getState(aid()).parts.part_left_rear_leg!.state;
+
+  it("a question never does, whatever the model proposes", async () => {
+    transcribe.mockResolvedValue("is the left rear leg in yet?");
+    ask.mockResolvedValue(draft({ action: legBuilt, confidence: 0.95 }));
+    expect((await query()).json().action).toBeNull();
+    expect(leg()).toBe("missing");
+  });
+
+  it("an unsure statement does not either", async () => {
+    transcribe.mockResolvedValue("I think the left rear leg is on");
+    ask.mockResolvedValue(draft({ action: legBuilt, confidence: 0.2, needs_clarification: true }));
+    expect((await query()).json().action).toBeNull();
+    expect(leg()).toBe("missing");
+  });
+
+  it("a sure statement does, and the log records it as the model's call with its confidence", async () => {
+    transcribe.mockResolvedValue("the left rear leg is on");
+    ask.mockResolvedValue(draft({ action: legBuilt, confidence: 0.9 }));
+    expect((await query()).json().action).toMatchObject({ type: "mark_state", part_ids: ["part_left_rear_leg"], new_state: "built" });
+    expect(leg()).toBe("built");
+    expect(t.app.ctx.store.getEvents(aid()).events.at(-1)).toMatchObject({ source: "voice", confidence: 0.9, note: 'model, from: "the left rear leg is on"' });
+  });
+
+  it("a replayed cached answer carries no action, because nothing re-applies it", async () => {
+    transcribe.mockResolvedValue("mark the left rear leg built");
+    const turnId = (await query()).json().turn_id;
+    await t.app.inject({ method: "POST", url: "/v1/director/command", headers: auth, payload: { type: "promote_cache", turn_id: turnId, scripted_query_id: "q_mark" } });
+    const body = (await query({ scripted_query_id: "q_mark" })).json();
+    expect(body.cached).toBe(true);
+    expect(body.action).toBeNull();
+  });
+});
+
+describe("spoken commands", () => {
+  const leg = () => t.app.ctx.store.getState(aid()).parts.part_left_rear_leg!.state;
+
+  it("'undo' twice after one change leaves it undone and says there is nothing more", async () => {
+    transcribe.mockResolvedValue("mark the left rear leg built"); await query();
+    transcribe.mockResolvedValue("undo");
+    await query();
+    expect(leg()).toBe("missing");
+    expect(t.app.ctx.store.getEvents(aid()).events.at(-1)!.note).toMatch(/^undo of evt_/);
+    const second = (await query()).json();
+    expect(second.answer_text).toBe("There's nothing to undo.");
+    expect(second.action).toBeNull();
+    expect(leg()).toBe("missing");
+  });
+
+  it("'done' on a part from another plan revision answers instead of failing the turn", async () => {
+    transcribe.mockResolvedValue("done");
+    const r = await query({ selected_part_id: "part_from_another_revision" });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toMatchObject({ action: null, answer_text: expect.stringContaining("isn't in this plan") });
+  });
+});
+
+describe("the demo cache", () => {
+  it("refuses a scripted id that is not a plain name, so promote cannot write outside the cache folder", async () => {
+    transcribe.mockResolvedValue("where does the power cable run"); ask.mockResolvedValue(draft());
+    const turnId = (await query()).json().turn_id;
+    const escaped = join(t.dataDir, "..", "cutonce_escape.json");
+    rmSync(escaped, { force: true }); // a leftover from a run before the fix must not decide this test
+    const r = await t.app.inject({ method: "POST", url: "/v1/director/command", headers: auth, payload: { type: "promote_cache", turn_id: turnId, scripted_query_id: "../../cutonce_escape" } });
+    expect(r.statusCode).toBe(400);
+    expect(existsSync(escaped)).toBe(false);
+  });
+});
+
+describe("'build E7' by voice", () => {
+  it("starts the E7 run with no model, and says so; asked again, says it is already up", async () => {
+    transcribe.mockResolvedValue("Build E7");
+    const body = (await query()).json();
+    expect(body.answer_text).toBe("Here's Engineering 7, rebuilt from its 14 published drawings. Ask me about any part.");
+    expect(body.action).toBeNull();
+    expect(t.app.ctx.store.getAssembly(t.app.ctx.store.currentAssembly()!.assembly_id).plan_id).toBe("plan_e7_massing");
+    const runs = t.app.ctx.store.listAssemblies().length;
+    transcribe.mockResolvedValue("show me E7");
+    expect((await query()).json().answer_text).toBe("Engineering 7 is already up. Ask me about any part.");
+    expect(t.app.ctx.store.listAssemblies()).toHaveLength(runs);
+    expect([routeTurn.mock.calls.length, ask.mock.calls.length]).toEqual([0, 0]);
+  });
+  it("says it could not, instead of failing the turn, when E7 is not installed", async () => {
+    transcribe.mockResolvedValue("Build E7");
+    vi.spyOn(t.app.ctx.store, "getSeed").mockImplementation(() => { throw new Error("no seed e7_start"); });
+    const r = await query();
+    expect([r.statusCode, r.json().answer_text]).toEqual([200, "I couldn't open Engineering 7 on this server."]);
+  });
+});
+
+describe("the wish, from the first ask", () => {
+  it("'build me a birdhouse' scans at once with the wish, and no model is asked", async () => {
+    transcribe.mockResolvedValue("Can you build me a birdhouse?");
+    const expect_ = vi.spyOn(t.app.ctx.hooks.build!, "expectScan");
+    const body = (await query()).json();
+    expect(body.action).toEqual({ type: "start_scan" });
+    expect(body.answer_text).toBe("Let me see how to make a birdhouse from what's here.");
+    expect(expect_).toHaveBeenCalledWith("a birdhouse");
+    expect([routeTurn.mock.calls.length, ask.mock.calls.length]).toEqual([0, 0]);
+  });
+  it("a plain 'what can I build?' clears the wish, and 'scan again' leaves it alone", async () => {
+    const expect_ = vi.spyOn(t.app.ctx.hooks.build!, "expectScan");
+    transcribe.mockResolvedValue("what can I build");
+    await query();
+    expect(expect_).toHaveBeenLastCalledWith(null);
+    expect_.mockClear();
+    transcribe.mockResolvedValue("scan again");
+    await query();
+    expect(expect_).not.toHaveBeenCalled();
+  });
+  it("the router's 'build ideas' carries its wish", async () => {
+    transcribe.mockResolvedValue("could you come up with something to hold my phone");
+    routeTurn.mockResolvedValue({ flow: "build_ideas", confidence: 0.9, wish: "something to hold my phone" });
+    const expect_ = vi.spyOn(t.app.ctx.hooks.build!, "expectScan");
+    expect((await query()).json().action).toEqual({ type: "start_scan" });
+    expect(expect_).toHaveBeenCalledWith("something to hold my phone");
+  });
+});
+
+describe("outside build mode: the router", () => {
+  it("'what can I build' is instant: start_scan, no router and no answer model", async () => {
+    transcribe.mockResolvedValue("what can I build");
+    const body = (await query()).json();
+    expect(body.action).toEqual({ type: "start_scan" });
+    expect(ask).not.toHaveBeenCalled();
+    expect(routeTurn).not.toHaveBeenCalled();
+  });
+  it("the router's build_ideas starts a scan without the answer model", async () => {
+    transcribe.mockResolvedValue("could I make something useful out of all this junk");
+    routeTurn.mockResolvedValue({ flow: "build_ideas", confidence: 0.9 });
+    const body = (await query()).json();
+    expect(body.action).toEqual({ type: "start_scan" });
+    expect(ask).not.toHaveBeenCalled();
+  });
+  it("an unsure router changes nothing: an E7 or desk question is answered as it always was", async () => {
+    transcribe.mockResolvedValue("can we move this bracket up");
+    routeTurn.mockResolvedValue({ flow: "build_ideas", confidence: 0.6 });
+    ask.mockResolvedValue(draft());
+    const body = (await query({ mode: "overlay" })).json();
+    expect([body.answer_text, body.needs_clarification]).toEqual(["Run it through the cable tray to the right rear leg.", false]);
+  });
+  it("a question still goes to the answer model, and Kit's turn is never used", async () => {
+    transcribe.mockResolvedValue("where does this cable go");
+    routeTurn.mockResolvedValue({ flow: "question", confidence: 0.95 });
+    ask.mockResolvedValue(draft());
+    expect((await query()).json().answer_text).toMatch(/cable tray/);
+    expect(runKitTurn).not.toHaveBeenCalled();
+  });
+  it("a router that failed or ran out of time is a question: the copilot never goes quiet because the small model did", async () => {
+    transcribe.mockResolvedValue("where does this cable go");
+    routeTurn.mockResolvedValue(null);
+    ask.mockResolvedValue(draft());
+    const body = (await query()).json();
+    expect(body.answer_text).toMatch(/cable tray/);
+    expect(body.timings_ms.route).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("build mode: Kit's turn", () => {
+  const ideas = [
+    { idea_id: "idea_a", title: "Birdhouse", why: "Birds need homes.", uses: ["o1", "o2"], steps: 2 },
+    { idea_id: "idea_b", title: "Robot", why: "Beep.", uses: ["o1"], steps: 1 },
+    { idea_id: "idea_c", title: "Can tower", why: "Tall.", uses: ["o1"], steps: 1 },
+  ];
+  const table = (over: Partial<KitBuildContext> = {}): KitBuildContext => ({
+    status: "showing 3 designs", surfaces: [], camera: null, wish: null, started: null, tape: false, ideas,
+    twins: [twin({ twin_id: "o1", name: "tall_can", label: "tall can" }), twin({ twin_id: "o2", name: "pizza_box", label: "pizza box" })], ...over,
+  });
+  const kitHears = (over: Partial<KitTurn> = {}) => runKitTurn.mockResolvedValue({
+    kit: { heard: "something", intent: "question", wish: null, pick: null, answer: "It holds weight.", objects: [], confidence: 0.9, ...over }, sttMs: 12, modelMs: 34,
+  });
+  const build = () => t.app.ctx.hooks.build!;
+  const onTable = (over: Partial<KitBuildContext> = {}) => vi.spyOn(build(), "kitContext").mockReturnValue(table(over));
+
+  it("answers a question with the objects it is about, and neither the router nor the answer model is asked", async () => {
+    onTable();
+    kitHears({ heard: "can the box hold my laptop", answer: "Yes, the pizza box on your left can.", objects: ["o2", "o9"] });
+    const body = (await query({ mode: "build" })).json();
+    expect([body.answer_text, body.highlight_twins, body.action, body.needs_clarification]).toEqual(["Yes, the pizza box on your left can.", ["o2"], null, false]);
+    expect(body.transcript).toBe("can the box hold my laptop");
+    expect(body.timings_ms).toMatchObject({ kit: 34, stt: 12, kit_openai: 1 });
+    expect([transcribe.mock.calls.length, routeTurn.mock.calls.length, ask.mock.calls.length]).toEqual([0, 0, 0]);
+    const call = runKitTurn.mock.calls[0]![0];
+    expect([call.ai.provider, call.context.status, call.building, call.audio.length > 0]).toEqual(["openai", "showing 3 designs", null, true]);
+  });
+
+  it("a wish with nothing known yet starts a scan that carries it", async () => {
+    onTable({ twins: [], ideas: [], status: "nothing scanned yet" });
+    const expect_ = vi.spyOn(build(), "expectScan");
+    kitHears({ heard: "I would love something birds could live in", intent: "ideas", wish: "a birdhouse", answer: "" });
+    const body = (await query({ mode: "build" })).json();
+    expect([body.action, body.answer_text]).toEqual([{ type: "start_scan" }, "Let me see how to make a birdhouse from what's here."]);
+    expect(expect_).toHaveBeenCalledWith("a birdhouse");
+  });
+
+  it("a wish with the objects already known rethinks them, with no new scan to wait for", async () => {
+    onTable();
+    vi.spyOn(build(), "canRethink").mockReturnValue(true);
+    const rethink = vi.spyOn(build(), "rethink").mockResolvedValue(true);
+    kitHears({ heard: "what about a little house for birds", intent: "ideas", wish: "a birdhouse", answer: "Ooh, a birdhouse. Let me think." });
+    const body = (await query({ mode: "build" })).json();
+    expect([body.action, body.answer_text]).toEqual([null, "Ooh, a birdhouse. Let me think."]);
+    expect(rethink).toHaveBeenCalledWith("a birdhouse");
+  });
+
+  it("mid-build, 'something crazier' looks at the table again with that wish (the pieces have moved)", async () => {
+    onTable({ started: "idea_a", ideas: [], status: "a design is being built" });
+    vi.spyOn(build(), "canRethink").mockReturnValue(false);
+    const expect_ = vi.spyOn(build(), "expectScan");
+    kitHears({ heard: "now something crazier", intent: "change", wish: "something crazier", answer: "" });
+    const body = (await query({ mode: "build" })).json();
+    expect([body.action, body.answer_text]).toEqual([{ type: "start_scan" }, "Let me look again with that in mind."]);
+    expect(expect_).toHaveBeenCalledWith("something crazier");
+  });
+
+  it("picks a design on show by where it stands, as the trigger would", async () => {
+    onTable();
+    const start = vi.spyOn(build(), "startIdea").mockResolvedValue({});
+    kitHears({ heard: "the one on the right", intent: "pick", pick: null });
+    expect((await query({ mode: "build" })).json().answer_text).toBe("Building the can tower. Watch the pieces.");
+    expect(start).toHaveBeenCalledWith("idea_c");
+  });
+
+  it("a picked build that cannot be started is said out loud, not a failed turn", async () => {
+    onTable();
+    vi.spyOn(build(), "startIdea").mockRejectedValue(new Error("ENOSPC: no space left on device"));
+    kitHears({ heard: "the birdhouse please", intent: "pick", pick: "idea_a" });
+    const r = await query({ mode: "build" });
+    expect([r.statusCode, r.json().answer_text, r.json().needs_clarification]).toEqual([200, "I couldn't start that build. Try again.", true]);
+  });
+
+  it("voice commands said outright are exact, whatever the model made of them", async () => {
+    onTable();
+    const expect_ = vi.spyOn(build(), "expectScan");
+    kitHears({ heard: "What can I build?", intent: "question", answer: "Lots of things!" });
+    const body = (await query({ mode: "build" })).json();
+    expect([body.action, body.answer_text]).toEqual([{ type: "start_scan" }, "Let me see what you've got."]);
+    expect(expect_).toHaveBeenCalledWith(null);
+  });
+
+  it("'done' is the step command; with no build under way there is no step, and Kit says so", async () => {
+    onTable();
+    kitHears({ heard: "I'm finished with that", intent: "done", answer: "", confidence: 0.95 });
+    // Nothing is pointed at: the hologram is hidden while designs are chosen, so the headset sends no selection.
+    const body = (await query({ mode: "build", selected_part_id: null, selection_source: "none" })).json();
+    expect([body.action, body.answer_text, body.needs_clarification]).toEqual([null, "There's no step to do that to yet.", true]);
+  });
+
+  it("says 'I didn't catch that' when nothing was heard", async () => {
+    onTable();
+    kitHears({ heard: "  ", intent: "unclear", answer: "" });
+    expect((await query({ mode: "build" })).json().answer_text).toBe("I didn't catch that. Hold A and ask again.");
+  });
+
+  it("tries OMNI first and, when it fails fast, OpenAI once, inside the hard cap", async () => {
+    const old = t;
+    process.env.COPILOT_CAP_MS = "9000";                                   // the real cap: this file shortens it for its other tests
+    t = await makeApp({ elevenKey: "", openaiKey: "test-key", omniKey: "q", omniBaseUrl: "http://127.0.0.1:9/v1", copilotMode: "live" });
+    try {
+      onTable();
+      runKitTurn.mockRejectedValueOnce(new Error("401 Unauthorized"))
+        .mockResolvedValueOnce({ kit: { heard: "hi", intent: "question", wish: null, pick: null, answer: "Hello!", objects: [], confidence: 0.9 }, sttMs: 20, modelMs: 40 });
+      const body = (await query({ mode: "build" })).json();
+      expect(body.answer_text).toBe("Hello!");
+      expect(runKitTurn.mock.calls.map((c) => c[0].ai.provider)).toEqual(["omni", "openai"]);
+      expect(body.timings_ms).toMatchObject({ kit_openai: 1 });
+    } finally { await t.cleanup(); t = old; }
+  });
+
+  it("says 'ask me again' when the model runs out of time and too little of the cap is left for a fallback", async () => {
+    const old = t;
+    t = await makeApp({ elevenKey: "", openaiKey: "test-key", copilotMode: "live", kitTurnMs: 200 });
+    try {
+      onTable();
+      runKitTurn.mockReturnValue(new Promise(() => {}));
+      const started = Date.now();
+      const body = (await query({ mode: "build" })).json();
+      expect([body.answer_text, body.needs_clarification]).toEqual(["That took too long. Ask me again.", true]);
+      expect(Date.now() - started).toBeLessThan(3000);
+    } finally { await t.cleanup(); t = old; }
+  });
+
+  it("with no provider at all, build mode answers 503 like everything else: a set-up problem", async () => {
+    const old = t;
+    t = await makeApp({ elevenKey: "", openaiKey: "", copilotMode: "live" });
+    try {
+      expect((await query({ mode: "build" })).statusCode).toBe(503);
+      expect(runKitTurn).not.toHaveBeenCalled();
+    } finally { await t.cleanup(); t = old; }
   });
 });

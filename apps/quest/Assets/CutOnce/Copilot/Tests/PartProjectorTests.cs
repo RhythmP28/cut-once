@@ -40,4 +40,33 @@ public class PartProjectorTests
         Assert.AreEqual(750f, r.y, 0.5f); Assert.AreEqual(960f, r.yMax, 0.5f);
         Assert.Greater(f, 0f);
     }
+
+    class Part : IProjectablePart
+    {
+        public string PartId { get; set; }
+        public string State { get; set; }
+        public Bounds WorldBounds { get; set; }
+    }
+
+    [Test] public void ProjectKeepsOnlyPartsInFrameWithPixelBoxesAndNearFaceDistance()
+    {
+        var k = new CameraIntrinsics { width = 1280, height = 960, fx = 900, fy = 900, cx = 640, cy = 480 };
+        var frame = new CameraFrame(new byte[] { 1 }, Vector3.zero, Quaternion.identity, k, System.DateTime.UtcNow,
+            p => k.Pinhole(p, Vector3.zero, Quaternion.identity));
+        var parts = new IProjectablePart[]
+        {
+            new Part { PartId = "part_ahead", State = "missing", WorldBounds = new Bounds(new Vector3(0, 0, 2), Vector3.one * 0.2f) },
+            new Part { PartId = "part_behind", State = "built", WorldBounds = new Bounds(new Vector3(0, 0, -2), Vector3.one * 0.2f) },
+        };
+        var visible = PartProjector.Project(parts, frame);
+        Assert.AreEqual(1, visible.Count);
+        Assert.AreEqual("part_ahead", visible[0].PartId);
+        Assert.AreEqual("missing", visible[0].State);
+        Assert.AreEqual(640f, visible[0].X + visible[0].W / 2f, 0.5f);   // centred horizontally
+        Assert.AreEqual(480f, visible[0].Y + visible[0].H / 2f, 0.5f);   // and vertically
+        Assert.AreEqual(1.9f, visible[0].DistanceM, 1e-4f);              // to the box's near face
+    }
+
+    [Test] public void ProjectReturnsNothingWithoutAFrame() =>
+        Assert.AreEqual(0, PartProjector.Project(new IProjectablePart[0], default).Count);
 }

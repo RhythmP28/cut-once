@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { PartState, Plan } from "@cutonce/schemas";
 import { applyLook, buildPartObject, disposeObject, type Look, type PartObject } from "./buildPart";
+import { useTheme } from "../ThemeSwitch";
 
 export interface PlanViewerProps {
   plan: Plan;
@@ -62,6 +63,7 @@ export function PlanViewer({ plan, highlight, states, onSelect }: PlanViewerProp
   const [skipped, setSkipped] = useState<string[]>([]);
   const [failed, setFailed] = useState<string | null>(null);
 
+  const theme = useTheme();
   const names = useMemo(() => new Map(plan.parts.map((p) => [p.part_id, p.name])), [plan]);
 
   // ── renderer, camera, controls: once per mount ─────────────────────────────
@@ -71,7 +73,7 @@ export function PlanViewer({ plan, highlight, states, onSelect }: PlanViewerProp
 
     let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     } catch (e) {
       setFailed(e instanceof Error ? e.message : "WebGL is not available");
       return;
@@ -81,7 +83,6 @@ export function PlanViewer({ plan, highlight, states, onSelect }: PlanViewerProp
     host.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0b1017);
     scene.add(new THREE.AmbientLight(0xffffff, 1.0));
     const sun = new THREE.DirectionalLight(0xffffff, 1.4);
     sun.position.set(2, 4, 3);
@@ -189,7 +190,7 @@ export function PlanViewer({ plan, highlight, states, onSelect }: PlanViewerProp
     };
   }, []);
 
-  // ── parts, grid and axes: rebuilt when the plan changes ────────────────────
+  // ── parts: rebuilt when the plan changes ───────────────────────────────────
   useEffect(() => {
     const ctx = ctxRef.current;
     if (!ctx) return;
@@ -214,6 +215,25 @@ export function PlanViewer({ plan, highlight, states, onSelect }: PlanViewerProp
     setSelectedId(null);
     setHoverId(null);
 
+    ctx.frame();
+
+    return () => {
+      for (const obj of built) {
+        obj.root.removeFromParent();
+        disposeObject(obj.root);
+        ctx.parts.delete(obj.partId);
+      }
+    };
+  }, [plan]);
+
+  // ── grid and axes: rebuilt with the plan, recoloured with the theme (the camera stays where it is) ────────
+  useEffect(() => {
+    const ctx = ctxRef.current;
+    const host = hostRef.current;
+    if (!ctx || !host) return;
+    const css = getComputedStyle(host);
+    const centreLine = css.getPropertyValue("--border-strong").trim() || "#333840";
+    const gridLine = css.getPropertyValue("--border").trim() || "#24272d";
     // Grid on the plan's lowest face, axes at the model origin with letters at the tips.
     const box = new THREE.Box3().setFromObject(ctx.partsGroup);
     if (box.isEmpty()) box.set(new THREE.Vector3(-0.5, 0, -0.5), new THREE.Vector3(0.5, 0.5, 0.5));
@@ -222,7 +242,7 @@ export function PlanViewer({ plan, highlight, states, onSelect }: PlanViewerProp
     const maxDim = Math.max(size.x, size.y, size.z, 0.05);
     const cell = gridCell(maxDim);
     const divisions = Math.min(200, Math.max(4, Math.ceil((Math.max(size.x, size.z) * 2) / cell)));
-    const grid = new THREE.GridHelper(divisions * cell, divisions, 0x3b4a5e, 0x1f2935);
+    const grid = new THREE.GridHelper(divisions * cell, divisions, new THREE.Color(centreLine), new THREE.Color(gridLine));
     grid.position.set(Math.round(centre.x / cell) * cell, box.min.y - maxDim * 0.001, Math.round(centre.z / cell) * cell);
     const axisLen = maxDim * 0.6;
     const axes = new THREE.AxesHelper(axisLen);
@@ -238,20 +258,13 @@ export function PlanViewer({ plan, highlight, states, onSelect }: PlanViewerProp
       d.raycast = () => {};
       ctx.decorGroup.add(d);
     }
-    ctx.frame();
-
     return () => {
-      for (const obj of built) {
-        obj.root.removeFromParent();
-        disposeObject(obj.root);
-        ctx.parts.delete(obj.partId);
-      }
       for (const d of decor) {
         d.removeFromParent();
         disposeObject(d);
       }
     };
-  }, [plan]);
+  }, [plan, theme]);
 
   // ── colours: highlight wins over state ─────────────────────────────────────
   const highlightKey = (highlight ?? []).join("|");

@@ -1,0 +1,21 @@
+{
+  "name": "CutOnce.Device.PlayTests",
+  "references": [
+    "CutOnce.AR",
+    "CutOnce.Core",
+    "CutOnce.UI",
+    "UnityEngine.TestRunner",
+    "UnityEditor.TestRunner",
+    "CutOnce.Copilot",
+    "CutOnce.Net",
+    "UnityEngine.UI"
+  ],
+  "overrideReferences": true,
+  "precompiledReferences": [
+    "nunit.framework.dll"
+  ],
+  "defineConstraints": [
+    "UNITY_INCLUDE_TESTS"
+  ],
+  "autoReferenced": false
+}

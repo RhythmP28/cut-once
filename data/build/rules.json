@@ -1,0 +1,57 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "rule_id": "rule_laptop_riser_four",
+      "title": "Laptop riser",
+      "why": "Four cans, one under each corner, hold the pizza box level, so your laptop sits 16 cm higher and your neck stops complaining.",
+      "tools": [],
+      "roles": [
+        { "role": "can", "any_of": ["tall_can", "drink_can", "energy_can", "water_bottle"], "count": 4, "same_name": true },
+        { "role": "board", "any_of": ["pizza_box"], "count": 1, "same_name": false }
+      ],
+      "steps": [
+        { "place": "can#1", "orientation": "upright", "on": [], "at_cm": { "x": -12, "z": -12 }, "next_to": null, "side": null, "gap_cm": null },
+        { "place": "can#2", "orientation": "upright", "on": [], "at_cm": { "x": 12, "z": -12 }, "next_to": null, "side": null, "gap_cm": null },
+        { "place": "can#3", "orientation": "upright", "on": [], "at_cm": { "x": -12, "z": 12 }, "next_to": null, "side": null, "gap_cm": null },
+        { "place": "can#4", "orientation": "upright", "on": [], "at_cm": { "x": 12, "z": 12 }, "next_to": null, "side": null, "gap_cm": null },
+        { "place": "board#1", "orientation": "flat", "on": ["can#1", "can#2", "can#3", "can#4"], "at_cm": null, "next_to": null, "side": null, "gap_cm": null }
+      ],
+      "payload": { "label": "laptop", "size_cm": [31, 1.6, 22], "kg": 1.6 }
+    },
+    {
+      "rule_id": "rule_laptop_riser",
+      "title": "Laptop riser",
+      "why": "Three cans in a triangle hold the pizza box level, so your laptop sits 16 cm higher and your neck stops complaining.",
+      "tools": [],
+      "roles": [
+        { "role": "can", "any_of": ["tall_can", "drink_can", "energy_can", "water_bottle"], "count": 3, "same_name": true },
+        { "role": "board", "any_of": ["pizza_box"], "count": 1, "same_name": false }
+      ],
+      "steps": [
+        { "place": "can#1", "orientation": "upright", "on": [], "at_cm": { "x": -12, "z": 12 }, "next_to": null, "side": null, "gap_cm": null },
+        { "place": "can#2", "orientation": "upright", "on": [], "at_cm": { "x": 12, "z": 12 }, "next_to": null, "side": null, "gap_cm": null },
+        { "place": "can#3", "orientation": "upright", "on": [], "at_cm": { "x": 0, "z": -12 }, "next_to": null, "side": null, "gap_cm": null },
+        { "place": "board#1", "orientation": "flat", "on": ["can#1", "can#2", "can#3"], "at_cm": null, "next_to": null, "side": null, "gap_cm": null }
+      ],
+      "payload": { "label": "laptop", "size_cm": [31, 1.6, 22], "kg": 1.6 }
+    },
+    {
+      "rule_id": "rule_tiered_stand",
+      "title": "Two-tier display stand",
+      "why": "The box lifts the pizza box into a stage, and the can on top takes the spotlight: a trophy stand made from leftovers.",
+      "tools": [],
+      "roles": [
+        { "role": "base", "any_of": ["cardboard_box", "book"], "count": 1, "same_name": false },
+        { "role": "board", "any_of": ["pizza_box"], "count": 1, "same_name": false },
+        { "role": "top", "any_of": ["tall_can", "drink_can", "energy_can", "mug"], "count": 1, "same_name": false }
+      ],
+      "steps": [
+        { "place": "base#1", "orientation": "flat", "on": [], "at_cm": { "x": 0, "z": 0 }, "next_to": null, "side": null, "gap_cm": null },
+        { "place": "board#1", "orientation": "flat", "on": ["base#1"], "at_cm": null, "next_to": null, "side": null, "gap_cm": null },
+        { "place": "top#1", "orientation": "upright", "on": ["board#1"], "at_cm": null, "next_to": null, "side": null, "gap_cm": null }
+      ],
+      "payload": null
+    }
+  ]
+}

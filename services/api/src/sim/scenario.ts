@@ -1,5 +1,8 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { ulid } from "ulid";
-import type { Assembly, BuildState, CopilotResponse, Plan } from "@cutonce/schemas";
+import type { Assembly, BuildIdea, BuildScan, BuildState, CopilotResponse, Inventory, Plan } from "@cutonce/schemas";
+import { REPO_ROOT } from "../config.js";
 import { pcmToWav, tone } from "../turns/wav.js";
 
 /**
@@ -166,6 +169,57 @@ export async function runScenario(base: string, token: string): Promise<Scenario
       await waitFor((m) => m.type === "event_appended" && (m.event as { part_id?: string; new_state?: string }).part_id === "part_rear_crossbar"
         && (m.event as { new_state?: string }).new_state === "wrong", 2000, "the forced event");
       return { ms: performance.now() - started };
+    });
+
+    // ── build mode: the same scan → names → ideas → run → steps the Quest goes through, on the synthetic recording ──
+    let idea: BuildIdea | null = null;
+    let buildAid = "";
+
+    await step("build scan", ["stream connect"], async () => {
+      const dir = join(REPO_ROOT, "data", "build", "recordings", "synthetic_kit");
+      const scan = JSON.parse(readFileSync(join(dir, "scan.json"), "utf8")) as BuildScan;
+      const started = performance.now();
+      const r = await call("POST", "/v1/build/scans", {
+        device_id: "sim", grid: scan.grid, points_mm: scan.points_mm, hit: scan.hit, camera: scan.camera,
+        photo_b64: readFileSync(join(dir, "photo.jpg")).toString("base64"),
+      });
+      expectStatus(r, 202, "scan upload");
+      const session = r.json.session_id as string;
+      // Naming asks the vision model when the server has a key, so a live server gets longer than the in-process one needs.
+      await waitFor((m) => m.type === "build_ideas" && m.session_id === session && m.final === true, 40_000, "final build_ideas");
+      const named = messages.filter((m) => m.type === "build_inventory" && (m.inventory as Inventory).session_id === session && (m.inventory as Inventory).labelled).at(-1);
+      const ideas = messages.filter((m) => m.type === "build_ideas" && m.session_id === session).at(-1)!.ideas as BuildIdea[];
+      const objects = ((named?.inventory as Inventory | undefined)?.twins ?? []).filter((t) => t.name !== "unknown");
+      if (objects.length < 4) throw new Error(`named ${objects.length} objects, expected the box and the three cans`);
+      idea = ideas[0] ?? null;
+      if (!idea) throw new Error("no design was offered for the kit");
+      return { ms: performance.now() - started, detail: `${objects.length} objects → ${ideas.map((i) => i.title).join(", ")}` };
+    });
+
+    await step("build start", ["build scan"], async () => {
+      const started = performance.now();
+      const r = await call("POST", `/v1/build/ideas/${idea!.idea_id}/start`, {});
+      expectStatus(r, 200, "start idea");
+      buildAid = r.json.assembly_id as string;
+      if (r.json.plan_id !== idea!.plan.plan_id) throw new Error(`started ${r.json.plan_id}, expected ${idea!.plan.plan_id}`);
+      await waitFor((m) => m.type === "assembly_changed" && (m.assembly as Assembly).assembly_id === buildAid, 2000, "assembly_changed for the build");
+      return { ms: performance.now() - started, detail: buildAid };
+    });
+
+    await step("build step", ["build start"], async () => {
+      const before = (await call("GET", `/v1/assemblies/${buildAid}/state`)).json as BuildState;
+      const current = idea!.plan.steps.find((s) => s.step_id === before.current_step_id);
+      if (!current) throw new Error(`the build starts at ${before.current_step_id}, which is not a step of the design`);
+      // B with nothing pointed at, mid-build: every part of the current step is marked built.
+      for (const id of current.part_ids) {
+        const now = new Date().toISOString();
+        const r = await call("POST", `/v1/assemblies/${buildAid}/events`, { event_id: `evt_${ulid()}`, assembly_id: buildAid, version: null, timestamp: now,
+          client_timestamp: now, kind: "part_state", part_id: id, previous_state: "missing", new_state: "built", source: "manual", confidence: 1, actor: "sim" });
+        expectStatus(r, 201, `mark ${id}`);
+      }
+      const after = (await call("GET", `/v1/assemblies/${buildAid}/state`)).json as BuildState;
+      if (after.current_step_id === before.current_step_id) throw new Error(`still at ${after.current_step_id} after marking its parts`);
+      return { detail: `${before.current_step_id} → ${after.current_step_id}, ${after.progress.built}/${after.progress.total} built` };
     });
   } finally {
     (socket as WebSocket | null)?.close();

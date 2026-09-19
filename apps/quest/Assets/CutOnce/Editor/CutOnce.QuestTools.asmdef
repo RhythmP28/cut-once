@@ -1,0 +1,20 @@
+{
+  "name": "CutOnce.QuestTools",
+  "rootNamespace": "CutOnce.QuestTools",
+  "references": [
+    "CutOnce.Diagnostics",
+    "Oculus.VR",
+    "Oculus.VR.Editor",
+    "Unity.RenderPipelines.Core.Runtime",
+    "Unity.RenderPipelines.Universal.Runtime",
+    "Unity.XR.Management",
+    "Unity.XR.Management.Editor",
+    "Unity.XR.OpenXR",
+    "Unity.XR.OpenXR.Editor",
+    "Unity.XR.OpenXR.Features.MetaQuestSupport"
+  ],
+  "includePlatforms": ["Editor"],
+  "overrideReferences": true,
+  "precompiledReferences": ["Newtonsoft.Json.dll"],
+  "autoReferenced": false
+}

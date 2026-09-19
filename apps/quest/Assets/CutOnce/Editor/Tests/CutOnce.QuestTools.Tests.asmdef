@@ -1,0 +1,9 @@
+{
+  "name": "CutOnce.QuestTools.Tests",
+  "references": ["CutOnce.QuestTools", "CutOnce.Diagnostics", "UnityEngine.TestRunner", "UnityEditor.TestRunner"],
+  "includePlatforms": ["Editor"],
+  "overrideReferences": true,
+  "precompiledReferences": ["nunit.framework.dll", "Newtonsoft.Json.dll"],
+  "defineConstraints": ["UNITY_INCLUDE_TESTS"],
+  "autoReferenced": false
+}

@@ -1,6 +1,6 @@
 {
   "name": "CutOnce.AR",
   "rootNamespace": "CutOnce.AR",
-  "references": [],
+  "references": ["CutOnce.Core"],
   "autoReferenced": true
 }

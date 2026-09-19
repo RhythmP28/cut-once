@@ -3,11 +3,15 @@ import { join } from "node:path";
 import type { CopilotResponse } from "@cutonce/schemas";
 import type { Ctx } from "../app.js";
 import { writeFileSync } from "node:fs";
+import { badRequest } from "../errors.js";
 import { ensureDir, readJson, writeJsonAtomic } from "../store/fs.js";
 import { wavToPcm } from "../turns/wav.js";
 import { normalise } from "./fastpath.js";
 import type { Speech } from "./tts.js";
 import type { TurnMemory } from "./turns.js";
+
+/** Entries are files named after the scripted id, and the id arrives from the Director page: plain names only. */
+const SAFE_ID = /^[a-z0-9_]{1,64}$/;
 
 export interface CacheEntry { scripted_query_id: string; transcript: string; response: CopilotResponse; promoted_at: string }
 
@@ -64,11 +68,13 @@ export class DemoCache {
     if (!entry) return null;
     const pcm = this.audioFor(entry.scripted_query_id);
     if (pcm) this.speech.adopt(turnId, pcm);
-    return { ...entry.response, turn_id: turnId, cached: true, audio_url: pcm ? `/v1/audio/${turnId}` : null };
+    // No action on a replay: the build has moved on since it was recorded, and nothing re-applies it.
+    return { ...entry.response, turn_id: turnId, cached: true, action: null, audio_url: pcm ? `/v1/audio/${turnId}` : null };
   }
 
   /** `promote_cache` from the Director page: freeze a good live answer as the fallback for that question. */
   async promote(turnId: string, scriptedQueryId: string): Promise<void> {
+    if (!SAFE_ID.test(scriptedQueryId)) throw badRequest("scripted_query_id must be lower-case letters, digits and underscores (at most 64)");
     const turn = this.turns.get(turnId) ?? null;
     const response = turn?.response ?? this.ctx.turns.get(turnId);
     if (!response) throw new Error(`turn ${turnId} is not in this session's history`);

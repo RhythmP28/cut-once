@@ -1,0 +1,5 @@
+{
+  "server_url": "https://your-tunnel.trycloudflare.com",
+  "api_token": "paste API_TOKEN from .env.local",
+  "device_id": "quest-1"
+}

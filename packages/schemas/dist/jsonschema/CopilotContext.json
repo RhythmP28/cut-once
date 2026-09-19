@@ -24,7 +24,8 @@
           "type": "string",
           "enum": [
             "upload",
-            "overlay"
+            "overlay",
+            "build"
           ]
         },
         "selected_part_id": {
