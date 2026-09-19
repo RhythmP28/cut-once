@@ -4,7 +4,7 @@ One-time setup on the VM (Ubuntu 24.04). Installing software is fine before the 
 
 ```bash
 # Node 22, pnpm, poppler (page images), Caddy (HTTPS)
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs poppler-utils git
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs poppler-utils git git-lfs && git lfs install --system
 sudo corepack enable && sudo corepack prepare pnpm@9 --activate
 sudo apt-get install -y debian-keyring debian-archive-keyring apt-transport-https curl
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
@@ -25,6 +25,11 @@ sudo cp infra/cutonce.service /etc/systemd/system/ && sudo systemctl daemon-relo
 sudo cp infra/Caddyfile /etc/caddy/Caddyfile   # put the real domain on its first line first
 sudo systemctl reload caddy
 curl https://<domain>/health
+```
+
+Running the command-line tools on the VM (they need the same settings as the server):
+```bash
+cd /opt/cutonce && sudo -u cutonce bash -c 'set -a; . /etc/cutonce.env; set +a; pnpm elastic:indices && pnpm reindex'
 ```
 
 Later deploys: `infra/deploy.sh user@host https://<domain>` (the `cutonce` user needs passwordless `sudo systemctl restart cutonce`).

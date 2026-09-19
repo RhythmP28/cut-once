@@ -10,6 +10,15 @@ if (!es) { console.error("Set ES_URL and ES_API_KEY first (in .env.local)."); pr
 const recreate = process.argv.includes("--recreate");
 const dir = join(cfg.repoRoot, "knowledge", "mappings");
 
+try {
+  const info = await es.info();
+  console.log(`connected to ${info.cluster_name}, Elasticsearch ${info.version.number}`);
+  if (Number(info.version.number.split(".")[0]) < 9) console.warn("WARNING: Workflows, Agent Builder and the Jina defaults need 9.x (9.4+).");
+} catch (err) {
+  console.error(`Could not reach ${cfg.esUrl}: ${(err as Error).message}. Check ES_URL (the Elasticsearch endpoint, not Kibana) and the API key.`);
+  process.exit(1);
+}
+
 for (const file of readdirSync(dir).filter((f) => f.endsWith(".json")).sort()) {
   const index = file.replace(/\.json$/, "");
   const body = JSON.parse(readFileSync(join(dir, file), "utf8")) as { mappings: { properties: Record<string, any> } };
