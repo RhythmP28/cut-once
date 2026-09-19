@@ -19,3 +19,5 @@
 *.anim merge=unityyamlmerge eol=lf
 *.controller merge=unityyamlmerge eol=lf
 *.meta merge=unityyamlmerge eol=lf
+# Test fixtures stay in plain git: every checkout, CI's test job included, must have the real bytes
+data/fixtures/** -filter -diff -merge binary
